@@ -1,0 +1,211 @@
+[
+  {
+    "id": "4.0",
+    "category": "runtime",
+    "description": "Implement metric filtering framework — namepass/namedrop/tagpass/tagdrop/fieldpass/fielddrop with glob matching",
+    "prd_refs": ["prd/07-configuration.md", "prd/06-plugin-system.md"],
+    "steps": [
+      "Create src/core/metric-filter.ts",
+      "Implement glob-to-regex compilation (support * and ? wildcards)",
+      "Implement MetricFilter class with apply(metric) method",
+      "Implement namepass: pass only metrics matching any pattern",
+      "Implement namedrop: drop metrics matching any pattern",
+      "Implement tagpass: pass only metrics with matching tag key+values",
+      "Implement tagdrop: drop metrics with matching tag key+values",
+      "Implement fieldpass: keep only matching fields (remove others)",
+      "Implement fielddrop: remove matching fields (keep others)",
+      "Implement evaluation order: namepass → namedrop → tagpass → tagdrop → fieldpass → fielddrop",
+      "Handle edge case: all fields removed after filtering → drop metric",
+      "Implement MetricFilterSchema (Zod) for config validation",
+      "Write comprehensive tests"
+    ],
+    "verification": "All 6 filter types work correctly with glob patterns. Edge cases handled. All tests pass.",
+    "tests": [
+      "No filters configured → metric passes through unchanged",
+      "namepass: matching name → passes; non-matching → dropped",
+      "namedrop: matching name → dropped; non-matching → passes",
+      "namepass + namedrop together: whitelist first, then blacklist",
+      "tagpass: matching tag value → passes; non-matching value → dropped",
+      "tagpass: metric missing the tag key → dropped",
+      "tagdrop: matching tag value → dropped",
+      "fieldpass: only matching fields kept, others removed",
+      "fielddrop: matching fields removed, others kept",
+      "fieldpass removes all fields → metric dropped entirely",
+      "Glob wildcard *: temperature_* matches temperature_motor",
+      "Glob wildcard ?: temp_? matches temp_1 but not temp_12",
+      "Multiple patterns: [temp_*, pressure_*] matches either",
+      "Empty filter arrays → no filtering (pass everything)",
+      "Case-sensitive matching: Temperature ≠ temperature"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.0i",
+    "category": "integration",
+    "description": "Integration test: metric filtering applied in pipeline context",
+    "prd_refs": ["prd/07-configuration.md"],
+    "steps": [
+      "Create test/integration/metric-filter-pipeline.test.ts",
+      "Test filtering applied to input metrics in pipeline",
+      "Test filtering applied to processor output",
+      "Verify filtered metrics don't reach output"
+    ],
+    "verification": "Metric filtering works within the full pipeline. All tests pass.",
+    "tests": [
+      "Input with namepass filter: only matching metrics reach output",
+      "Processor with fieldpass: only specified fields survive to output",
+      "Combined: input namepass + processor fieldpass both applied"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.1",
+    "category": "processor",
+    "description": "Implement rename processor — rename fields and tags on metrics",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/19-mvp-plugin-inventory.md", "prd/appendix-a-full-config-example.md"],
+    "steps": [
+      "Create src/plugins/processors/rename.ts",
+      "Implement Zod config schema with replace rules array",
+      "Implement process(): apply rename rules, emit via acc.addMetric()",
+      "Implement field rename: remove old field, add new field with same value",
+      "Implement tag rename: remove old tag, add new tag with same value",
+      "Handle missing source field/tag: skip rule silently",
+      "Handle multiple rename rules applied in order",
+      "Ensure hashId updates after tag rename (tag sort order changes)",
+      "Write tests"
+    ],
+    "verification": "Rename processor correctly renames fields and tags. All tests pass.",
+    "tests": [
+      "Rename field: temperature → motor_temp_c",
+      "Rename tag: host → hostname",
+      "Source field not present → rule skipped, metric still forwarded",
+      "Multiple rename rules applied in order",
+      "Rename doesn't affect other fields/tags",
+      "Metric forwarded via acc.addMetric() (explicit emit)",
+      "Tag rename: hashId changes (tags re-sorted)",
+      "Config validation: dest is required, empty replace array is valid"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.1i",
+    "category": "integration",
+    "description": "Integration test: rename processor in full pipeline",
+    "prd_refs": [],
+    "steps": [
+      "Create test/integration/rename-pipeline.test.ts",
+      "Configure pipeline with mock input → rename processor → mock output",
+      "Verify renamed fields appear in output",
+      "Verify original field names absent from output"
+    ],
+    "verification": "Rename processor transforms metrics correctly in pipeline. All tests pass.",
+    "tests": [
+      "Input metric with field 'temperature' → output has 'motor_temp_c' (no 'temperature')",
+      "Multiple rename rules: both applied in output metrics",
+      "Metric without matching field: passes through unchanged"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.2",
+    "category": "processor",
+    "description": "Implement filter processor — drop/pass metrics by name, tag, and field criteria",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/07-configuration.md", "prd/19-mvp-plugin-inventory.md"],
+    "steps": [
+      "Create src/plugins/processors/filter.ts",
+      "Implement Zod config schema with all filter fields",
+      "Implement process(): apply MetricFilter, emit if passes, drop if not",
+      "Write tests"
+    ],
+    "verification": "Filter processor correctly passes/drops metrics. All tests pass.",
+    "tests": [
+      "namepass: matching metrics pass, non-matching dropped",
+      "namedrop: matching metrics dropped",
+      "tagpass: metrics with matching tags pass",
+      "Combined namepass + tagdrop: both applied",
+      "No filters configured → all metrics pass (no-op)",
+      "fieldpass: only specified fields kept",
+      "All fields filtered → metric dropped entirely"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.2i",
+    "category": "integration",
+    "description": "Integration test: filter processor in pipeline",
+    "prd_refs": [],
+    "steps": [
+      "Create test/integration/filter-pipeline.test.ts",
+      "Configure pipeline with mock input → filter processor → mock output",
+      "Verify only matching metrics reach output",
+      "Test with mixed metrics: some pass, some dropped"
+    ],
+    "verification": "Filter processor correctly gates metrics in pipeline. All tests pass.",
+    "tests": [
+      "Mixed input: 5 metrics, namepass allows 3 → output receives 3",
+      "tagdrop removes metrics with test=true tag",
+      "fieldpass trims fields: output metrics have only specified fields"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.3",
+    "category": "aggregator",
+    "description": "Implement basicstats aggregator — min/max/mean/count/sum/variance/stdev over time windows",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/19-mvp-plugin-inventory.md", "prd/appendix-a-full-config-example.md"],
+    "steps": [
+      "Create src/plugins/aggregators/basicstats.ts",
+      "Implement Zod config schema (period, drop_original, stats, namepass/namedrop)",
+      "Implement add(metric): accumulate numeric field values, group by hashId",
+      "Implement running statistics: use Welford's algorithm for numerically stable variance",
+      "Implement push(acc): emit summary metrics via acc.addFields()",
+      "Implement reset(): clear accumulated state",
+      "Handle multiple series: separate stats per name+tags group",
+      "Handle mixed field types: aggregate number/bigint, skip string/boolean",
+      "Handle BigInt fields: convert to Number for aggregation (warn if > MAX_SAFE_INTEGER)",
+      "Handle empty window: push() emits nothing",
+      "Implement configurable stats selection (only emit requested stats)",
+      "Preserve original tags on summary metrics",
+      "Write comprehensive tests"
+    ],
+    "verification": "Basicstats computes correct statistics. Multiple series tracked independently. All tests pass.",
+    "tests": [
+      "10 numeric values → correct min, max, mean, count, sum",
+      "Multiple series (different tags) → separate stats per series",
+      "Mixed field types: number aggregated, string/boolean ignored",
+      "BigInt field aggregated (converted to Number)",
+      "Empty window → push() emits nothing",
+      "reset() clears state — next push() reflects only new data",
+      "Stats config: stats=[count, mean] → only count and mean emitted",
+      "Summary metric preserves original tags",
+      "Summary field names: {field}_min, {field}_max, {field}_mean, etc.",
+      "Single value: min=max=mean=value, count=1, variance=0, stdev=0",
+      "Variance and stdev correct (Welford's algorithm)",
+      "namepass on aggregator: only matching metrics accumulated",
+      "Config validation: period is valid duration string"
+    ],
+    "passes": false
+  },
+  {
+    "id": "4.3i",
+    "category": "integration",
+    "description": "Integration test: basicstats aggregator in full pipeline — E2E with real timer",
+    "prd_refs": ["prd/06-plugin-system.md"],
+    "steps": [
+      "Create test/integration/basicstats-pipeline.test.ts",
+      "Configure pipeline with mock input → basicstats aggregator → mock output",
+      "Let pipeline run for > 1 aggregation period",
+      "Verify both original metrics AND summary metrics in output",
+      "Verify summary stats are correct",
+      "Test with drop_original=true: only summaries in output"
+    ],
+    "verification": "Basicstats works in full pipeline with real timer. Summaries correct. All tests pass.",
+    "tests": [
+      "Originals + summaries both arrive at output (drop_original=false)",
+      "Summary min/max/mean/count match expected values from input",
+      "drop_original=true: only summary metrics in output (no originals)",
+      "Multiple aggregation periods: stats reset between windows"
+    ],
+    "passes": false
+  }
+]
