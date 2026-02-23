@@ -11,7 +11,7 @@
 |------|-------------|--------|
 | 2.0 | ServiceInput runtime support + metric_batch_size | ✅ |
 | 2.1 | Modbus TCP input | ✅ |
-| 2.1i | Modbus → pipeline integration | ⬜ |
+| 2.1i | Modbus → pipeline integration | ✅ |
 | 2.2 | OPC-UA input | ⬜ |
 | 2.2i | OPC-UA → pipeline integration | ⬜ |
 | 2.3 | MQTT consumer input | ⬜ |
@@ -81,6 +81,27 @@
 - `src/plugins/inputs/modbus.ts` — new file
 - `test/unit/plugins/inputs/modbus.test.ts` — new file
 - `package.json` — added modbus-serial dependency
+
+## Task 2.1i: Modbus → Pipeline Integration Test
+
+### What was built
+1. **`test/integration/modbus-pipeline.test.ts`** — 3 integration tests wiring ModbusInput → PipelineRuntime → MockOutput
+2. **MockModbusClient** — minimal mock implementing `ModbusClient` interface with per-slave holding register storage
+3. **MockOutput** — captures written metrics for assertion
+
+### Tests added (3 new, 154 total)
+- `test/integration/modbus-pipeline.test.ts`
+- **"metrics have correct register names and values"** — 2 registers (temperature with scale 0.1, pressure), verifies correct metric names and scaled values through full pipeline
+- **"global tags and slave_id tag present on output metrics"** — verifies `slave_id` tag from Modbus input AND `globalTags` applied by PipelineRuntime both appear on output metrics
+- **"multiple registers produce multiple fields per gather cycle"** — 3 registers, verifies all 3 metric names appear, values are correct, and multiple gather cycles produce consistent metric counts
+
+### Key design decisions
+- Reused `MockModbusClient` pattern from unit tests but kept it minimal (no error injection, no call tracking)
+- Used `gatherIntervalMs: 50` and `flushIntervalMs: 50` with 300ms run duration to get multiple gather cycles
+- Tests assert `>=` counts rather than exact counts to avoid timing sensitivity (Rule 1: no timing hacks)
+
+### Files changed
+- `test/integration/modbus-pipeline.test.ts` — new file
 
 ## Notes
 

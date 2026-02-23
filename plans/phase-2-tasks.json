@@ -89,7 +89,7 @@
       "Global tags and slave_id tag present on output metrics",
       "Multiple registers produce multiple fields per gather cycle"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.2",
