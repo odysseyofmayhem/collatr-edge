@@ -1,6 +1,6 @@
 // CollatrEdge — IIoT data collection agent
-// Entry point (will be expanded in Phase 6 CLI)
+// Entry point
 
-import { getLogger } from "./core/logger";
+import { main } from "./cli/index";
 
-getLogger().info("CollatrEdge v0.1.0");
+process.exit(await main());

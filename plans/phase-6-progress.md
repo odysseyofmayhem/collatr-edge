@@ -8,7 +8,7 @@
 |------|-------------|--------|
 | 6.pre | Phase 5 review cleanup (Y-NEW-1 through G-NEW-2) | ✅ (already done, commit e89ad4f) |
 | 6.0 | Structured logger | ✅ |
-| 6.1 | CLI framework + arg parsing | ⬜ |
+| 6.1 | CLI framework + arg parsing | ✅ |
 | 6.2 | version command | ⬜ |
 | 6.3 | config validate command | ⬜ |
 | 6.4 | config init command | ⬜ |
@@ -41,3 +41,29 @@
 - Zero `console.error`/`console.log`/`console.warn` calls remain in `src/` — confirmed via grep
 - Test files still use `console.*` for their own output, which is correct per the plan
 - The global logger defaults to `info` level — task 6.6 (run command) will configure it from `agent.log_level`
+
+## Task 6.1: CLI Framework + Arg Parsing
+
+**What was built:**
+- `src/cli/index.ts` — `main()` entry point with arg parsing and subcommand routing
+- `parseGlobalOptions()` — extracts `--config`/`-c` from args, respects `COLLATR_EDGE_CONFIG` env var, defaults to `/etc/collatr-edge/config.toml`
+- Help text with command list and global options
+- Config subcommand routing (`config init`, `config validate`)
+- Updated `src/index.ts` — now calls `main()` and `process.exit()`
+- 17 new tests in `test/unit/cli/cli.test.ts`
+
+**Decisions:**
+- No CLI framework dependency — raw `process.argv` parsing for 4 commands. Simple switch/case routing.
+- Subcommands (`run`, `version`, `config init`, `config validate`) are currently stubs returning exit code 1 with "not yet implemented" messages. Tasks 6.2–6.6 will fill them in.
+- All user-facing output goes to `process.stdout.write()` (help text) or `process.stderr.write()` (errors). Logger is used for structured logging (unknown command).
+- `--config` is parsed as a global option before subcommand routing, so it's available to both `run` and `config validate`.
+
+**Files changed:**
+- New: `src/cli/index.ts`, `src/cli/commands/` (empty dir for later), `test/unit/cli/cli.test.ts`
+- Modified: `src/index.ts` (now calls `main()`)
+
+**Test results:** 475 pass, 0 fail (458 existing + 17 new)
+
+**Notes for next task:**
+- `version` command (6.2) just needs to create `src/cli/commands/version.ts` and wire it into the switch case in `src/cli/index.ts`
+- The `ParsedGlobalOptions` interface is exported for use by future command handlers
