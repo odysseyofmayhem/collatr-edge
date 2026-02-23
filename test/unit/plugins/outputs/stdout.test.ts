@@ -249,6 +249,30 @@ describe("Stdout Output Plugin", () => {
     expect(parsed.fields.bool_val).toBe(true);
   });
 
+  it("JSON: BigInt field values serialised as strings (no crash)", async () => {
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
+    await output.connect();
+
+    const metric = makeMetric({
+      name: "bigint_test",
+      fields: {
+        counter: 9007199254740993n,
+        sequence: 18446744073709551615n,
+        normal: 42.5,
+      },
+      timestamp: 1700000000000000000n,
+    });
+
+    // This would crash with "JSON.stringify cannot serialize BigInt" without the replacer
+    await output.write([metric]);
+
+    expect(logOutput.length).toBe(1);
+    const parsed = JSON.parse(logOutput[0]!);
+    expect(parsed.fields.counter).toBe("9007199254740993");
+    expect(parsed.fields.sequence).toBe("18446744073709551615");
+    expect(parsed.fields.normal).toBe(42.5);
+  });
+
   // =========================================================================
   // Special characters
   // =========================================================================

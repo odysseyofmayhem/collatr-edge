@@ -37,7 +37,7 @@ const MS_PER_DAY = 86_400_000;
 const CREATE_METRICS_TABLE = `
 CREATE TABLE IF NOT EXISTS metrics (
   id          INTEGER PRIMARY KEY,
-  timestamp   TEXT NOT NULL,
+  timestamp   INTEGER NOT NULL,
   name        TEXT NOT NULL,
   tags_hash   INTEGER NOT NULL,
   tags        TEXT NOT NULL,
@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS tag_index (
   name        TEXT NOT NULL,
   tags_hash   INTEGER NOT NULL,
   tags        TEXT NOT NULL,
-  first_seen  TEXT NOT NULL,
-  last_seen   TEXT NOT NULL,
+  first_seen  INTEGER NOT NULL,
+  last_seen   INTEGER NOT NULL,
   PRIMARY KEY (name, tags_hash)
 )`;
 
@@ -134,8 +134,8 @@ function tagsHash(tags: Map<string, string>): number {
     hash ^= BigInt(data[i]!);
     hash = (hash * FNV_PRIME) & MASK_64;
   }
-  // Ensure positive for SQLite INTEGER and truncate to Number safely
-  return Number(hash & 0x7fffffffffffffffn);
+  // Mask to 53 bits (Number.MAX_SAFE_INTEGER) for lossless Number conversion
+  return Number(hash & 0x1fffffffffffffn);
 }
 
 /** Serialise tags Map to sorted JSON string. */
@@ -266,10 +266,9 @@ export class LocalStoreOutput implements Output {
         const tagsJson = tagsToJSON(metric.tags);
         const fieldsBlob = encodeFields(metric.fields);
         const quality = qualityToInt(metric);
-        const ts = metric.timestamp.toString(); // TEXT for lossless nanosecond precision
 
-        insertStmt.run(ts, metric.name, th, tagsJson, fieldsBlob, quality);
-        upsertStmt.run(metric.name, th, tagsJson, ts, ts);
+        insertStmt.run(metric.timestamp, metric.name, th, tagsJson, fieldsBlob, quality);
+        upsertStmt.run(metric.name, th, tagsJson, metric.timestamp, metric.timestamp);
       }
     });
 
@@ -323,6 +322,11 @@ export class LocalStoreOutput implements Output {
     }
   }
 
+  /**
+   * Delete oldest daily files until total size is under retention_max_gb.
+   * Note: the current day's file is never deleted (it's being actively written to),
+   * so actual disk usage can exceed retention_max_gb by up to one day's data.
+   */
   private retentionBySize(): void {
     const maxBytes = this.config.retention_max_gb * 1_073_741_824; // GB to bytes
     const files = this.listDailyFiles(); // sorted oldest first
@@ -396,15 +400,17 @@ export class LocalStoreOutput implements Output {
       const db = this.getOrOpenDb(filename);
 
       // Read all metrics from this file
+      // TODO: Post-MVP — process in chunks via .iterate() or LIMIT/OFFSET to avoid
+      // OOM on large daily files (100ms polling × 500 tags = 864K rows/day).
       const rows = db.prepare(
         "SELECT timestamp, name, tags_hash, tags, fields, quality FROM metrics ORDER BY timestamp",
-      ).all() as {
-        timestamp: string;
+      ).safeIntegers(true).all() as {
+        timestamp: bigint;
         name: string;
-        tags_hash: number;
+        tags_hash: bigint;
         tags: string;
         fields: Uint8Array;
-        quality: number;
+        quality: bigint;
       }[];
 
       if (rows.length === 0) continue;
@@ -420,7 +426,7 @@ export class LocalStoreOutput implements Output {
       }>();
 
       for (const row of rows) {
-        const ts = BigInt(row.timestamp);
+        const ts = row.timestamp; // already bigint from safeIntegers
         const boundary = (ts / intervalNs) * intervalNs;
         const key = `${row.name}|${row.tags_hash}|${boundary}`;
 
@@ -428,9 +434,9 @@ export class LocalStoreOutput implements Output {
         if (!bucket) {
           bucket = {
             name: row.name,
-            tags_hash: row.tags_hash,
+            tags_hash: Number(row.tags_hash),
             tags: row.tags,
-            quality: row.quality,
+            quality: Number(row.quality),
             boundary,
             numericFields: new Map(),
           };
@@ -478,9 +484,8 @@ export class LocalStoreOutput implements Output {
           }
 
           const fieldsBlob = pack(summaryFields);
-          const ts = bucket.boundary.toString();
-          insert.run(ts, bucket.name, bucket.tags_hash, bucket.tags, fieldsBlob, bucket.quality);
-          upsertTag.run(bucket.name, bucket.tags_hash, bucket.tags, ts, ts);
+          insert.run(bucket.boundary, bucket.name, bucket.tags_hash, bucket.tags, fieldsBlob, bucket.quality);
+          upsertTag.run(bucket.name, bucket.tags_hash, bucket.tags, bucket.boundary, bucket.boundary);
         }
       });
 
@@ -499,7 +504,7 @@ export class LocalStoreOutput implements Output {
    */
   exportCSV(fromNs: bigint, toNs: bigint): string {
     const files = this.listDailyFiles();
-    const rows: { timestamp: string; name: string; tags: string; fields: Uint8Array; quality: number }[] = [];
+    const rows: { timestamp: bigint; name: string; tags: string; fields: Uint8Array; quality: bigint }[] = [];
 
     // Determine which daily files overlap with the time range
     const fromMs = Number(fromNs / NS_PER_MS);
@@ -513,7 +518,7 @@ export class LocalStoreOutput implements Output {
       const db = this.getOrOpenDb(filename);
       const result = db.prepare(
         "SELECT timestamp, name, tags, fields, quality FROM metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
-      ).all(fromNs.toString(), toNs.toString()) as typeof rows;
+      ).safeIntegers(true).all(fromNs, toNs) as typeof rows;
 
       rows.push(...result);
     }
@@ -523,7 +528,7 @@ export class LocalStoreOutput implements Output {
     // Collect all tag keys and field keys across all rows
     const tagKeys = new Set<string>();
     const fieldKeys = new Set<string>();
-    const decodedRows: { timestamp: string; name: string; tags: Record<string, string>; fields: Record<string, FieldValue>; quality: number }[] = [];
+    const decodedRows: { timestamp: bigint; name: string; tags: Record<string, string>; fields: Record<string, FieldValue>; quality: bigint }[] = [];
 
     for (const row of rows) {
       const fields = decodeFields(row.fields);
@@ -541,7 +546,7 @@ export class LocalStoreOutput implements Output {
 
     const sortedTagKeys = [...tagKeys].sort();
     const sortedFieldKeys = [...fieldKeys].sort();
-    const header = ["timestamp", "name", ...sortedTagKeys, "quality", ...sortedFieldKeys].join(",");
+    const header = ["timestamp", "name", ...sortedTagKeys.map(csvEscape), "quality", ...sortedFieldKeys.map(csvEscape)].join(",");
     const dataRows = decodedRows.map((row) => {
       const values = [
         String(row.timestamp),
@@ -596,21 +601,21 @@ export class LocalStoreOutput implements Output {
       const db = this.getOrOpenDb(filename);
       const rows = db.prepare(
         "SELECT timestamp, name, tags, fields, quality FROM metrics WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp",
-      ).all(fromNs.toString(), toNs.toString()) as {
-        timestamp: string;
+      ).safeIntegers(true).all(fromNs, toNs) as {
+        timestamp: bigint;
         name: string;
         tags: string;
         fields: Uint8Array;
-        quality: number;
+        quality: bigint;
       }[];
 
       for (const row of rows) {
         results.push({
-          timestamp: BigInt(row.timestamp),
+          timestamp: row.timestamp,
           name: row.name,
           tags: JSON.parse(row.tags),
           fields: decodeFields(row.fields),
-          quality: row.quality,
+          quality: Number(row.quality),
         });
       }
     }

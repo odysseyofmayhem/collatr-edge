@@ -89,7 +89,7 @@ export function toJSON(metric: Metric): string {
     tags,
     fields,
     timestamp: metric.timestamp.toString(),
-  });
+  }, (_, v) => typeof v === "bigint" ? v.toString() : v);
 }
 
 // ---------------------------------------------------------------------------

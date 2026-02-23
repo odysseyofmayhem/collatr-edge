@@ -201,7 +201,7 @@ export class StoreForwardBuffer {
     const tx = db.transaction(() => {
       for (const metric of metrics) {
         const payload = encodeMetric(metric);
-        insert.run(Number(metric.timestamp), payload, now);
+        insert.run(metric.timestamp, payload, now);
       }
     });
     tx();
@@ -264,11 +264,11 @@ export class StoreForwardBuffer {
 
     const excess = this._length - this.config.metric_buffer_limit;
 
-    this.db.exec(
+    this.db.prepare(
       `DELETE FROM ${this.tableName} WHERE id IN (
-        SELECT id FROM ${this.tableName} ORDER BY id ASC LIMIT ${excess}
+        SELECT id FROM ${this.tableName} ORDER BY id ASC LIMIT ?
       )`,
-    );
+    ).run(excess);
 
     this._length -= excess;
   }

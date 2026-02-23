@@ -93,7 +93,7 @@ describe("Local Store Output Plugin", () => {
     const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(
       "SELECT timestamp, name, tags_hash, tags, quality FROM metrics ORDER BY name",
-    ).all() as { timestamp: string; name: string; tags_hash: number; tags: string; quality: number }[];
+    ).all() as { timestamp: number; name: string; tags_hash: number; tags: string; quality: number }[];
 
     expect(rows.length).toBe(2);
     expect(rows[0]!.name).toBe("pressure");
@@ -255,12 +255,13 @@ describe("Local Store Output Plugin", () => {
     ]);
 
     const db = new Database(join(tempDir, "data_2024_01_15.db"), { readonly: true });
-    const row = db.prepare("SELECT first_seen, last_seen FROM tag_index WHERE name = 'temp'").get() as {
-      first_seen: string; last_seen: string;
+    const row = db.prepare("SELECT first_seen, last_seen FROM tag_index WHERE name = 'temp'")
+      .safeIntegers(true).get() as {
+      first_seen: bigint; last_seen: bigint;
     };
 
-    expect(row.first_seen).toBe(ts1.toString());
-    expect(row.last_seen).toBe(ts2.toString());
+    expect(row.first_seen).toBe(ts1);
+    expect(row.last_seen).toBe(ts2);
 
     db.close();
     await store.close();
@@ -493,6 +494,30 @@ describe("Local Store Output Plugin", () => {
     const store = new LocalStoreOutput(makeConfig());
     await store.connect();
     await store.write([]);
+    await store.close();
+  });
+
+  it("Write error propagates gracefully when directory becomes read-only", async () => {
+    const store = new LocalStoreOutput(makeConfig());
+    await store.connect();
+
+    // Write one metric successfully
+    await store.write([makeMetric({ timestamp: JAN_15_NOON_NS })]);
+
+    // Make directory read-only — new DB file creation will fail
+    const { chmodSync } = await import("node:fs");
+    chmodSync(tempDir, 0o444);
+
+    try {
+      // Write to a different day to force new file creation
+      await store.write([makeMetric({ name: "will_fail", timestamp: JAN_16_NOON_NS })]);
+      expect(true).toBe(false); // Should not reach here
+    } catch (e) {
+      expect(e).toBeInstanceOf(Error);
+    } finally {
+      chmodSync(tempDir, 0o755);
+    }
+
     await store.close();
   });
 
