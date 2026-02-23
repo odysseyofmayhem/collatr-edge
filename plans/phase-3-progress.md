@@ -6,7 +6,7 @@
 | Task | Description | Status |
 |------|-------------|--------|
 | 3.0 | Stdout output | ✅ |
-| 3.1 | File output (JSON-lines, CSV) | ⬜ |
+| 3.1 | File output (JSON-lines, CSV) | ✅ |
 | 3.1i | File output → pipeline integration | ⬜ |
 | 3.2 | Local data store (SQLite, rotation, retention) | ⬜ |
 | 3.2i | Local store → pipeline integration | ⬜ |
@@ -33,6 +33,29 @@
 - Exported serialisation helpers (`toJSON`, `toLineProtocol`) so the file output can reuse them without duplicating logic.
 
 **Test count:** 269 pass (18 new), 0 fail
+
+## Task 3.1: File Output — COMPLETE
+
+**Files created:**
+- `src/plugins/outputs/file.ts` — FileOutput class, config schema, CSV helpers
+- `test/unit/plugins/outputs/file.test.ts` — 18 tests
+
+**What was built:**
+- `FileOutput` implementing the `Output` interface (connect/write/close)
+- Zod config schema: `path` (required), `format: 'json' | 'csv'` (default: json)
+- JSON-lines format: one JSON object per line, reuses `toJSON()` from stdout plugin
+- CSV format: header row on first write (timestamp, name, sorted tags, sorted fields), data rows after
+- Append mode: `connect()` creates file if missing, never truncates existing content
+- `node:fs/promises` for file I/O (`appendFile` for writes, `mkdir` for parent dirs)
+
+**Decisions:**
+- Reused `toJSON()` from stdout plugin — avoids duplicating serialisation logic
+- CSV columns established from first batch. Missing fields in later metrics produce empty values. New fields in later batches are silently dropped (column set is fixed after first write).
+- CSV tag/field columns use `tag:` and `field:` internal prefixes for disambiguation during lookup, stripped for the header display.
+- CSV values with commas, quotes, or newlines are properly escaped per RFC 4180.
+- `connect()` creates parent directories with `mkdir({ recursive: true })`.
+
+**Test count:** 287 pass (18 new), 0 fail
 
 ## Notes
 

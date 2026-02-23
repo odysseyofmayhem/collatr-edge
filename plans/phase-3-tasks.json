@@ -54,7 +54,7 @@
       "Empty batch → no error, nothing written",
       "Metric fields of all types (number, bigint, string, boolean) serialised correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "3.1i",
