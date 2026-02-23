@@ -85,7 +85,7 @@
       "Tag rename: hashId changes (tags re-sorted)",
       "Config validation: dest is required, empty replace array is valid"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.1i",

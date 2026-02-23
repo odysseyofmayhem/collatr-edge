@@ -7,7 +7,7 @@
 |------|-------------|--------|
 | 4.0 | Metric filtering framework | ✅ |
 | 4.0i | Filtering → pipeline integration | ✅ |
-| 4.1 | Rename processor | ⬜ |
+| 4.1 | Rename processor | ✅ |
 | 4.1i | Rename → pipeline integration | ⬜ |
 | 4.2 | Filter processor | ⬜ |
 | 4.2i | Filter → pipeline integration | ⬜ |
@@ -68,6 +68,31 @@
 - Tests run the real `PipelineRuntime` with real `Channel<T>`, real timers (50ms gather/flush), and verify output after 300ms.
 
 **Test results:** 374 pass, 0 fail (371 + 3 new integration tests)
+
+## Task 4.1: Rename Processor
+
+**Files created:**
+- `src/plugins/processors/rename.ts` — RenameProcessor class + RenameConfigSchema
+- `test/unit/plugins/processors/rename.test.ts` — 15 tests (all pass)
+
+**What was built:**
+- `RenameConfigSchema` — Zod v4 schema with `replace` array of `{ field?, tag?, dest }` rules
+- `RenameProcessor` class implementing `Processor` interface:
+  - Applies rename rules in order (field rename, tag rename)
+  - Missing source field/tag: rule silently skipped
+  - Tag rename uses `addTag()` which re-sorts tags (hashId updates automatically)
+  - Always emits via `acc.addMetric()` (explicit processor contract — no auto-forward)
+
+**Test coverage (15 tests):**
+- Field rename: 2 tests (basic rename, other fields unaffected)
+- Tag rename: 2 tests (basic rename, hashId changes)
+- Missing source: 2 tests (field not present, tag not present)
+- Multiple rules: 2 tests (3 rules in order, chained A→B→C)
+- Explicit emit: 1 test (empty rules still forwards)
+- Value type preservation: 1 test (number, string, boolean, bigint)
+- Config validation: 5 tests (empty array, defaults, dest required, field+dest, tag+dest)
+
+**Test results:** 389 pass, 0 fail (374 + 15 new)
 
 ## Notes
 
