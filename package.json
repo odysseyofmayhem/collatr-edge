@@ -1,0 +1,24 @@
+{
+  "name": "collatr-edge",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test",
+    "build": "bun build --compile --minify --sourcemap --external=@serialport/bindings-cpp --outfile collatr-edge src/index.ts",
+    "build:arm64": "bun build --compile --minify --sourcemap --target=bun-linux-arm64 --external=@serialport/bindings-cpp --outfile collatr-edge-arm64 src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "msgpackr": "^1.11.8",
+    "smol-toml": "^1.6.0"
+  }
+}

@@ -15,7 +15,7 @@
       "Verify both imports work in a test file"
     ],
     "verification": "`bun test` passes with at least 1 test. `bun build --compile` produces a binary that runs.",
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.1",
