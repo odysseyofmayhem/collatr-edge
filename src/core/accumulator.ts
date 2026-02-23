@@ -3,6 +3,7 @@
 
 import { Channel } from "./channel";
 import { createMetric, type FieldValue, type Metric } from "./metric";
+import { getLogger } from "./logger";
 
 export interface Accumulator {
   /** Create a new metric from scratch. Timestamp assigned automatically if not provided. */
@@ -64,7 +65,7 @@ export class ChannelAccumulator implements Accumulator {
   addError(error: Error): void {
     this._errorCount++;
     // Log but never throw — non-fatal by contract
-    console.error(`[accumulator] plugin error: ${error.message}`);
+    getLogger().error("plugin error", { component: "accumulator", error: error.message });
   }
 
   get errorCount(): number {

@@ -110,7 +110,7 @@ export class StdoutOutput implements Output {
   async write(batch: Metric[]): Promise<void> {
     const formatter = this.config.data_format === "line_protocol" ? toLineProtocol : toJSON;
     for (const metric of batch) {
-      console.log(formatter(metric));
+      process.stdout.write(formatter(metric) + "\n");
     }
   }
 

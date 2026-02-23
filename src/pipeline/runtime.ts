@@ -7,6 +7,7 @@ import { createMetric, type FieldValue, type Metric } from "../core/metric";
 import { Ticker } from "../core/ticker";
 import type { Input, Processor, Aggregator, Output, ServiceInput } from "../core/plugin-types";
 import { isServiceInput } from "../core/plugin-types";
+import { getLogger } from "../core/logger";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
@@ -55,7 +56,7 @@ class CollectingAccumulator implements Accumulator {
 
   addError(error: Error): void {
     this._errorCount++;
-    console.error(`[processor] error: ${error.message}`);
+    getLogger().error("processor error", { component: "processor", error: error.message });
   }
 
   drain(): Metric[] {
@@ -91,7 +92,7 @@ class BroadcastAccumulator implements Accumulator {
 
   addError(error: Error): void {
     this._errorCount++;
-    console.error(`[aggregator] error: ${error.message}`);
+    getLogger().error("aggregator error", { component: "aggregator", error: error.message });
   }
 }
 
@@ -127,7 +128,7 @@ async function runGatherLoop(
         await input.gather(acc);
       }
     } catch (err) {
-      console.error(`[pipeline] gather error: ${(err as Error).message}`);
+      getLogger().error("gather error", { component: "pipeline", error: (err as Error).message });
     }
   }
 }
@@ -167,9 +168,7 @@ async function runMainLoop(
           next.push(...acc.drain());
         } catch (err) {
           // PRD §14: processor error → metric dropped, pipeline continues
-          console.error(
-            `[pipeline] processor error: ${(err as Error).message}`,
-          );
+          getLogger().error("processor error", { component: "pipeline", error: (err as Error).message });
         }
       }
       metrics = next;
@@ -267,7 +266,7 @@ async function runOutputFlushLoop(
         try {
           await output.write(chunk);
         } catch (err) {
-          console.error(`[pipeline] output write error: ${(err as Error).message}`);
+          getLogger().error("output write error", { component: "pipeline", error: (err as Error).message });
           // Re-add remaining (unwritten) metrics to batch for retry
           const remaining = metrics.slice(i);
           batch.unshift(...remaining);
@@ -280,7 +279,7 @@ async function runOutputFlushLoop(
         await output.write(metrics);
         return true;
       } catch (err) {
-        console.error(`[pipeline] output write error: ${(err as Error).message}`);
+        getLogger().error("output write error", { component: "pipeline", error: (err as Error).message });
         batch.unshift(...metrics);
         return false;
       }
@@ -311,7 +310,7 @@ async function runOutputFlushLoop(
         // TODO: Phase 7 — when S&F buffer is integrated, failed final-flush
         // metrics should be persisted to the buffer for recovery on next startup.
         // Currently these metrics are lost if the output is still failing at shutdown.
-        console.error(`[pipeline] final flush error: ${(err as Error).message}`);
+        getLogger().error("final flush error", { component: "pipeline", error: (err as Error).message });
       }
     }
   })();
@@ -415,7 +414,7 @@ export class PipelineRuntime {
           await input.plugin.start(inputAcc);
           this.serviceInputs.push({ plugin: input.plugin });
         } catch (err) {
-          console.error(`[pipeline] service input start error: ${(err as Error).message}`);
+          getLogger().error("service input start error", { component: "pipeline", error: (err as Error).message });
           // Log and continue — one service input failure doesn't stop the pipeline
         }
       } else {
@@ -459,7 +458,7 @@ export class PipelineRuntime {
       try {
         await plugin.stop();
       } catch (err) {
-        console.error(`[pipeline] service input stop error: ${(err as Error).message}`);
+        getLogger().error("service input stop error", { component: "pipeline", error: (err as Error).message });
       }
     }
 

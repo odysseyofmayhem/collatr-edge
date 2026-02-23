@@ -91,20 +91,21 @@ export function makeLocalStoreConfig(
 // ---------------------------------------------------------------------------
 
 /**
- * Capture console.error calls for assertions while still logging to stderr.
+ * Capture structured logger output (process.stderr.write) for assertions.
  * Returns captured error strings and a restore function.
  */
 export function captureErrors(): { errors: string[]; restore: () => void } {
   const errors: string[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-    original.apply(console, args); // still log to stderr for debugging visibility
-  };
+  const original = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+    const str = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+    errors.push(str.trimEnd());
+    return original(chunk, ...rest);
+  }) as typeof process.stderr.write;
   return {
     errors,
     restore: () => {
-      console.error = original;
+      process.stderr.write = original;
     },
   };
 }

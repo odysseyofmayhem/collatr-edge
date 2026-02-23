@@ -8,6 +8,7 @@
 // ──────────────────────────────────────────────────────────────────────
 
 import { z } from "zod/v4";
+import { getLogger } from "../../core/logger";
 import type { Input } from "../../core/plugin-types";
 import type { Accumulator } from "../../core/accumulator";
 import { parseDuration } from "../../core/config";
@@ -518,16 +519,16 @@ export class ModbusInput implements Input {
         reg.disabled = true;
         const key = `${slaveId}:${reg.config.address}:${reg.config.type}`;
         this.disabledRegisters.add(key);
-        console.error(
-          `[modbus] register ${reg.config.name} (slave ${slaveId}, addr ${reg.config.address}) disabled: ` +
-          `Modbus exception 0x${code.toString(16).padStart(2, "0")}`,
-        );
+        getLogger().error("register disabled", {
+          plugin: "modbus", register: reg.config.name, slave_id: slaveId,
+          address: reg.config.address, exception: `0x${code.toString(16).padStart(2, "0")}`,
+        });
       } else if (RETRY_EXCEPTIONS.has(code)) {
         // Transient error — retry next interval
-        console.warn(
-          `[modbus] register ${reg.config.name} (slave ${slaveId}, addr ${reg.config.address}) error: ` +
-          `Modbus exception 0x${code.toString(16).padStart(2, "0")} — will retry next interval`,
-        );
+        getLogger().warn("register error — will retry next interval", {
+          plugin: "modbus", register: reg.config.name, slave_id: slaveId,
+          address: reg.config.address, exception: `0x${code.toString(16).padStart(2, "0")}`,
+        });
       }
     } else {
       acc.addError(err as Error);

@@ -8,6 +8,7 @@
 
 import { z } from "zod/v4";
 import { MetricFilter, MetricFilterSchema } from "@core/metric-filter";
+import { getLogger } from "@core/logger";
 import type { Aggregator } from "@core/plugin-types";
 import type { Accumulator } from "@core/accumulator";
 import type { Metric, FieldValue } from "@core/metric";
@@ -152,9 +153,7 @@ export class BasicstatsAggregator implements Aggregator {
         numValue = fieldValue;
       } else if (typeof fieldValue === "bigint") {
         if (fieldValue > BigInt(Number.MAX_SAFE_INTEGER)) {
-          console.warn(
-            `[basicstats] BigInt field "${fieldName}" exceeds MAX_SAFE_INTEGER, precision loss possible`,
-          );
+          getLogger().warn("BigInt field exceeds MAX_SAFE_INTEGER, precision loss possible", { plugin: "basicstats", field: fieldName });
         }
         numValue = Number(fieldValue);
       }

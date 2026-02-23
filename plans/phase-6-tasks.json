@@ -30,7 +30,7 @@
         "Run bun test — all tests must pass",
         "Commit: phase-6: add structured JSON logger with level filtering and child loggers"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "6.1",

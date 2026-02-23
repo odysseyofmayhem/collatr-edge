@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { PipelineRuntime } from "@pipeline/runtime";
 import type { Accumulator } from "@core/accumulator";
 import type { Metric } from "@core/metric";
@@ -241,12 +241,14 @@ describe("PipelineRuntime", () => {
     const slowInput = new MockSlowInput();
     const output = new MockOutput();
 
-    // Suppress console.error and track calls
-    const originalError = console.error;
+    // Capture logger output (writes to process.stderr)
     const errorCalls: string[] = [];
-    console.error = mock((...args: unknown[]) => {
-      errorCalls.push(String(args[0]));
-    });
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+      const str = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      errorCalls.push(str.trimEnd());
+      return true;
+    }) as typeof process.stderr.write;
 
     const pipeline = new PipelineRuntime({
       inputs: [{ plugin: slowInput, timeout: 100 }],
@@ -260,7 +262,7 @@ describe("PipelineRuntime", () => {
 
     await runFor(pipeline, 500);
 
-    console.error = originalError;
+    process.stderr.write = originalWrite;
 
     // Should have logged timeout errors
     const timeoutErrors = errorCalls.filter((msg) =>
@@ -483,12 +485,14 @@ describe("PipelineRuntime", () => {
       async close() {},
     };
 
-    // Suppress console.error
-    const originalError = console.error;
+    // Capture logger output (writes to process.stderr)
     const errorCalls: string[] = [];
-    console.error = mock((...args: unknown[]) => {
-      errorCalls.push(String(args[0]));
-    });
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+      const str = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      errorCalls.push(str.trimEnd());
+      return true;
+    }) as typeof process.stderr.write;
 
     const pipeline = new PipelineRuntime({
       inputs: [{ plugin: input }],
@@ -501,7 +505,7 @@ describe("PipelineRuntime", () => {
 
     await runFor(pipeline, 400);
 
-    console.error = originalError;
+    process.stderr.write = originalWrite;
 
     // Error was logged
     const writeErrors = errorCalls.filter((msg) => msg.includes("output write error"));

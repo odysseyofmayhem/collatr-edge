@@ -38,18 +38,20 @@ function makeMetric(overrides: {
 // ---------------------------------------------------------------------------
 
 describe("Stdout Output Plugin", () => {
-  let logSpy: ReturnType<typeof spyOn>;
+  let stdoutSpy: ReturnType<typeof spyOn>;
   let logOutput: string[];
 
   beforeEach(() => {
     logOutput = [];
-    logSpy = spyOn(console, "log").mockImplementation((...args: unknown[]) => {
-      logOutput.push(args.map(String).join(" "));
+    stdoutSpy = spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
+      const str = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+      logOutput.push(str.trimEnd());
+      return true;
     });
   });
 
   afterEach(() => {
-    logSpy.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
   // =========================================================================

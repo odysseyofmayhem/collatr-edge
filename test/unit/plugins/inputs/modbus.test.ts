@@ -490,9 +490,9 @@ describe("ModbusInput", () => {
     const modbusErr = Object.assign(new Error("Illegal Data Address"), { modbusCode: 0x02 });
     client.throwOnRead.set("FC03:1:200", modbusErr);
 
-    // Suppress console.error for cleaner test output
-    const origError = console.error;
-    console.error = () => {};
+    // Suppress logger output for cleaner test output
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
 
     await input.init();
     await input.gather(acc);
@@ -515,7 +515,7 @@ describe("ModbusInput", () => {
     expect(fc03Calls.length).toBe(1);
     expect(fc03Calls[0]!.address).toBe(100);
 
-    console.error = origError;
+    process.stderr.write = origWrite;
   });
 
   it("Modbus exception 04 (Slave Failure) → retry next interval, others continue", async () => {
@@ -533,8 +533,8 @@ describe("ModbusInput", () => {
     const modbusErr = Object.assign(new Error("Slave Device Failure"), { modbusCode: 0x04 });
     client.throwOnRead.set("FC03:1:200", modbusErr);
 
-    const origWarn = console.warn;
-    console.warn = () => {};
+    const origWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
 
     await input.init();
     await input.gather(acc);
@@ -554,7 +554,7 @@ describe("ModbusInput", () => {
     expect(flaky).toBeDefined();
     expect(flaky!.fields.value).toBe(99);
 
-    console.warn = origWarn;
+    process.stderr.write = origWrite;
   });
 
   // ── Connection timeout ─────────────────────────────────────────────────

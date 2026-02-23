@@ -8,6 +8,7 @@
 import { z } from "zod/v4";
 import type { ServiceInput } from "../../core/plugin-types";
 import type { Accumulator } from "../../core/accumulator";
+import { getLogger } from "../../core/logger";
 import type { FieldValue } from "../../core/metric";
 import { parseDuration } from "../../core/config";
 
@@ -246,7 +247,7 @@ export class MqttConsumerInput implements ServiceInput {
     // Set up error handler
     this.client.onError((error: Error) => {
       if (this._stopped) return;
-      console.error(`[mqtt_consumer] error: ${error.message}`);
+      getLogger().error("error", { plugin: "mqtt_consumer", error: error.message });
       if (this.acc) this.acc.addError(error);
     });
 
@@ -256,11 +257,11 @@ export class MqttConsumerInput implements ServiceInput {
       this.reconnectAttempts++;
       const maxRetry = this.config.reconnect.max_retry;
       if (maxRetry > 0 && this.reconnectAttempts > maxRetry) {
-        console.error(`[mqtt_consumer] max reconnect attempts (${maxRetry}) exceeded — giving up`);
+        getLogger().error("max reconnect attempts exceeded — giving up", { plugin: "mqtt_consumer", max_retry: maxRetry });
         this.client.disconnect().catch(() => {});
         return;
       }
-      console.log(`[mqtt_consumer] reconnecting (attempt ${this.reconnectAttempts})...`);
+      getLogger().info("reconnecting", { plugin: "mqtt_consumer", attempt: this.reconnectAttempts });
     });
 
     // Set up connect handler to (re)subscribe on connect
@@ -269,7 +270,7 @@ export class MqttConsumerInput implements ServiceInput {
       this.reconnectAttempts = 0; // reset on successful connect
       // Subscribe on connect (and re-connect)
       this.client.subscribe(this.config.topics, this.config.qos).catch((err: Error) => {
-        console.error(`[mqtt_consumer] subscribe error: ${err.message}`);
+        getLogger().error("subscribe error", { plugin: "mqtt_consumer", error: err.message });
         if (this.acc) this.acc.addError(err);
       });
     });
@@ -366,7 +367,7 @@ export class MqttConsumerInput implements ServiceInput {
     } catch (error: unknown) {
       // Parse error — log but don't crash
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[mqtt_consumer] payload parse error on topic "${event.topic}": ${msg}`);
+      getLogger().error("payload parse error", { plugin: "mqtt_consumer", topic: event.topic, error: msg });
       if (this.acc) this.acc.addError(new Error(`Payload parse error: ${msg}`));
     }
   }

@@ -8,6 +8,7 @@
 import { z } from "zod/v4";
 import type { ServiceInput } from "../../core/plugin-types";
 import type { Accumulator } from "../../core/accumulator";
+import { getLogger } from "../../core/logger";
 import { parseDuration } from "../../core/config";
 import type { FieldValue } from "../../core/metric";
 
@@ -287,9 +288,7 @@ export function mapOpcuaValue(
     case "UInt64": {
       const num = Number(value);
       if (num > Number.MAX_SAFE_INTEGER || num < Number.MIN_SAFE_INTEGER) {
-        console.warn(
-          `[opcua] value for ${name} exceeds Number.MAX_SAFE_INTEGER — precision loss`,
-        );
+        getLogger().warn("value exceeds Number.MAX_SAFE_INTEGER — precision loss", { plugin: "opcua", field: name });
       }
       return { [name]: num };
     }
@@ -343,7 +342,7 @@ export function mapOpcuaValue(
         return flattenObject(name, value as Record<string, unknown>, 0, 3);
       }
       // Unknown type → JSON string with one-time warning
-      console.warn(`[opcua] unmappable data type "${dataType}" for ${name}, emitting as JSON string`);
+      getLogger().warn("unmappable data type, emitting as JSON string", { plugin: "opcua", data_type: dataType, field: name });
       return { [name]: JSON.stringify(value) };
     }
   }
@@ -544,7 +543,7 @@ export class OpcuaInput implements ServiceInput {
         await this.client.disconnect();
       }
     } catch (err) {
-      console.warn(`[opcua] error during shutdown: ${(err as Error).message}`);
+      getLogger().warn("error during shutdown", { plugin: "opcua", error: (err as Error).message });
     }
   }
 
@@ -580,7 +579,7 @@ export class OpcuaInput implements ServiceInput {
           await this.client.connect(config.endpoint, opts);
           connected = true;
           if (fallback.policy === "None") {
-            console.warn("[opcua] connected with security policy None — traffic is not encrypted");
+            getLogger().warn("connected with security policy None — traffic is not encrypted", { plugin: "opcua" });
           }
           break;
         } catch {
@@ -612,7 +611,7 @@ export class OpcuaInput implements ServiceInput {
       try {
         node.node_id = await resolveNodeId(node.node_id, this.client);
       } catch (err) {
-        console.error(`[opcua] failed to resolve namespace URI for ${node.node_id}: ${(err as Error).message}`);
+        getLogger().error("failed to resolve namespace URI", { plugin: "opcua", node_id: node.node_id, error: (err as Error).message });
       }
     }
 
@@ -627,10 +626,10 @@ export class OpcuaInput implements ServiceInput {
         if (config.browse.output_file) {
           const toml = formatBrowseOutput(config.endpoint, browseResults);
           await Bun.write(config.browse.output_file, toml);
-          console.info(`[opcua] browse results written to ${config.browse.output_file} (${browseResults.length} nodes)`);
+          getLogger().info("browse results written", { plugin: "opcua", output_file: config.browse.output_file, node_count: browseResults.length });
         }
       } catch (err) {
-        console.warn(`[opcua] browse failed: ${(err as Error).message}`);
+        getLogger().warn("browse failed", { plugin: "opcua", error: (err as Error).message });
       }
     }
 
@@ -651,7 +650,7 @@ export class OpcuaInput implements ServiceInput {
     // Register connection loss handler — triggers automatic reconnection (F-03)
     this.client.onClose(() => {
       if (!this.stopped) {
-        console.warn("[opcua] connection lost — initiating reconnection");
+        getLogger().warn("connection lost — initiating reconnection", { plugin: "opcua" });
         this.reconnect();
       }
     });
@@ -669,9 +668,7 @@ export class OpcuaInput implements ServiceInput {
       } catch (err) {
         // Bad NodeID or other monitored item error — skip, log, continue (PRD D.7)
         this.failedNodes.add(node.node_id);
-        console.error(
-          `[opcua] failed to monitor node ${node.node_id} (${node.name}): ${(err as Error).message}`,
-        );
+        getLogger().error("failed to monitor node", { plugin: "opcua", node_id: node.node_id, name: node.name, error: (err as Error).message });
       }
     }
   }
@@ -729,12 +726,12 @@ export class OpcuaInput implements ServiceInput {
     while (!this.stopped) {
       attempt++;
       if (maxRetry > 0 && attempt > maxRetry) {
-        console.error(`[opcua] max reconnect attempts (${maxRetry}) exceeded`);
+        getLogger().error("max reconnect attempts exceeded", { plugin: "opcua", max_retry: maxRetry });
         this.reconnecting = false;
         return;
       }
 
-      console.warn(`[opcua] reconnecting in ${delay}ms (attempt ${attempt})`);
+      getLogger().warn("reconnecting", { plugin: "opcua", delay_ms: delay, attempt });
 
       await new Promise<void>((resolve) => {
         this.reconnectTimer = setTimeout(resolve, delay);
@@ -749,11 +746,11 @@ export class OpcuaInput implements ServiceInput {
 
         // Reconnect
         await this.connectAndSubscribe();
-        console.info(`[opcua] reconnected successfully after ${attempt} attempt(s)`);
+        getLogger().info("reconnected successfully", { plugin: "opcua", attempts: attempt });
         this.reconnecting = false;
         return;
       } catch (err) {
-        console.warn(`[opcua] reconnect attempt ${attempt} failed: ${(err as Error).message}`);
+        getLogger().warn("reconnect attempt failed", { plugin: "opcua", attempt, error: (err as Error).message });
         delay = Math.min(delay * 2, maxDelay);
       }
     }

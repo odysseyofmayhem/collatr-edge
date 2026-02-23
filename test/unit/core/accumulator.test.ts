@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import { ChannelAccumulator } from "@core/accumulator";
 import { Channel } from "@core/channel";
 import { createMetric, type Metric } from "@core/metric";
@@ -122,15 +122,15 @@ describe("ChannelAccumulator", () => {
     const ch = new Channel<Metric>({ capacity: 10 });
     const acc = new ChannelAccumulator(ch);
 
-    // Suppress console.error output during this test
-    const original = console.error;
-    console.error = mock(() => {});
+    // Suppress logger output during this test
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
 
     expect(() => acc.addError(new Error("should not throw"))).not.toThrow();
     expect(() => acc.addError(new Error("even with weird chars: \0\n\t"))).not.toThrow();
     expect(() => acc.addError(new Error(""))).not.toThrow();
 
-    console.error = original;
+    process.stderr.write = originalWrite;
   });
 
   it("multiple addFields() calls produce multiple metrics in channel", async () => {
