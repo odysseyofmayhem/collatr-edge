@@ -1,6 +1,6 @@
 # Phase 3: Outputs — Progress
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Tasks
 | Task | Description | Status |
@@ -11,7 +11,7 @@
 | 3.2 | Local data store (SQLite, rotation, retention) | ✅ |
 | 3.2i | Local store → pipeline integration | ✅ |
 | 3.3 | Store-and-forward buffer | ✅ |
-| 3.3i | S&F buffer + output integration | ⬜ |
+| 3.3i | S&F buffer + output integration | ✅ |
 
 ## Task 3.0: Stdout Output — COMPLETE
 
@@ -145,6 +145,19 @@
 - `reject()` and `accept()` both delete from buffer; semantic difference is for logging/metrics, not buffer state
 
 **Test count:** 330 pass (15 new), 0 fail
+
+## Task 3.3i: S&F Buffer + Output Integration — COMPLETE
+
+**Files created:**
+- `test/integration/buffer-output.test.ts` — 4 integration tests
+
+**What was tested:**
+- Buffer + SuccessOutput: metrics delivered via output.write(), then acceptAll() drains buffer to 0
+- Buffer + FailingOutput: output.write() throws → keepAll() retains metrics for retry across multiple attempts, metrics remain intact and in correct order
+- Buffer + PartialOutput: partial write failure with acceptIndices/rejectIndices → accept() removes successful metrics, reject() removes permanently failed metrics, buffer drained
+- Crash recovery: add metrics, output fails, keepAll(), close buffer (simulate crash), reopen from same DB path → metrics survive restart, successful delivery on second session
+
+**Test count:** 334 pass (4 new), 0 fail
 
 ## Notes
 

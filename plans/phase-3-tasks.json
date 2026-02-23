@@ -202,6 +202,6 @@
       "Buffer + partial failure: accepted removed, rejected removed, rest kept",
       "Crash recovery: buffer survives simulated restart"
     ],
-    "passes": false
+    "passes": true
   }
 ]
