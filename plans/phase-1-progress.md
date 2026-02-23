@@ -166,8 +166,24 @@
   - `runAggregatorPushLoop` uses `Promise.race([Bun.sleep, abortPromise])` instead of Ticker — simpler, abort-responsive without blocking on long periods
   - Final aggregator push in `runMainLoop` cleanup does NOT call `reset()` — this is intentional since the pipeline is shutting down and we want the final summary to include all accumulated data
 
-## Current Task
-Task 1.8i — Full pipeline integration test
+### Task 1.8i — Full pipeline integration test
+- **What:** Integration test bridging config parsing with pipeline runtime — TOML → parse → build plugins → run pipeline → verify output → shutdown
+- **Result:** 4 tests pass covering all 4 required test cases
+- **Tests:**
+  - Config-driven pipeline: TOML parsed, config values drive mock plugin construction, global tags flow through pipeline
+  - Rename processor: field "celsius" renamed to "temp_c" using config-driven from/to values
+  - Metric count: input.gatherCount === output.written.length (no loss)
+  - Shutdown: all plugins (input, processor, output) have close() called
+- **Implementation details:**
+  - `ConfigDrivenInput` — mock input constructed from parsed TOML values (measurement, field_name, field_value)
+  - `RenameProcessor` — mock processor constructed from parsed TOML values (from, to) using `metric.removeField()` + `metric.addField()`
+  - `MockStoreOutput` — collects written metrics for assertion
+  - Tests use `parseDuration()` on config strings to get interval milliseconds, same path as real pipeline would
+  - Global tags from `[global_tags]` section flow through to output metrics via `PipelineOptions.globalTags`
+
+## Status: PHASE COMPLETE
+
+All Phase 1 tasks pass (1.0–1.8i). 99 tests across 12 files, 0 failures.
 
 ## Blockers
 (none)

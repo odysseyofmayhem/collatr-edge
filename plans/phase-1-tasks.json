@@ -293,6 +293,6 @@
       "Metric count: input produced N metrics, output received N metrics (no loss)",
       "Shutdown: all plugins get close() called, exit code 0"
     ],
-    "passes": false
+    "passes": true
   }
 ]
