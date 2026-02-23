@@ -14,7 +14,7 @@
 | 2.1i | Modbus → pipeline integration | ✅ |
 | 2.2 | OPC-UA input | ✅ |
 | 2.2i | OPC-UA → pipeline integration | ✅ |
-| 2.3 | MQTT consumer input | ⬜ |
+| 2.3 | MQTT consumer input | ✅ |
 | 2.3i | MQTT → pipeline integration | ⬜ |
 | 2.4 | Internal metrics input | ⬜ |
 | 2.4i | Internal metrics integration | ⬜ |
@@ -181,14 +181,47 @@
 ### Files changed
 - `test/integration/opcua-pipeline.test.ts` — new file
 
+## Task 2.3: MQTT Consumer Input Plugin
+
+### What was built
+1. **`src/plugins/inputs/mqtt-consumer.ts`** — full MQTT consumer ServiceInput implementation (~280 lines)
+2. **Zod config schema** — `MqttConsumerConfigSchema` matching PRD Appendix A + §19
+3. **ServiceInput lifecycle** — `start(acc)` connects → subscribes on connect; `stop()` unsubscribes → disconnects
+4. **JSON payload parsing** — flat objects → fields, nested objects → dot-notation, arrays → indexed fields
+5. **Plain string payload** — `data_format: "value"` treats payload as single value (numeric detection)
+6. **Topic-to-tag mapping** — `topic_tag` for raw topic tag, `topic_tags` for pattern-based extraction from topic segments
+7. **QoS support** — configurable QoS 0/1/2 passed to subscribe
+8. **TLS configuration** — ca/cert/key files and insecure_skip_verify option
+9. **Authentication** — username/password passed to MQTT client options
+10. **Reconnection** — initial_delay passed as reconnectPeriod; re-subscribe on reconnect via onConnect handler
+11. **Dependency injection** — `MqttClientInterface` interface + optional client injection for testing
+
+### Key decisions
+- `MqttClientInterface` abstracted for testability — same DI pattern as Modbus/OPC-UA
+- `flattenJson()` exported as utility — recursively flattens nested JSON to dot-notation with array indexing
+- `extractTopicTags()` exported as utility — pattern-based tag extraction from topic segments using `+` wildcards
+- Measurement name defaults to topic path; configurable override via `measurement` option
+- `topic_tag` defaults to `"topic"` — set to `""` to disable topic tag
+- No real mqtt.js wrapper yet — `createDefaultMqttClient()` throws; tests inject mock. Real wrapper wired during pipeline integration.
+- `_stopped` flag prevents message processing after stop() to avoid races during shutdown
+
+### Tests added (29 new, 229 total)
+- `test/unit/plugins/inputs/mqtt-consumer.test.ts`
+- **12 task-spec tests**: connect + JSON, multi-field JSON, nested JSON dot-notation, plain string value, topic tag extraction, wildcard subscription, QoS config, reconnection + resubscribe, connection failure error handling, multiple topics, measurement override, config validation
+- **9 additional tests**: static tags, topic_tag disabled, default topic_tag, stop() suppression, invalid JSON error handling, auth options, TLS options, reconnect period config, flattenJson utility (5 tests), extractTopicTags utility (4 tests)
+
+### Files changed
+- `src/plugins/inputs/mqtt-consumer.ts` — new file
+- `test/unit/plugins/inputs/mqtt-consumer.test.ts` — new file
+
 ## Notes
 
 ### Dependencies
 - `modbus-serial` — validated in Bun spike, use `--external=@serialport/bindings-cpp` at compile
 - `node-opcua` — validated in Bun spike, pure JS v4.x, installed v2.163.1
-- MQTT library — needs validation before task 2.3
+- `mqtt` (mqtt.js) — validated in Bun, import works correctly
 
 ### Test Infrastructure
 - Modbus: stub/mock modbus-serial client or lightweight mock TCP server
-- OPC-UA: use node-opcua server module for test fixtures
-- MQTT: use aedes or similar in-process broker for tests
+- OPC-UA: MockOpcuaClient with emitDataChange() for test simulation
+- MQTT: MockMqttClient with emitMessage()/emitConnect() for test simulation (DI pattern, no real broker needed)

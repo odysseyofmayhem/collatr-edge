@@ -209,7 +209,7 @@
       "Measurement name override from config",
       "Config validation: missing servers → error, missing topics → error"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.3i",
