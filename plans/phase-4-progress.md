@@ -6,7 +6,7 @@
 | Task | Description | Status |
 |------|-------------|--------|
 | 4.0 | Metric filtering framework | ✅ |
-| 4.0i | Filtering → pipeline integration | ⬜ |
+| 4.0i | Filtering → pipeline integration | ✅ |
 | 4.1 | Rename processor | ⬜ |
 | 4.1i | Rename → pipeline integration | ⬜ |
 | 4.2 | Filter processor | ⬜ |
@@ -50,6 +50,24 @@
 - Config validation: 2 tests
 
 **Test results:** 371 pass, 0 fail (338 existing + 33 new)
+
+## Task 4.0i: Metric Filtering Pipeline Integration
+
+**Files created:**
+- `test/integration/metric-filter-pipeline.test.ts` — 3 integration tests (all pass)
+
+**What was tested:**
+- Input with namepass filter: 5 metrics produced per gather, only 3 matching `temperature_*` or `pressure_*` reach output. Verified `humidity` and `debug_info` never arrive.
+- Processor with fieldpass: metric with 4 fields passes through a filter processor keeping only `value` and `quality`. Verified `debug_count` and `internal_seq` removed.
+- Combined input namepass + processor fieldpass: two filter layers work together. Input filters by name, processor trims fields. Verified both filters applied correctly.
+
+**Design notes:**
+- The pipeline runtime doesn't have built-in per-plugin filter hooks (yet). Integration tests wire MetricFilter into mock plugins that apply filtering in `gather()` or `process()`.
+- `FilteringInput` creates metrics internally, applies MetricFilter, then emits only passing metrics via `acc.addMetric()`.
+- `FilterProcessor` implements the Processor contract: receives metric, applies filter, emits if passes, drops if null.
+- Tests run the real `PipelineRuntime` with real `Channel<T>`, real timers (50ms gather/flush), and verify output after 300ms.
+
+**Test results:** 374 pass, 0 fail (371 + 3 new integration tests)
 
 ## Notes
 

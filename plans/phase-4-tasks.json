@@ -56,7 +56,7 @@
       "Processor with fieldpass: only specified fields survive to output",
       "Combined: input namepass + processor fieldpass both applied"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.1",
