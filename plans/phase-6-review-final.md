@@ -313,33 +313,52 @@ The phase adds approximately 40 new tests across 7 test files, meeting the accep
 
 ---
 
+## Fix Pass Results
+
+**Fix commit:** `3b48f92 phase-6: fix code review findings — wire MetricFilter, fix override extraction, add shutdown test`
+**Date:** 2026-02-23
+**Test status after fixes:** 491 unit pass, 46 integration pass, 0 failures (1 pre-existing E2E failure in 5.2.3 daily rotation — unrelated to Phase 6)
+
+### RED fixes applied:
+
+| Finding | Resolution | Files changed |
+|---------|-----------|---------------|
+| RED-01: MetricFilter never applied | Added `FilteringAccumulator` wrapper for per-input filters; processor filters applied in `runMainLoop` (copy-based, non-matching metrics pass through); output filters applied in `runOutputFlushLoop` reader | `src/pipeline/runtime.ts` |
+| RED-02: Aggregator filter config stripped | Removed `extractFilterConfig()` call for aggregators — filter fields (namepass/namedrop/tagpass/tagdrop) now flow directly to aggregator Zod schemas (BasicstatsConfigSchema handles them internally) | `src/pipeline/plugin-factory.ts` |
+| RED-03: error_behavior not extracted | Added `error_behavior` and all other missing PRD §7 override keys to `OVERRIDE_KEYS`; added default case in `extractOverrides` to strip Phase 7+ keys before Zod parsing | `src/pipeline/plugin-factory.ts` |
+
+### YELLOW fixes applied:
+
+| Finding | Resolution | Files changed |
+|---------|-----------|---------------|
+| YELLOW-01: Per-output flush_interval | Extracted and discarded (Phase 7+ feature); field added to `OVERRIDE_KEYS` so it no longer breaks Zod validation | `src/pipeline/plugin-factory.ts` |
+| YELLOW-02: Missing override keys | All PRD §7 per-plugin override keys now in `OVERRIDE_KEYS`: `retry_max`, `retry_backoff`, `flush_interval`, `flush_jitter`, `collection_jitter`, `collection_offset`, `precision`, `metric_buffer_limit`, `tags` | `src/pipeline/plugin-factory.ts` |
+| YELLOW-03: log_level not wired | `logLevel` now passed through `PipelineOptions` for all plugin types (inputs, processors, aggregators, outputs). Actual child logger creation deferred to Phase 7 | `src/pipeline/plugin-factory.ts`, `src/pipeline/runtime.ts` |
+| YELLOW-04: Aggregator double-extraction | Resolved with RED-02 — `extractFilterConfig()` no longer called for aggregators | `src/pipeline/plugin-factory.ts` |
+| YELLOW-05: config validate fragility | `stripOverrideFields()` function added; strips both `OVERRIDE_KEYS` and `FILTER_KEYS` before `schema.safeParse()` | `src/cli/commands/config-validate.ts` |
+| YELLOW-06: No shutdown timeout test | Made `shutdownTimeoutMs` injectable via `RunCommandDeps` (default 30000); added test with 50ms timeout verifying `forceExit` is called | `src/cli/commands/run.ts`, `test/unit/cli/run.test.ts` |
+| YELLOW-07: alias discarded | `alias` now passed through `PipelineOptions` for all plugin types alongside `logLevel` | `src/pipeline/plugin-factory.ts`, `src/pipeline/runtime.ts` |
+
+### GREEN items (not fixed — deferred):
+
+- GREEN-01: `[global_tags] valid` message without actual validation — cosmetic, no functional impact
+- GREEN-02: `BUILD_TIME` not injected at compile time — works via env var, document in build script
+- GREEN-03: Defensive unref() casting — **fixed** as part of YELLOW-06 (simplified to direct `shutdownTimer.unref()`)
+- GREEN-04: Import style inconsistency (path aliases vs relative) — style preference, no functional impact
+- GREEN-05: README quality — positive finding, no action needed
+
+---
+
 ## Phase 7 Readiness Assessment
 
 ### Can Phase 7 start?
 
-**Not yet.** The RED items must be fixed first.
+**Yes.** All RED and YELLOW items have been resolved.
 
-### Must fix before Phase 7:
+### Remaining deferred items for Phase 7+:
 
-1. **RED-01:** MetricFilter must be applied in PipelineRuntime. Without this, any Phase 7 work involving per-plugin filtering will build on a broken foundation. Options:
-   - Apply filters in the gather accumulator (for inputs), processor chain (for processors), and output flush loop (for outputs).
-   - Or wrap plugin instances with filter-applying decorators in the factory.
-
-2. **RED-02:** Aggregator filter config must not be stripped by `extractFilterConfig()`. Either:
-   - Skip `extractFilterConfig()` for aggregators (let namepass/namedrop/tagpass/tagdrop flow through to the aggregator's own Zod schema), OR
-   - Extract them and wire them as a factory-level MetricFilter on the aggregator entry.
-
-3. **RED-03:** While the implicit `error_behavior` defaults are correct, the `error_behavior` field should at minimum be extracted from raw config (added to `OVERRIDE_KEYS`) so it does not interfere with plugin Zod validation. Implementing the full behavior switching can be Phase 7.
-
-### Should fix before Phase 7:
-
-1. **YELLOW-02:** Add remaining PRD override fields to `OVERRIDE_KEYS` extraction (at minimum: `retry_max`, `retry_backoff`, `flush_interval`, `flush_jitter`, `collection_jitter`, `collection_offset`, `precision`, `tags`, `error_behavior`). Even if the runtime does not use them yet, they must be extracted so they do not break plugin Zod validation.
-
-2. **YELLOW-04:** Resolve the aggregator filter double-extraction design decision once RED-02 is fixed.
-
-3. **YELLOW-06:** Add a test for the shutdown timeout path.
-
-### Can defer to Phase 7:
-
-- YELLOW-01 (per-output flush_interval), YELLOW-03 (per-plugin log_level child loggers), YELLOW-07 (alias in logs)
+- **Per-output flush_interval**: Field is extracted and stripped, but per-output flush loop timing not yet implemented (all outputs share global `flushIntervalMs`)
+- **Per-plugin child loggers**: `logLevel` is wired through PipelineOptions but child loggers with level overrides not yet created in runtime
+- **Per-plugin alias in logs**: `alias` is wired through PipelineOptions but not yet used in log output or metrics reporting
+- **error_behavior switching**: Field is extracted; implicit defaults are correct (inputs retry, outputs error), but operator cannot override via config
 - All GREEN items
