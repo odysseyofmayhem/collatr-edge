@@ -78,7 +78,7 @@
       "Memory: RSS growth ≤ 50% between t=5s and t=55s",
       "Daily rotation: 3 files for 3 days, correct partitioning, retention evicts oldest"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "5.3",

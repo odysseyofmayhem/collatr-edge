@@ -9,7 +9,7 @@
 | 5.pre | Phase 4 review cleanup (R4, F1, F4) | ✅ (already done in prior session, commit b12e712) |
 | 5.0 | Full pipeline E2E with real plugins | ✅ |
 | 5.1 | SQLite recovery & power loss simulation | ✅ |
-| 5.2 | Sustained operation (60s compressed soak) | ⬜ |
+| 5.2 | Sustained operation (60s compressed soak) | ✅ |
 | 5.3 | Buffer overflow & backpressure | ⬜ |
 | 5.4 | Error resilience | ⬜ |
 
@@ -54,3 +54,21 @@
 - Buffer recovery test uses normal close() (not crash simulation) — the key assertion is that unresolved transactions don't cause data loss, which holds regardless of shutdown type
 
 **Test count:** 434 pass, 0 fail (430 existing + 4 new)
+
+### Task 5.2 — Sustained operation (compressed soak test)
+
+**Test file:** `test/e2e/sustained-operation.test.ts` (3 tests)
+
+**What was built:**
+- Created `SequentialCounterInput` test helper (implements Input, emits `soak_metric` with incrementing `counter` field each gather)
+- 5.2.1: 60-second continuous run — SequentialCounterInput (50ms interval) → FilterProcessor (namepass `*`, passthrough) → BasicstatsAggregator (5s, count+mean) → LocalStoreOutput (temp dir). Verified: zero errors logged, ≥95% of expected 1200 raw metrics present, timestamps monotonically non-decreasing, no duplicate counter values, 8–20 aggregator summary pushes (expected ~12), all summary stats valid (finite numbers, no NaN).
+- 5.2.2: Memory stability — same pipeline as 5.2.1, measured `process.memoryUsage().rss` at t=5s and t=55s. Verified: RSS growth ≤50% (no unbounded memory leak).
+- 5.2.3: Daily rotation (time-warp) — wrote 50 metrics each to 3 UTC days (10 days ago, 1 day ago, today) via LocalStoreOutput. Verified: 3 daily files created (`data_YYYY_MM_DD.db`), each file contains exactly 50 metrics all with matching date, `timestampToDateString()` confirms correct partitioning. Re-opened with `retention_days: 5` — oldest file (10 days ago) evicted by `retentionByTime()`, 2 remaining files still have 50 rows each.
+
+**Decisions:**
+- Used `namepass: ["*"]` for the passthrough filter (matches all metric names) rather than omitting the processor, to exercise the full 4-stage pipeline
+- 60s tests marked with `// Long-running test (~60s)` comments and given 90s timeout
+- Memory test measures RSS after 5s warmup (GC, JIT settled) to avoid false positives from startup allocation
+- Daily rotation uses generous day spacing (10 days ago vs 5-day retention) to avoid boundary timing issues near UTC midnight
+
+**Test count:** 437 pass, 0 fail (434 existing + 3 new)
