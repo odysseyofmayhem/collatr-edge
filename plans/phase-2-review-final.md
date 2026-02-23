@@ -3,7 +3,7 @@
 **Reviewer:** Claude Opus 4 (independent context — second reviewer, not the implementing agent nor the first reviewer)
 **Date:** 2026-02-23
 **Scope:** All Phase 2 source and test files; verification of existing review findings
-**Test status:** 251/251 pass, 0 fail, 863 expect() calls ✅
+**Test status:** 251/251 pass, 0 fail, 864 expect() calls ✅
 
 ---
 
@@ -82,17 +82,15 @@ For each finding in `phase-2-review.md`, I independently verify the severity, fi
 - **My assessment:** 🟢 Nice to Have — **disagree on severity**
 - **Reasoning:** 10,000 is the PRD-specified default (§4: "per-output channel with capacity 10000"). The PRD doesn't define a config field for this. Making it configurable is a nice-to-have enhancement, not a compliance issue. The hardcoded value matches the spec.
 
-### F-13: MQTT Consumer — QoS default is 0, phase plan says 1
+### F-13: MQTT Consumer — QoS default is 0, phase plan says 1 ~~RESOLVED~~
 
-- **Existing severity:** 🟡 Should Fix (Priority 2)
-- **My assessment:** 🟡 Should Fix (Priority 2) — **agree**
-- **Reasoning:** The phase plan explicitly calls out QoS 1 as the default. However, the PRD §19 doesn't specify a default QoS, and the PRD's MQTT config schema in the phase plan says `default(1)`. The implementation has `default(0)`. This should be changed to `default(1)` for manufacturing data where loss avoidance matters.
+- **Existing severity:** 🟡 Should Fix (Priority 2) → Fixed
+- **Verified?** ✅ **Yes, confirmed fixed.** Line 28 of `mqtt-consumer.ts` changed from `default(0)` to `default(1)`. Two test assertions updated to expect QoS 1 as default. QoS 1 (at-least-once) is the appropriate default for industrial telemetry.
 
-### F-14: Runtime — startup order deviates from PRD §8 for flush loops
+### F-14: Runtime — startup order deviates from PRD §8 for flush loops ~~RESOLVED~~
 
-- **Existing severity:** 🟡 Should Fix (Priority 2)
-- **My assessment:** 🟡 Should Fix (Priority 2) — **agree**
-- **Reasoning:** PRD §8 specifies flush loops start at Step 16 (last), but the runtime starts them at step 3 (after output connect). Not functionally broken (flush loops idle until data arrives), but deviates from the spec. The fix is a simple reorder with zero risk.
+- **Existing severity:** 🟡 Should Fix (Priority 2) → Fixed
+- **Verified?** ✅ **Yes, confirmed fixed.** Flush loops moved from step 3 (after output connect) to step 7 (after service inputs and gather loops), matching PRD §8 step 16 ordering. All 251 tests pass with the reorder.
 
 ### F-15 through F-20 (Nice to Have)
 
@@ -109,27 +107,13 @@ For each finding in `phase-2-review.md`, I independently verify the severity, fi
 
 These findings were not identified in the existing review or were underweighted.
 
-### I-01. 🔴 OPC-UA: `handleDataChange` uses `node.name` instead of `node.measurement`
+### I-01. 🔴 OPC-UA: `handleDataChange` uses `node.name` instead of `node.measurement` ~~RESOLVED~~
 
-**Severity:** Must Fix
+**Severity:** Must Fix → Fixed
 **File:** `src/plugins/inputs/opcua.ts`, line 715
 **Rule:** Rule 8 (Interface Compliance Check), Rule 5 (PRD Is the Spec)
 
-The `ExpandedNode` type has both `name` and `measurement` fields. For direct nodes, `measurement = name`. For group nodes, `measurement = group.name` (the group name, per PRD D.1 schema description: "Group name (used as measurement name if set)").
-
-However, `handleDataChange` uses `node.name`:
-```typescript
-this.acc.addFields(node.name, fields, tags, timestamp);
-```
-
-It should use `node.measurement`:
-```typescript
-this.acc.addFields(node.measurement, fields, tags, timestamp);
-```
-
-**Impact:** Group nodes emit metrics with the individual node name as the measurement instead of the group name. This breaks the intended grouping behavior where all nodes in a group share a measurement name (like Telegraf's `measurement_name` override for input groups). Any user relying on group-based metric naming will get unexpected measurement names.
-
-**Fix:** One-line change on line 715. Existing tests don't catch this because the node group test (line 469 in opcua.test.ts) checks tags but not the measurement name.
+**Verified?** ✅ **Yes, confirmed fixed.** Line 715 changed from `this.acc.addFields(node.name, ...)` to `this.acc.addFields(node.measurement, ...)`. Group nodes now correctly use the group name as the measurement name. Test assertion added to the existing group node test verifying `acc.metrics[0]!.measurement` equals the group name `"conveyor_drives"`.
 
 ### I-02. 🟡 Runtime: PipelineRuntime does NOT integrate with StatsCollector
 
@@ -326,7 +310,7 @@ PRD D.4 describes TOFU as the default behavior when `server_certificate` is not 
 | D.5: Browse mode | ✅ PASS | Tested |
 | D.5: TOML output format | ✅ PASS | `formatBrowseOutput()` generates commented TOML |
 | D.5: Browse rate limiting | ❌ FAIL | Not implemented (browse is passed to client interface) |
-| D.6: Group name as measurement name | ❌ FAIL | I-01: uses node.name instead of node.measurement |
+| D.6: Group name as measurement name | ✅ PASS | I-01 fixed: uses node.measurement |
 | D.7: Connection refused → retry with backoff | ✅ PASS | Tested |
 | D.7: Session timeout → reconnect | ✅ PASS | Via onClose handler |
 | D.7: Monitored item error → skip, continue | ✅ PASS | Tested |
@@ -389,7 +373,7 @@ PRD D.4 describes TOFU as the default behavior when `server_certificate` is not 
 | Per-input gather timeout | ✅ PASS | Promise.race with timeout |
 | metric_batch_size per-output | ✅ PASS | Splits in flush loop |
 | Output.connect() before flush | ✅ PASS | PRD §8 step 11 |
-| Startup order matches PRD §8 | ⚠️ PARTIAL | Flush loops start too early (F-14) |
+| Startup order matches PRD §8 | ✅ PASS | F-14 fixed: flush loops start last |
 | Shutdown drains channels | ✅ PASS | Main loop drains, closes outputs |
 | ServiceInput error → log, continue | ✅ PASS | try/catch with console.error |
 | Mixed pipeline (polling + service) | ✅ PASS | Tested |
@@ -471,13 +455,13 @@ PRD D.4 describes TOFU as the default behavior when `server_certificate` is not 
 | Reconnection with backoff | ✅ | |
 | Auto-reconnect on connection loss | ✅ | (F-03 fix) |
 | Per-node tags | ✅ | |
-| **Group name as measurement** | ❌ | Bug I-01: uses node.name |
+| **Group name as measurement** | ✅ | I-01 fixed: uses node.measurement, test added |
 | **Subscription transfer on reconnect** | ❌ | F-10: never called |
 | **Reconnect max_retry exceeded** | ✅ | Tested in reconnect test |
 | **ExtensionObject flattening** | ❌ | Code path exists but no test with real nested structure via DataChangeEvent |
 | **Multiple rapid data changes** | ❌ | No throughput/ordering test |
 
-**Hard path coverage: Good (22/27 paths tested)**
+**Hard path coverage: Good (23/27 paths tested)**
 
 ### Module: MQTT Consumer (`test/unit/plugins/inputs/mqtt-consumer.test.ts`)
 
@@ -535,20 +519,16 @@ PRD D.4 describes TOFU as the default behavior when `server_certificate` is not 
 
 ## 5. Phase 3 Readiness
 
-### Verdict: **GO** — with one 🔴 fix required first
+### Verdict: **GO** — all 🔴 fixes resolved
 
 Phase 2 provides a solid foundation for Phase 3 (Processors). The pipeline runtime correctly handles the processor chain (sequential processor execution, CollectingAccumulator for intermediate results, aggregator forking, global tags). The four input plugins demonstrate both polling and push (ServiceInput) patterns are working.
 
-### Must Fix Before Phase 3:
-
-1. **I-01: OPC-UA measurement name bug** — One-line fix. `handleDataChange` should use `node.measurement` not `node.name`. This affects metric naming for all OPC-UA group nodes. Fix: change line 715 from `this.acc.addFields(node.name, ...)` to `this.acc.addFields(node.measurement, ...)`. Add a test that verifies group nodes use the group name as measurement.
+All pre-Phase-3 priority fixes (I-01, F-13, F-14) have been resolved. No remaining 🔴 blockers.
 
 ### Should Fix During Phase 3:
 
 1. **I-02: StatsCollector integration in runtime** — When the runtime is next modified (Phase 3 will add processor-level concerns), add StatsCollector wiring. This is a prerequisite for meaningful internal metrics.
 2. **F-06: OPC-UA O(n) node lookup** — Trivial Map optimization. Do it when touching the OPC-UA file for any reason.
-3. **F-13: MQTT QoS default** — Change `default(0)` to `default(1)`. One-line fix, zero risk.
-4. **F-14: Flush loop startup order** — Reorder to match PRD §8. Zero risk.
 
 ### Can Defer Beyond Phase 3:
 
@@ -581,20 +561,20 @@ The processor chain in `runMainLoop()` (lines 145-184 of runtime.ts) is well-str
 
 | Severity | Count | Source |
 |---|---|---|
-| 🔴 Must Fix | 1 (new) | I-01 (OPC-UA measurement name) |
-| 🔴 Must Fix (resolved) | 3 | F-02, F-03, F-05 (verified ✅) |
+| 🔴 Must Fix (resolved) | 4 | F-02, F-03, F-05, I-01 (all verified ✅) |
 | 🔴 Must Fix (deferred, reclassified) | 2 → 🟡 | F-01, F-04 (appropriate deferrals) |
-| 🟡 Should Fix | 11 | F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-14, I-02, I-03, I-04 + 2 more |
+| 🟡 Should Fix (resolved) | 2 | F-13, F-14 (verified ✅) |
+| 🟡 Should Fix (open) | 9 | F-06, F-07, F-08, F-09, F-10, F-11, I-02, I-03, I-04 |
 | 🟢 Nice to Have | 10 | F-15–F-20, I-05–I-10 |
-| **Total independent findings** | **10** | 1 🔴 + 5 🟡 + 4 🟢 |
+| **Total independent findings** | **10** | 1 🔴 fixed + 5 🟡 (2 fixed) + 4 🟢 |
 
-### Priority Fixes Before Phase 3
+### Priority Fixes Before Phase 3: **All resolved** ✅
 
-1. **I-01 (🔴):** Fix OPC-UA `handleDataChange` to use `node.measurement` instead of `node.name`. One line, add test.
-2. **F-13 (🟡):** Change MQTT QoS default from 0 to 1. One line.
-3. **F-14 (🟡):** Reorder flush loop startup to match PRD §8. Simple reorder.
+1. ~~**I-01 (🔴):** Fix OPC-UA `handleDataChange` to use `node.measurement` instead of `node.name`.~~ Fixed.
+2. ~~**F-13 (🟡):** Change MQTT QoS default from 0 to 1.~~ Fixed.
+3. ~~**F-14 (🟡):** Reorder flush loop startup to match PRD §8.~~ Fixed.
 
-### Phase 3 Blockers: **1** (I-01)
+### Phase 3 Blockers: **0** — all resolved
 
 ### Existing Review Quality Assessment
 
@@ -610,4 +590,4 @@ The main gap in the first review: it missed the **measurement name bug** (I-01) 
 
 ---
 
-*Independent review complete. 251/251 tests passing. 1 Must Fix, 11 Should Fix, 10 Nice to Have across both reviews combined.*
+*Independent review complete. 251/251 tests passing. All 🔴 Must Fix and pre-Phase-3 priority items resolved (I-01, F-13, F-14). 9 🟡 Should Fix open (deferred), 10 🟢 Nice to Have across both reviews combined. Phase 3: GO.*
