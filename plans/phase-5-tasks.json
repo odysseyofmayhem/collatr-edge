@@ -1,0 +1,124 @@
+[
+  {
+    "id": "5.pre",
+    "category": "cleanup",
+    "description": "Phase 4 review cleanup — address R4, F1, F4 findings before starting Phase 5",
+    "prd_refs": [],
+    "steps": [
+      "Add comment to BasicstatsAggregator explaining that `period` is parsed by the config layer, not the aggregator (R4)",
+      "Update plans/phase-4-processors-aggregators.md to reflect that summary metrics use original metric name with field-suffixed stats, matching Telegraf behaviour (F1)",
+      "Add comment in runtime.ts documenting the potential double-push at shutdown as known behaviour (F4)",
+      "Run bun test — all 426 tests must still pass",
+      "Commit as: phase-4: address review findings (R4, F1, F4)"
+    ],
+    "tests": [
+      "All 426 existing tests still pass"
+    ],
+    "passes": false
+  },
+  {
+    "id": "5.0",
+    "category": "e2e",
+    "description": "Full pipeline E2E with real plugins — prove all 4 stages work together using actual plugin implementations (not mocks)",
+    "prd_refs": ["prd/04-architecture-overview.md", "prd/07-configuration.md", "prd/08-pipeline-lifecycle.md", "prd/22-mvp-acceptance-criteria.md"],
+    "steps": [
+      "Create test/e2e/ directory",
+      "Create test/e2e/full-pipeline.test.ts",
+      "5.0.1: Full four-stage pipeline — internal input → filter processor (namepass agent.*) → basicstats aggregator (200ms) → local-store output (temp dir). Verify metrics flow through all stages, summaries produced, rows in SQLite.",
+      "5.0.2: Multi-input pipeline — polling internal input + a TestServiceInput (timer-based push). Both inputs produce metrics, output file (JSON-lines) contains metrics from both sources.",
+      "5.0.3: Processor chain — rename → filter → basicstats → local-store. Rename applied before filter. Filter drops unwanted metrics. Aggregator summaries have _count/_mean suffixes.",
+      "5.0.4: Shutdown ordering — instrument close/stop calls, verify: service inputs stop before channel close, aggregators push final summary before output close, all close() complete, shutdown < 5s.",
+      "Use real plugin imports: InternalInput, FilterProcessor, RenameProcessor, BasicstatsAggregator, LocalStore, StdoutOutput, FileOutput",
+      "Use mkdtempSync for temp directories, clean up in afterEach",
+      "Query local store SQLite directly for assertions"
+    ],
+    "tests": [
+      "Full four-stage pipeline: metrics flow input→filter→aggregator→local-store, SQLite has rows with valid timestamps and decodable fields",
+      "Multi-input: both polling and service inputs produce metrics, output contains metrics from both",
+      "Processor chain: rename applied before filter, filter drops correct metrics, aggregator summaries have field suffixes",
+      "Shutdown ordering: service inputs stop first, final aggregator push happens, all close() called, shutdown < 5s"
+    ],
+    "passes": false
+  },
+  {
+    "id": "5.1",
+    "category": "e2e",
+    "description": "SQLite recovery & power loss simulation — WAL recovery, data loss bounds, corruption detection",
+    "prd_refs": ["prd/08-pipeline-lifecycle.md", "prd/11-local-data-store.md", "prd/12-buffers-delivery-guarantees.md"],
+    "steps": [
+      "Create test/e2e/power-loss-recovery.test.ts",
+      "5.1.1: Local store WAL recovery — write 1000 metrics, skip clean shutdown (no WAL checkpoint), re-open, run PRAGMA wal_checkpoint(TRUNCATE), verify all 1000 rows recovered, integrity_check = ok",
+      "5.1.2: S&F buffer recovery — add 500 metrics, begin transaction (read 100), do NOT resolve, close without checkpoint, re-open, length = 500, next transaction returns same first 100",
+      "5.1.3: Data loss bound — write batches every 100ms for 5s with synchronous=NORMAL, crash, recover, verify at most 1s of data missing",
+      "5.1.4: Corruption detection — write data, corrupt the DB file, re-open, verify corrupt file moved aside, fresh DB created and usable (if corruption path exists in current code; if not, implement it or document as TODO)"
+    ],
+    "tests": [
+      "WAL recovery: all 1000 metrics recovered after unclean shutdown, integrity check passes",
+      "Buffer recovery: unresolved transaction metrics survive restart, length correct, at-least-once preserved",
+      "Data loss ≤1s with synchronous=NORMAL",
+      "Corruption: detected, file moved aside, fresh DB usable"
+    ],
+    "passes": false
+  },
+  {
+    "id": "5.2",
+    "category": "e2e",
+    "description": "Sustained operation (compressed soak) — 60s continuous run, memory stability, daily rotation",
+    "prd_refs": ["prd/11-local-data-store.md", "prd/22-mvp-acceptance-criteria.md"],
+    "steps": [
+      "Create test/e2e/sustained-operation.test.ts",
+      "5.2.1: 60-second continuous run — polling input at 50ms with sequential counter, filter (passthrough), basicstats (5s), local-store. Verify: zero errors, row count ≥ 95% of expected, timestamps monotonic, no duplicates, ~12 aggregator summaries, all stats valid (no NaN/Infinity).",
+      "5.2.2: Memory stability — same pipeline, measure RSS at t=5s and t=55s, assert RSS@55s ≤ RSS@5s × 1.5. If process.memoryUsage() unreliable, document and skip.",
+      "5.2.3: Daily rotation (time-warp) — write metrics with timestamps spanning 3 UTC days, verify 3 daily files created, each contains only its day's metrics, retention policy deletes oldest.",
+      "Create a SequentialCounterInput test helper (implements Input, increments counter field each gather)",
+      "Mark 60s tests with // Long-running test (~60s) comment"
+    ],
+    "tests": [
+      "60s run: zero errors, ≥95% expected metrics, timestamps monotonic, no duplicates, aggregator summaries valid",
+      "Memory: RSS growth ≤ 50% between t=5s and t=55s",
+      "Daily rotation: 3 files for 3 days, correct partitioning, retention evicts oldest"
+    ],
+    "passes": false
+  },
+  {
+    "id": "5.3",
+    "category": "e2e",
+    "description": "Buffer overflow & backpressure — limit enforcement, partial writes, transaction recovery",
+    "prd_refs": ["prd/12-buffers-delivery-guarantees.md"],
+    "steps": [
+      "Create test/e2e/buffer-overflow.test.ts",
+      "5.3.1: drop_oldest overflow — buffer with limit=100, add 200 metrics, verify length=100, transaction returns newest 100",
+      "5.3.2: Buffer with failing output (isolation test) — add metrics, begin transaction, write fails, keepAll, retry, write succeeds, acceptAll. Verify at-least-once. (Note: S&F buffer is not wired into runtime flush loop — test in isolation, document runtime integration as Phase 7 prerequisite.)",
+      "5.3.3: Partial write — add 100, begin transaction(50), accept [0-29], reject [30-39], keep [40-49]. Verify length=60, next transaction starts with the 10 kept metrics.",
+      "5.3.4: Unacknowledged transaction survives restart — add 100, acceptAll first 50, add 50 more, begin transaction(50) but don't resolve, close, re-open, verify length=100."
+    ],
+    "tests": [
+      "drop_oldest: buffer limit enforced, oldest evicted, newest retained",
+      "Failing output: keepAll preserves metrics for retry, acceptAll clears on success",
+      "Partial write: accept/reject/keep granularity correct, subsequent transaction starts at right place",
+      "Unacknowledged transaction: metrics survive restart, at-least-once guarantee"
+    ],
+    "passes": false
+  },
+  {
+    "id": "5.4",
+    "category": "e2e",
+    "description": "Error resilience — plugin error isolation, output retry, gather timeout",
+    "prd_refs": ["prd/14-error-handling-resilience.md"],
+    "steps": [
+      "Create test/e2e/error-resilience.test.ts",
+      "5.4.1: Input gather error — two inputs (one healthy, one throws every gather), verify pipeline continues, output receives metrics from healthy input, errors logged",
+      "5.4.2: Processor error — input emits alternating good/bad metrics, processor throws on bad, verify only good metrics in output, bad ones logged, pipeline stable",
+      "5.4.3: Output write failure with retry — mock output fails first 3 writes then succeeds, verify metrics eventually delivered, pipeline didn't crash",
+      "5.4.4: Gather timeout — one normal input (50ms) + one slow input (5s gather), timeout=200ms, verify normal input's metrics arrive, slow input timed out, pipeline responsive",
+      "Create test helpers: FailingInput, ThrowingProcessor, FailNTimesOutput, SlowInput"
+    ],
+    "tests": [
+      "Input error: pipeline survives, healthy input unaffected, errors logged",
+      "Processor error: bad metrics dropped, good metrics pass through, pipeline stable",
+      "Output retry: metrics delivered after output recovers",
+      "Gather timeout: slow input timed out, fast input unaffected, pipeline responsive"
+    ],
+    "passes": false
+  }
+]
