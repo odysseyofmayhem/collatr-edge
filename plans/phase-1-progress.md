@@ -59,8 +59,24 @@
 - **Result:** 3 tests pass covering all 3 required test cases
 - **Tests:** 100-metric data integrity, Broadcaster copy isolation (mutate one consumer, other unaffected), hashId consistency across channel transit
 
+### Task 1.4 — Ticker
+- **What:** Implemented `Ticker` class with dual-clock design in `src/core/ticker.ts`
+- **Result:** 6 tests pass covering all 6 required test cases
+- **Implementation details:**
+  - `tick()` async generator yields incrementing sequence numbers
+  - Dual-clock: `Bun.nanoseconds()` (monotonic) for elapsed tracking, `Date.now()` (wall clock) for scheduling
+  - Anchor-based timing: each tick calculated from anchor + seq*interval, eliminates drift accumulation
+  - Aligned mode: `alignToInterval()` calculates next clock boundary
+  - Jitter: `randomJitter()` adds [0, max] ms per tick in the target calculation
+  - Offset: fixed delay added to target
+  - Clock jump detection: if monotonic vs wall clock disagree by >2x interval, re-anchor and reset seq
+  - Cancellable via `break` in `for await...of`
+- **Decisions:**
+  - Jitter is applied in the target calculation per PRD pseudocode. With anchor-based timing, spacing between ticks is `interval + jitter_new - jitter_old`, giving a range of [interval-jitter, interval+jitter]. This is the mathematically correct behavior for anchor-based jitter — it prevents thundering herd while maintaining long-term timing accuracy.
+  - Jitter test uses tolerances accounting for this anchor-based behavior rather than naive [interval, interval+jitter] range.
+
 ## Current Task
-Task 1.4 — Implement Ticker
+Task 1.5 — Implement Accumulator
 
 ## Blockers
 (none)

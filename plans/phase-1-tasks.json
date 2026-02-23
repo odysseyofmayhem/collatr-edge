@@ -139,7 +139,7 @@
       "50 ticks at 50ms interval: total elapsed is 2500ms ±500ms (no drift accumulation)",
       "alignToInterval helper: 10000ms interval, returns next boundary from epoch"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.5",
