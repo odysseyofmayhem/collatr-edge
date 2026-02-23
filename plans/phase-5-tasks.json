@@ -14,7 +14,7 @@
     "tests": [
       "All 426 existing tests still pass"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "5.0",
@@ -38,7 +38,7 @@
       "Processor chain: rename applied before filter, filter drops correct metrics, aggregator summaries have field suffixes",
       "Shutdown ordering: service inputs stop first, final aggregator push happens, all close() called, shutdown < 5s"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "5.1",
