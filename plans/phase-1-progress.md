@@ -90,8 +90,24 @@
   - Ticker: aligned mode e2e, offset, clock jump detection (4 tests covering agreement, tolerance, jump, scaling)
 - **Existing tests updated:** All ticker tests now explicitly pass `aligned: false` since default changed to `true`.
 
+### Task 1.5 — Accumulator
+- **What:** Implemented `Accumulator` interface and `ChannelAccumulator` class in `src/core/accumulator.ts`
+- **Result:** 9 tests pass covering all 9 required test cases
+- **Implementation details:**
+  - `Accumulator` interface matches PRD Appendix B exactly: `addFields`, `addMetric`, `addError`
+  - `ChannelAccumulator` takes `Channel<Metric>` and optional global tags in constructor
+  - `addFields()` merges global tags with per-metric tags (per-metric wins on conflict via spread order)
+  - Auto-timestamp via `createMetric()` factory: `BigInt(Date.now()) * 1_000_000n` when not provided
+  - `addMetric()` sends metric unmodified (same object reference, no copy)
+  - `addError()` logs via `console.error`, increments error count, never throws
+  - `errorCount` getter exposes error count for monitoring
+- **Decisions:**
+  - `addFields`/`addMetric` are `void` per PRD but `Channel.send()` is async. With drop-oldest overflow, send() completes synchronously in practice — fire-and-forget is safe. No need for Promise handling in the sync interface.
+  - `addMetric()` does NOT copy the metric — it sends the exact object reference. The PRD says "forward an existing metric", and copying is the caller's responsibility (processors can copy if needed).
+  - Global tag merge uses `{ ...globalTags, ...localTags }` — spread order ensures per-metric tags win on conflict.
+
 ## Current Task
-Task 1.5 — Implement Accumulator
+Task 1.5i — Integration: Accumulator → Channel → consumer
 
 ## Blockers
 (none)

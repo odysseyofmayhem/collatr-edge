@@ -168,7 +168,7 @@
       "addError() does not throw",
       "Multiple addFields() calls produce multiple metrics in channel"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.5i",
