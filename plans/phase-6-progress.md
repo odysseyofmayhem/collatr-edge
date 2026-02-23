@@ -12,7 +12,7 @@
 | 6.2 | version command | ✅ |
 | 6.3 | config validate command | ✅ |
 | 6.4 | config init command | ✅ |
-| 6.5 | Plugin factory (config → pipeline) | ⬜ |
+| 6.5 | Plugin factory (config → pipeline) | ✅ |
 | 6.6 | run command + signal handling | ⬜ |
 | 6.7 | Systemd unit file + docs | ⬜ |
 
@@ -144,3 +144,42 @@
 - Task 6.5 (plugin factory) is the most complex remaining task — read all plugin constructors before implementing
 - The `generateConfigTemplate()` function is exported for potential reuse in tests
 - All three mode templates (connected, local_network, standalone) pass `configValidateCommand()` — confirmed by integration tests
+
+## Task 6.5: Plugin Factory (Config → Pipeline)
+
+**What was built:**
+- `src/pipeline/plugin-factory.ts` — `buildPipeline(config: AgentConfig, stats?: StatsCollector): PipelineOptions` factory function
+- Plugin constructor registry: `INPUT_FACTORIES`, `PROCESSOR_FACTORIES`, `AGGREGATOR_FACTORIES`, `OUTPUT_FACTORIES` mapping plugin names to factory functions
+- Per-plugin config validation via Zod schemas (parsed inside factory functions)
+- Per-plugin override extraction: `interval`, `timeout`, `metric_batch_size`, `period`, `drop_original`, `enabled`, `order`, `alias`, `log_level`
+- Filter field extraction: `namepass`/`namedrop`/`tagpass`/`tagdrop`/`fieldpass`/`fielddrop` → `MetricFilter` instances
+- Processor ordering by `order` field (stable sort preserving config order for equal values)
+- 28 new tests in `test/unit/pipeline/plugin-factory.test.ts`
+
+**Prerequisite modifications:**
+- `src/pipeline/runtime.ts` — Added `filter?: MetricFilter` to inputs, processors, and outputs entries in `PipelineOptions`
+- `src/plugins/inputs/opcua.ts` — Made OpcuaInput client parameter optional (`client?: OpcuaClient | null`) with null check in `start()`. Factory instantiation no longer requires a real OPC-UA client at construction time.
+- `src/plugins/inputs/mqtt-consumer.ts` — Changed `createDefaultMqttClient()` from throwing at construction to returning a stub that defers errors to method invocation time. Factory instantiation no longer throws.
+
+**Decisions:**
+- Synchronous `buildPipeline()` (not async) — all plugin constructors are synchronous. Async init happens later via `plugin.init()` in PipelineRuntime.
+- `SimpleStatsCollector` created by default if no `StatsCollector` provided (InternalInput needs one)
+- Override/filter fields are stripped from raw config before Zod parsing — prevents unknown field errors
+- `enabled: false` skips plugin entirely (not instantiated, not in PipelineOptions)
+- Empty `global_tags` → `undefined` in PipelineOptions (avoids empty object overhead)
+- Unknown plugin names throw immediately with clear error message (not warnings like config validate — factory must succeed or fail, not partially succeed)
+- MetricFilter created only when filter fields are present and non-noop (isNoop check)
+
+**Files changed:**
+- New: `src/pipeline/plugin-factory.ts`, `test/unit/pipeline/plugin-factory.test.ts`
+- Modified: `src/pipeline/runtime.ts` (MetricFilter import + filter fields in PipelineOptions)
+- Modified: `src/plugins/inputs/opcua.ts` (optional client parameter)
+- Modified: `src/plugins/inputs/mqtt-consumer.ts` (stub client instead of throwing client)
+
+**Test results:** 543 pass, 0 fail (515 existing + 28 new)
+
+**Notes for next task:**
+- Task 6.6 (run command) needs to: load config → configure logger → call `buildPipeline()` → create `PipelineRuntime` → start → handle signals → stop
+- The `buildPipeline()` function does NOT configure the logger — that's the run command's responsibility (reading `agent.log_level`)
+- MetricFilter is now in PipelineOptions but PipelineRuntime doesn't apply it yet — runtime integration is a future task (the filters are wired from config and ready to use)
+- OpcuaInput and MqttConsumerInput can now be factory-instantiated without real protocol clients — they defer connection to `start()`/`init()` time

@@ -508,9 +508,11 @@ export class OpcuaInput implements ServiceInput {
   /** Nodes that failed during monitoring setup (bad NodeID etc). */
   readonly failedNodes: Set<string> = new Set();
 
-  constructor(config: OpcuaConfig, client: OpcuaClient) {
+  constructor(config: OpcuaConfig, client?: OpcuaClient | null) {
     this.config = config;
-    this.client = client;
+    // Use injected client or defer to start(). Lazy loading avoids
+    // importing node-opcua at construction time (factory instantiation).
+    this.client = client ?? (null as unknown as OpcuaClient);
     this.expandedNodes = expandNodes(config);
   }
 
@@ -523,6 +525,16 @@ export class OpcuaInput implements ServiceInput {
   async start(acc: Accumulator): Promise<void> {
     this.acc = acc;
     this.stopped = false;
+
+    // Lazy-load real OPC-UA client if not injected (e.g., from plugin factory)
+    if (!this.client) {
+      // TODO: Phase 7+ — create real OpcuaClient wrapper from node-opcua.
+      // For now, tests inject mock clients. Production will need the real wrapper.
+      throw new Error(
+        "OPC-UA client not provided. Inject a client via constructor or " +
+        "implement the real node-opcua wrapper.",
+      );
+    }
 
     await this.connectAndSubscribe();
   }
@@ -763,7 +775,7 @@ export class OpcuaInput implements ServiceInput {
 // Factory function for plugin registration
 // ---------------------------------------------------------------------------
 
-export function createOpcuaInput(rawConfig: unknown, client: OpcuaClient): OpcuaInput {
+export function createOpcuaInput(rawConfig: unknown, client?: OpcuaClient | null): OpcuaInput {
   const config = OpcuaConfigSchema.parse(rawConfig);
   return new OpcuaInput(config, client);
 }

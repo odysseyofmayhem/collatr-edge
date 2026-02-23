@@ -108,7 +108,7 @@
         "Run bun test — all tests must pass",
         "Commit: phase-6: add plugin factory for config-to-pipeline wiring"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "6.6",

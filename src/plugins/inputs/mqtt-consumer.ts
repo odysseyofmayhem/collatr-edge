@@ -385,11 +385,26 @@ export class MqttConsumerInput implements ServiceInput {
 // ---------------------------------------------------------------------------
 
 function createDefaultMqttClient(): MqttClientInterface {
-  // Lazy import to keep tests fast (they inject mocks)
-  throw new Error(
-    "Default MQTT client not implemented — inject a client via constructor for testing, " +
-    "or implement the real mqtt.js wrapper when wiring to pipeline runtime.",
-  );
+  // Stub client that defers failure to start() time instead of throwing at construction.
+  // Tests inject mock clients. Production will need a real mqtt.js wrapper (Phase 7+).
+  const notImplemented = (): never => {
+    throw new Error(
+      "MQTT client not implemented — inject a client via constructor for testing, " +
+      "or implement the real mqtt.js wrapper for production use.",
+    );
+  };
+  return {
+    connect: notImplemented,
+    subscribe: () => Promise.reject(new Error("MQTT client not implemented")),
+    unsubscribe: () => Promise.reject(new Error("MQTT client not implemented")),
+    onMessage: notImplemented,
+    onConnect: notImplemented,
+    onError: notImplemented,
+    onClose: notImplemented,
+    onReconnect: notImplemented,
+    disconnect: () => Promise.reject(new Error("MQTT client not implemented")),
+    get isConnected() { return false; },
+  };
 }
 
 // ---------------------------------------------------------------------------

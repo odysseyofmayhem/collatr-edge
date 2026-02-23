@@ -8,16 +8,17 @@ import { Ticker } from "../core/ticker";
 import type { Input, Processor, Aggregator, Output, ServiceInput } from "../core/plugin-types";
 import { isServiceInput } from "../core/plugin-types";
 import { getLogger } from "../core/logger";
+import type { MetricFilter } from "../core/metric-filter";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
 // ---------------------------------------------------------------------------
 
 export interface PipelineOptions {
-  inputs: { plugin: Input; interval?: number; timeout?: number }[];
-  processors: { plugin: Processor }[];
+  inputs: { plugin: Input; interval?: number; timeout?: number; filter?: MetricFilter }[];
+  processors: { plugin: Processor; filter?: MetricFilter }[];
   aggregators: { plugin: Aggregator; period?: number; dropOriginal?: boolean }[];
-  outputs: { plugin: Output; metricBatchSize?: number }[];
+  outputs: { plugin: Output; metricBatchSize?: number; filter?: MetricFilter }[];
   gatherIntervalMs: number;
   flushIntervalMs: number;
   gatherTimeoutMs?: number;
