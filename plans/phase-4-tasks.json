@@ -184,7 +184,7 @@
       "namepass on aggregator: only matching metrics accumulated",
       "Config validation: period is valid duration string"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.3i",

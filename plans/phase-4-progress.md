@@ -11,7 +11,7 @@
 | 4.1i | Rename → pipeline integration | ✅ |
 | 4.2 | Filter processor | ✅ |
 | 4.2i | Filter → pipeline integration | ✅ |
-| 4.3 | Basicstats aggregator | ⬜ |
+| 4.3 | Basicstats aggregator | ✅ |
 | 4.3i | Basicstats → pipeline integration (E2E) | ⬜ |
 
 ## Task 4.0: Metric Filtering Framework
@@ -138,6 +138,45 @@
 - fieldpass: 4-field metric trimmed to 2 fields in output
 
 **Test results:** 402 pass, 0 fail (399 + 3 new)
+
+## Task 4.3: Basicstats Aggregator
+
+**Files created:**
+- `src/plugins/aggregators/basicstats.ts` — BasicstatsAggregator class + BasicstatsConfigSchema
+- `test/unit/plugins/aggregators/basicstats.test.ts` — 17 tests (all pass)
+
+**What was built:**
+- `BasicstatsConfigSchema` — Zod v4 schema with period, drop_original, stats selection, per-plugin filtering
+- `FieldStats` class — Welford's online algorithm for numerically stable mean/variance/stdev
+- `BasicstatsAggregator` class implementing `Aggregator` interface:
+  - `add(metric)` — accumulates numeric fields (number, bigint), groups by hashId, skips string/boolean
+  - `push(acc)` — emits summary metrics via `acc.addFields()` with `{field}_{stat}` naming
+  - `reset()` — clears all series state
+  - Per-plugin filtering via namepass/namedrop/tagpass/tagdrop
+  - Configurable stats: subset of [count, min, max, sum, mean, variance, stdev]
+  - Population variance (not sample variance)
+
+**Decisions:**
+- Population variance (divide by N) rather than sample variance (divide by N-1). Telegraf uses population variance. For monitoring use cases, the window IS the population.
+- BigInt fields converted to Number with a console.warn if > MAX_SAFE_INTEGER
+- Summary metric reuses the original metric name (not suffixed) — fields are suffixed instead (`value_mean`, `value_count`, etc.)
+- Tags captured as plain object at first `add()` for each series, preserved on push
+
+**Test coverage (17 tests):**
+- Core stats: 2 tests (10 values, single value)
+- Welford's variance/stdev: 1 test (known population: mean=5, var=4, stdev=2)
+- Multiple series: 1 test (separate stats per host tag)
+- Mixed types: 1 test (number aggregated, string/boolean ignored)
+- BigInt: 1 test (converted to Number)
+- Empty window: 1 test (push emits nothing)
+- reset(): 2 tests (clears state, reset then push with no data)
+- Stats selection: 1 test (only count+mean emitted)
+- Field naming: 1 test (all 7 stat suffixes on 2 fields)
+- Tag preservation: 1 test
+- namepass filtering: 1 test
+- Config validation: 4 tests (defaults, custom stats, invalid stat, period string)
+
+**Test results:** 419 pass, 0 fail (402 + 17 new)
 
 ## Notes
 
