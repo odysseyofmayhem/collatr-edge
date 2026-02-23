@@ -24,7 +24,7 @@
       "Metric with tags and multiple fields serialised correctly in JSON",
       "Metric with special characters in names/tags handled correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "3.1",

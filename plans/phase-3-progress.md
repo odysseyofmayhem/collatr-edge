@@ -1,17 +1,38 @@
 # Phase 3: Outputs — Progress
 
-## Status: NOT STARTED
+## Status: IN PROGRESS
 
 ## Tasks
 | Task | Description | Status |
 |------|-------------|--------|
-| 3.0 | Stdout output | ⬜ |
+| 3.0 | Stdout output | ✅ |
 | 3.1 | File output (JSON-lines, CSV) | ⬜ |
 | 3.1i | File output → pipeline integration | ⬜ |
 | 3.2 | Local data store (SQLite, rotation, retention) | ⬜ |
 | 3.2i | Local store → pipeline integration | ⬜ |
 | 3.3 | Store-and-forward buffer | ⬜ |
 | 3.3i | S&F buffer + output integration | ⬜ |
+
+## Task 3.0: Stdout Output — COMPLETE
+
+**Files created:**
+- `src/plugins/outputs/stdout.ts` — StdoutOutput class, config schema, toJSON/toLineProtocol helpers
+- `test/unit/plugins/outputs/stdout.test.ts` — 18 tests
+
+**What was built:**
+- `StdoutOutput` implementing the `Output` interface (connect/write/close)
+- Zod config schema: `format: 'json' | 'line_protocol'` (default: json)
+- JSON format: serialises metric as `{name, tags, fields, timestamp}` JSON object. Timestamp as string (bigint not JSON-safe).
+- Line protocol format: Telegraf-compatible `measurement,tag=val field=val timestamp` with proper escaping (spaces, commas, equals, quotes in strings)
+- Exported `toJSON()` and `toLineProtocol()` helpers for reuse by file output (task 3.1)
+
+**Decisions:**
+- `bigint` fields get `i` suffix in line protocol (Telegraf convention)
+- Integer numbers (`Number.isInteger()`) get `i` suffix; floats are bare. Note: JS treats `1.0` as integer — this matches Telegraf behaviour where explicit integer typing uses the `i` suffix.
+- JSON format serialises bigint timestamp as string since JSON.stringify can't handle bigint natively.
+- Exported serialisation helpers (`toJSON`, `toLineProtocol`) so the file output can reuse them without duplicating logic.
+
+**Test count:** 269 pass (18 new), 0 fail
 
 ## Notes
 
