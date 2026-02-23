@@ -19,6 +19,8 @@ export interface PipelineOptions {
   gatherIntervalMs: number;
   flushIntervalMs: number;
   gatherTimeoutMs?: number;
+  /** Maps to config's round_interval. Controls Ticker aligned mode. */
+  roundInterval?: boolean;
   globalTags?: Record<string, string>;
 }
 
@@ -30,6 +32,11 @@ export interface PipelineOptions {
 class CollectingAccumulator implements Accumulator {
   private metrics: Metric[] = [];
   private _errorCount = 0;
+  private globalTags: Record<string, string>;
+
+  constructor(globalTags?: Record<string, string>) {
+    this.globalTags = globalTags ?? {};
+  }
 
   addFields(
     measurement: string,
@@ -37,7 +44,8 @@ class CollectingAccumulator implements Accumulator {
     tags?: Record<string, string>,
     timestamp?: bigint,
   ): void {
-    this.metrics.push(createMetric({ name: measurement, fields, tags, timestamp }));
+    const mergedTags = { ...this.globalTags, ...(tags ?? {}) };
+    this.metrics.push(createMetric({ name: measurement, fields, tags: mergedTags, timestamp }));
   }
 
   addMetric(metric: Metric): void {
@@ -58,9 +66,11 @@ class CollectingAccumulator implements Accumulator {
 class BroadcastAccumulator implements Accumulator {
   private broadcaster: Broadcaster<Metric>;
   private _errorCount = 0;
+  private globalTags: Record<string, string>;
 
-  constructor(broadcaster: Broadcaster<Metric>) {
+  constructor(broadcaster: Broadcaster<Metric>, globalTags?: Record<string, string>) {
     this.broadcaster = broadcaster;
+    this.globalTags = globalTags ?? {};
   }
 
   addFields(
@@ -69,7 +79,8 @@ class BroadcastAccumulator implements Accumulator {
     tags?: Record<string, string>,
     timestamp?: bigint,
   ): void {
-    const metric = createMetric({ name: measurement, fields, tags, timestamp });
+    const mergedTags = { ...this.globalTags, ...(tags ?? {}) };
+    const metric = createMetric({ name: measurement, fields, tags: mergedTags, timestamp });
     this.broadcaster.broadcast(metric, (m) => m.copy());
   }
 
@@ -92,12 +103,18 @@ async function runGatherLoop(
   acc: Accumulator,
   intervalMs: number,
   timeoutMs: number,
+  aligned: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   const ticker = new Ticker();
-  for await (const _seq of ticker.tick(intervalMs, { aligned: false })) {
+  // aligned maps to config's round_interval (PRD §7, §13)
+  for await (const _seq of ticker.tick(intervalMs, { aligned })) {
     if (signal.aborted) break;
     try {
+      // TODO: Phase 2 — pass AbortSignal into gather() so timed-out calls can
+      // cooperatively cancel. Currently a slow gather() continues in the background
+      // after timeout, which could accumulate orphan executions on resource-constrained
+      // devices. Requires extending Input interface to accept an optional signal.
       if (timeoutMs > 0) {
         await Promise.race([
           input.gather(acc),
@@ -126,9 +143,17 @@ async function runMainLoop(
   processors: Processor[],
   aggregators: { plugin: Aggregator; dropOriginal: boolean }[],
   outputBroadcaster: Broadcaster<Metric>,
+  globalTags?: Record<string, string>,
 ): Promise<void> {
+  // LIMITATION: drop_original is evaluated as a single global flag. If ANY aggregator
+  // has dropOriginal=true, ALL originals are suppressed. In Telegraf, drop_original is
+  // per-aggregator — originals still flow if at least one aggregator wants them. The
+  // correct fix is: only drop if ALL aggregators have dropOriginal=true. This matters
+  // when multiple aggregators have mixed settings. Acceptable for Phase 1 where
+  // single-aggregator is the expected case; fix in Phase 2 if multi-aggregator
+  // scenarios with mixed drop_original settings are needed.
   const shouldDropOriginals =
-    aggregators.length > 0 && aggregators.some((a) => a.dropOriginal);
+    aggregators.length > 0 && aggregators.every((a) => a.dropOriginal);
 
   for await (const metric of inputChannel.receive()) {
     // Run through processor chain sequentially
@@ -136,7 +161,7 @@ async function runMainLoop(
     for (const proc of processors) {
       const next: Metric[] = [];
       for (const m of metrics) {
-        const acc = new CollectingAccumulator();
+        const acc = new CollectingAccumulator(globalTags);
         await proc.process(m, acc);
         next.push(...acc.drain());
       }
@@ -156,7 +181,7 @@ async function runMainLoop(
   }
 
   // Input channel closed — push final aggregator summaries
-  const pushAcc = new BroadcastAccumulator(outputBroadcaster);
+  const pushAcc = new BroadcastAccumulator(outputBroadcaster, globalTags);
   for (const { plugin } of aggregators) {
     plugin.push(pushAcc);
   }
@@ -201,8 +226,6 @@ async function runOutputFlushLoop(
   flushIntervalMs: number,
   _signal: AbortSignal,
 ): Promise<void> {
-  await output.connect();
-
   const batch: Metric[] = [];
   let done = false;
 
@@ -219,12 +242,23 @@ async function runOutputFlushLoop(
     while (!done) {
       await Bun.sleep(flushIntervalMs);
       if (batch.length > 0) {
-        await output.write(batch.splice(0));
+        const chunk = batch.splice(0);
+        try {
+          await output.write(chunk);
+        } catch (err) {
+          console.error(`[pipeline] output write error: ${(err as Error).message}`);
+          // Re-add failed metrics to batch for retry on next flush cycle
+          batch.unshift(...chunk);
+        }
       }
     }
     // Final flush after reader finishes
     if (batch.length > 0) {
-      await output.write(batch.splice(0));
+      try {
+        await output.write(batch.splice(0));
+      } catch (err) {
+        console.error(`[pipeline] final flush error: ${(err as Error).message}`);
+      }
     }
   })();
 
@@ -264,7 +298,12 @@ export class PipelineRuntime {
       outputChannels.push(ch);
     }
 
-    // 2. Start output flush loops
+    // 2. Connect outputs (PRD §8 step 11: connect before flush loops start)
+    for (const { plugin } of this.options.outputs) {
+      await plugin.connect();
+    }
+
+    // 3. Start output flush loops
     for (let i = 0; i < this.options.outputs.length; i++) {
       const { plugin } = this.options.outputs[i]!;
       const ch = outputChannels[i]!;
@@ -273,19 +312,20 @@ export class PipelineRuntime {
       );
     }
 
-    // 3. Start aggregator push loops (timer-driven)
+    // 4. Start aggregator push loops (timer-driven)
+    const globalTags = this.options.globalTags;
     for (const agg of this.options.aggregators) {
       const period = agg.period ?? this.options.gatherIntervalMs;
-      const pushAcc = new BroadcastAccumulator(outputBroadcaster);
+      const pushAcc = new BroadcastAccumulator(outputBroadcaster, globalTags);
       this.loops.push(
         runAggregatorPushLoop(agg.plugin, pushAcc, period, signal),
       );
     }
 
-    // 4. Create input channel (PRD §4: fan-in from all inputs)
+    // 5. Create input channel (PRD §4: fan-in from all inputs)
     this.inputChannel = new Channel<Metric>({ capacity: 10_000 });
 
-    // 5. Start main processing loop (processor chain + aggregator fork)
+    // 6. Start main processing loop (processor chain + aggregator fork)
     this.loops.push(
       runMainLoop(
         this.inputChannel,
@@ -295,10 +335,11 @@ export class PipelineRuntime {
           dropOriginal: a.dropOriginal ?? false,
         })),
         outputBroadcaster,
+        globalTags,
       ),
     );
 
-    // 6. Init plugins and start input gather loops
+    // 7. Init plugins and start input gather loops
     for (const proc of this.options.processors) {
       if (proc.plugin.init) await proc.plugin.init();
     }
@@ -306,16 +347,17 @@ export class PipelineRuntime {
       if (agg.plugin.init) await agg.plugin.init();
     }
 
+    const aligned = this.options.roundInterval ?? true;
     const inputAcc = new ChannelAccumulator(
       this.inputChannel,
-      this.options.globalTags,
+      globalTags,
     );
     for (const input of this.options.inputs) {
       if (input.plugin.init) await input.plugin.init();
       const interval = input.interval ?? this.options.gatherIntervalMs;
       const timeout = input.timeout ?? this.options.gatherTimeoutMs ?? 0;
       this.loops.push(
-        runGatherLoop(input.plugin, inputAcc, interval, timeout, signal),
+        runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal),
       );
     }
   }

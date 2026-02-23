@@ -354,4 +354,184 @@ describe("PipelineRuntime", () => {
       expect(output1.written[0]).not.toBe(output2.written[0]);
     }
   });
+
+  it("processor that emits nothing: metric is dropped from output", async () => {
+    const input = new MockInput([{ name: "noisy", fields: { value: 1 } }]);
+
+    // Filter processor: drops everything (emits nothing via accumulator)
+    const filterProc = new MockProcessor((_metric, _acc) => {
+      // Intentionally emit nothing — metric is dropped
+    });
+
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [{ plugin: filterProc }],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Input gathered metrics, but processor dropped them all
+    expect(input.gatherCount).toBeGreaterThanOrEqual(1);
+    expect(output.written.length).toBe(0);
+  });
+
+  it("processor that splits: one metric in → multiple metrics out", async () => {
+    const input = new MockInput([{ name: "combined", fields: { a: 1, b: 2 } }]);
+
+    // Split processor: emits two metrics from one input
+    const splitProc = new MockProcessor((metric, acc) => {
+      const valA = metric.getField("a") as number;
+      const valB = metric.getField("b") as number;
+      acc.addFields("split_a", { value: valA });
+      acc.addFields("split_b", { value: valB });
+    });
+
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [{ plugin: splitProc }],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Each gather produces 2 output metrics
+    const splitAs = output.written.filter((m) => m.name === "split_a");
+    const splitBs = output.written.filter((m) => m.name === "split_b");
+    expect(splitAs.length).toBeGreaterThanOrEqual(1);
+    expect(splitBs.length).toBeGreaterThanOrEqual(1);
+    expect(splitAs.length).toBe(splitBs.length);
+    expect(splitAs[0]!.getField("value")).toBe(1);
+    expect(splitBs[0]!.getField("value")).toBe(2);
+  });
+
+  it("aggregator periodic push fires during operation", async () => {
+    const input = new MockInput([{ name: "data", fields: { v: 1 } }]);
+    const aggregator = new MockAggregator();
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [{ plugin: aggregator, dropOriginal: true, period: 100 }],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 500);
+
+    // Periodic push should have fired at least once during operation (500ms / 100ms period)
+    // Plus the final push on shutdown = at least 2 pushes total
+    expect(aggregator.pushCount).toBeGreaterThanOrEqual(2);
+    expect(aggregator.resetCount).toBeGreaterThanOrEqual(1);
+
+    // Output should have summary metrics from periodic pushes
+    const summaries = output.written.filter((m) => m.name === "summary");
+    expect(summaries.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("output.connect() failure during startup prevents pipeline from starting", async () => {
+    const input = new MockInput();
+    const failOutput: Output = {
+      async connect() { throw new Error("connection refused"); },
+      async write() {},
+      async close() {},
+    };
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: failOutput }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    // start() should throw because connect() fails (fail-fast per PRD §8)
+    try {
+      await pipeline.start();
+      expect(true).toBe(false); // should not reach here
+    } catch (err: unknown) {
+      expect((err as Error).message).toBe("connection refused");
+    }
+  });
+
+  it("output.write() error: logged and metrics retried on next flush", async () => {
+    const input = new MockInput([{ name: "data", fields: { v: 1 } }]);
+    let writeCallCount = 0;
+
+    const flakyOutput: Output = {
+      async connect() {},
+      async write(batch: Metric[]) {
+        writeCallCount++;
+        if (writeCallCount === 1) {
+          throw new Error("network timeout");
+        }
+        // Subsequent writes succeed — accept the retried metrics
+      },
+      async close() {},
+    };
+
+    // Suppress console.error
+    const originalError = console.error;
+    const errorCalls: string[] = [];
+    console.error = mock((...args: unknown[]) => {
+      errorCalls.push(String(args[0]));
+    });
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: flakyOutput }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 400);
+
+    console.error = originalError;
+
+    // Error was logged
+    const writeErrors = errorCalls.filter((msg) => msg.includes("output write error"));
+    expect(writeErrors.length).toBeGreaterThanOrEqual(1);
+
+    // Pipeline didn't crash — multiple write attempts happened
+    expect(writeCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("aggregator summary metrics include global tags", async () => {
+    const input = new MockInput([{ name: "temp", fields: { c: 25 } }]);
+    const aggregator = new MockAggregator();
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [{ plugin: aggregator, dropOriginal: true, period: 10_000 }],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      globalTags: { site: "factory_a", line: "3" },
+    });
+
+    await runFor(pipeline, 300);
+
+    // Summary from final aggregator push should have global tags (R7 fix)
+    const summaries = output.written.filter((m) => m.name === "summary");
+    expect(summaries.length).toBeGreaterThanOrEqual(1);
+    expect(summaries[0]!.getTag("site")).toBe("factory_a");
+    expect(summaries[0]!.getTag("line")).toBe("3");
+  });
 });

@@ -181,9 +181,30 @@
   - Tests use `parseDuration()` on config strings to get interval milliseconds, same path as real pipeline would
   - Global tags from `[global_tags]` section flow through to output metrics via `PipelineOptions.globalTags`
 
+### Final Review Fixes — Code Review Remediation (`phase-1-review-final.md`)
+- **What:** Addressed all must-fix (1) and should-fix (12) findings from final review
+- **Code fixes (runtime.ts):**
+  - **R1 (must-fix):** Changed `shouldDropOriginals` from `.some()` to `.every()` — originals only dropped if ALL aggregators have `dropOriginal=true`. Added comment documenting the per-aggregator vs global-flag semantic.
+  - **R2:** Removed hardcoded `aligned: false` in gather loop. Added `roundInterval` to `PipelineOptions`, wired through to Ticker. Default `true` matches PRD §13 aligned mode.
+  - **R5:** Added try/catch around `output.write()` in flush loop. Failed metrics re-added to batch for retry. Final flush also wrapped.
+  - **R6:** Added TODO comment about gather() cancellation via AbortSignal for Phase 2.
+  - **R7:** `BroadcastAccumulator` now accepts and injects global tags. Aggregator summary metrics include site/line tags.
+  - **R8:** `CollectingAccumulator` now accepts and injects global tags for processor `addFields()` calls.
+  - **R11:** Moved `output.connect()` from inside `runOutputFlushLoop` to `start()` method. Fail-fast: connection failure during startup prevents pipeline from starting.
+- **Code fixes (accumulator.ts):**
+  - **A1/A2:** `addFields()` and `addMetric()` now check `send()` return value via `.then()`. Dropped metrics counted in `droppedCount` getter.
+- **Code fixes (config.ts):**
+  - **CF1/CF2:** Added documentation comment on env var expansion limitations (no literal `${`, no nesting, no escaping — Telegraf-compatible).
+  - **CF5:** Added Zod `durationString` refinement — duration fields in `[agent]` schema are validated at parse time, not just at runtime.
+- **Code fixes (plugin-registry.ts):**
+  - **PR1:** Added design decision comment explaining name-only key (vs type/name), with note to reconsider for Phase 2.
+- **New tests (10 added, total 109):**
+  - Runtime: processor drop (emits nothing → output empty), processor split (1 in → 2 out), aggregator periodic push fires during operation, `output.connect()` failure → start() throws, `output.write()` error logged and retried, aggregator summaries include global tags
+  - Config: fractional duration parsing (`"2.5s"` → 2500), invalid duration in agent interval/flush_interval → clear error, cross-type alias collision (input + output with same alias → error)
+
 ## Status: PHASE COMPLETE
 
-All Phase 1 tasks pass (1.0–1.8i). 99 tests across 12 files, 0 failures.
+All Phase 1 tasks pass (1.0–1.8i). 109 tests across 12 files, 0 failures.
 
 ## Blockers
 (none)

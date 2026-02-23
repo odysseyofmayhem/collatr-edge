@@ -8,6 +8,10 @@ import { z } from "zod/v4";
 // Environment variable expansion (processed on raw text BEFORE TOML parsing)
 // ---------------------------------------------------------------------------
 
+// NOTE: Expansion runs on raw text BEFORE TOML parsing (Telegraf-compatible).
+// Limitations: (1) Literal "${" in config values will be treated as env var refs.
+// Use env vars to inject values containing "${" if needed. (2) No nested refs
+// (e.g., ${VAR_${INNER}}) and no escaping (e.g., \${LITERAL}). Both match Telegraf.
 export function expandEnvVars(text: string): string {
   return text.replace(/\$\{([^}]+)\}/g, (_match, expr: string) => {
     // ${VAR:?error message} — error if unset or empty
@@ -99,15 +103,21 @@ export function findSecretRefs(obj: unknown, path = ""): string[] {
 // Zod schema for [agent] section (PRD §7)
 // ---------------------------------------------------------------------------
 
+/** Zod refinement: validates that a string is a valid duration (parseable by parseDuration). */
+const durationString = z.string().check(
+  z.refine((s) => { try { parseDuration(s); return true; } catch { return false; } },
+  "Invalid duration string. Expected format: <number><unit> (e.g., \"10s\", \"5m\", \"100ms\", \"1h\")"),
+);
+
 const AgentSchema = z.object({
   hostname: z.string().optional(),
-  interval: z.string().default("10s"),
+  interval: durationString.default("10s"),
   round_interval: z.boolean().default(true),
-  collection_jitter: z.string().default("0s"),
-  collection_offset: z.string().default("0s"),
-  flush_interval: z.string().default("10s"),
-  flush_jitter: z.string().default("0s"),
-  precision: z.string().default("1ms"),
+  collection_jitter: durationString.default("0s"),
+  collection_offset: durationString.default("0s"),
+  flush_interval: durationString.default("10s"),
+  flush_jitter: durationString.default("0s"),
+  precision: durationString.default("1ms"),
   log_level: z.enum(["debug", "info", "warn", "error"]).default("info"),
   buffer: z.object({
     sync_mode: z.enum(["normal", "full"]).default("normal"),

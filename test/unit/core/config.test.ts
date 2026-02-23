@@ -275,4 +275,49 @@ describe("Config parser", () => {
       expect(Object.keys(config.inputs).length).toBe(1);
     });
   });
+
+  describe("duration — fractional values", () => {
+    it("fractional duration strings: '2.5s' → 2500, '0.5h' → 1800000", () => {
+      expect(parseDuration("2.5s")).toBe(2_500);
+      expect(parseDuration("0.5h")).toBe(1_800_000);
+      expect(parseDuration("1.5m")).toBe(90_000);
+      expect(parseDuration("0.1ms")).toBe(0.1);
+    });
+  });
+
+  describe("duration validation in agent schema", () => {
+    it("invalid duration in agent interval → clear validation error", () => {
+      const toml = `
+[agent]
+  interval = "banana"
+`;
+      expect(() => parseConfig(toml)).toThrow(/Invalid \[agent\] config/);
+    });
+
+    it("invalid duration in flush_interval → clear validation error", () => {
+      const toml = `
+[agent]
+  flush_interval = "10x"
+`;
+      expect(() => parseConfig(toml)).toThrow(/Invalid \[agent\] config/);
+    });
+  });
+
+  describe("alias uniqueness — cross-type", () => {
+    it("same alias across input and output → error", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[[inputs.modbus]]
+  alias = "shared_name"
+  controller = "tcp://192.168.1.100:502"
+
+[[outputs.http]]
+  alias = "shared_name"
+  url = "http://localhost:8086"
+`;
+      expect(() => parseConfig(toml)).toThrow(/Duplicate plugin alias "shared_name"/);
+    });
+  });
 });

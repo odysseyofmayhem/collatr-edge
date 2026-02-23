@@ -14,6 +14,12 @@ export interface PluginRegistration<T = unknown> {
   factory: () => T;
 }
 
+// Design decision: Registry uses plugin name (not type/name) as key. This means
+// an input named "filter" and a processor named "filter" would collide. The PRD §6
+// BUILTIN_PLUGINS table uses type/name keys (e.g., "input/modbus"), but that's
+// the lazy-loading map, not the registry. For Phase 1 where plugins are directly
+// instantiated from config, name-only keys enforce global uniqueness — simpler and
+// sufficient. If Phase 2+ needs type-scoped naming, switch key to `${type}/${name}`.
 export class PluginRegistry {
   private plugins = new Map<string, PluginRegistration>();
 
