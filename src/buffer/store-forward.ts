@@ -12,7 +12,7 @@ import { createMetric } from "@core/metric";
 // ---------------------------------------------------------------------------
 
 export const StoreForwardConfigSchema = z.object({
-  metric_buffer_limit: z.number().int().min(1).default(10000),
+  metric_buffer_limit: z.number().int().min(100).default(10000),
   metric_batch_size: z.number().int().min(1).default(1000),
   overflow_policy: z.enum(["drop_oldest", "disk_spill"]).default("drop_oldest"),
 });
@@ -93,8 +93,8 @@ export class BufferTransaction {
     this.onRemove = onRemove;
   }
 
-  /** The metrics in this transaction batch. */
-  get batch(): Metric[] {
+  /** The metrics in this transaction (PRD §12: BufferTransaction.metrics()). */
+  metrics(): Metric[] {
     return this._batch;
   }
 
@@ -127,10 +127,14 @@ export class BufferTransaction {
   }
 
   private deleteByIds(ids: number[]): void {
-    const placeholders = ids.map(() => "?").join(",");
-    this.db.prepare(
-      `DELETE FROM ${this.tableName} WHERE id IN (${placeholders})`,
-    ).run(...ids);
+    const CHUNK_SIZE = 900; // safely under SQLite's 999-parameter limit
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => "?").join(",");
+      this.db.prepare(
+        `DELETE FROM ${this.tableName} WHERE id IN (${placeholders})`,
+      ).run(...chunk);
+    }
   }
 }
 

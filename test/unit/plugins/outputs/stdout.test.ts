@@ -68,7 +68,7 @@ describe("Stdout Output Plugin", () => {
   // =========================================================================
 
   it("write() outputs JSON representation of each metric", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "json" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -89,7 +89,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("Metric with tags and multiple fields serialised correctly in JSON", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "json" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -113,7 +113,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("Batch of 10 metrics → 10 output lines (JSON)", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "json" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
     await output.connect();
 
     const batch: Metric[] = [];
@@ -137,7 +137,7 @@ describe("Stdout Output Plugin", () => {
   // =========================================================================
 
   it("write() with line_protocol format outputs Telegraf-compatible strings", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -155,7 +155,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("line protocol: multiple tags and fields formatted correctly", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -177,7 +177,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("Batch of 10 metrics → 10 output lines (line_protocol)", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const batch: Metric[] = [];
@@ -198,7 +198,7 @@ describe("Stdout Output Plugin", () => {
   // =========================================================================
 
   it("line protocol: all field types formatted correctly", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -226,7 +226,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("JSON: all field types serialised correctly", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "json" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -254,7 +254,7 @@ describe("Stdout Output Plugin", () => {
   // =========================================================================
 
   it("Metric with special characters in names/tags handled correctly", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -277,7 +277,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("JSON format: special characters in names serialised as-is", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "json" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "json" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -295,7 +295,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("line protocol: string field values with quotes escaped", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -322,7 +322,7 @@ describe("Stdout Output Plugin", () => {
   });
 
   it("metric with no tags → no tag section in line protocol", async () => {
-    const output = new StdoutOutput(makeConfig({ format: "line_protocol" }));
+    const output = new StdoutOutput(makeConfig({ data_format: "line_protocol" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -343,11 +343,11 @@ describe("Stdout Output Plugin", () => {
 
   it("config defaults to json format", () => {
     const config = StdoutConfigSchema.parse({});
-    expect(config.format).toBe("json");
+    expect(config.data_format).toBe("json");
   });
 
   it("config rejects invalid format", () => {
-    expect(() => StdoutConfigSchema.parse({ format: "xml" })).toThrow();
+    expect(() => StdoutConfigSchema.parse({ data_format: "xml" })).toThrow();
   });
 
   // =========================================================================

@@ -10,7 +10,7 @@ import type { Metric, FieldValue } from "@core/metric";
 // ---------------------------------------------------------------------------
 
 export const StdoutConfigSchema = z.object({
-  format: z.enum(["json", "line_protocol"]).default("json")
+  data_format: z.enum(["json", "line_protocol"]).default("json")
     .describe("Output format: 'json' for JSON objects, 'line_protocol' for Telegraf-compatible line protocol"),
 });
 
@@ -108,7 +108,7 @@ export class StdoutOutput implements Output {
   }
 
   async write(batch: Metric[]): Promise<void> {
-    const formatter = this.config.format === "line_protocol" ? toLineProtocol : toJSON;
+    const formatter = this.config.data_format === "line_protocol" ? toLineProtocol : toJSON;
     for (const metric of batch) {
       console.log(formatter(metric));
     }

@@ -80,9 +80,9 @@ describe("Store-and-Forward Buffer", () => {
 
     // Verify via beginTransaction
     const tx = buf.beginTransaction(10);
-    expect(tx.batch.length).toBe(2);
-    expect(tx.batch[0]!.name).toBe("temp");
-    expect(tx.batch[1]!.name).toBe("pressure");
+    expect(tx.metrics().length).toBe(2);
+    expect(tx.metrics()[0]!.name).toBe("temp");
+    expect(tx.metrics()[1]!.name).toBe("pressure");
 
     buf.close();
   });
@@ -101,10 +101,10 @@ describe("Store-and-Forward Buffer", () => {
 
     // Request 3 — should get the oldest 3
     const tx = buf.beginTransaction(3);
-    expect(tx.batch.length).toBe(3);
-    expect(tx.batch[0]!.name).toBe("metric_0");
-    expect(tx.batch[1]!.name).toBe("metric_1");
-    expect(tx.batch[2]!.name).toBe("metric_2");
+    expect(tx.metrics().length).toBe(3);
+    expect(tx.metrics()[0]!.name).toBe("metric_0");
+    expect(tx.metrics()[1]!.name).toBe("metric_1");
+    expect(tx.metrics()[2]!.name).toBe("metric_2");
 
     buf.close();
   });
@@ -130,7 +130,7 @@ describe("Store-and-Forward Buffer", () => {
 
     // Buffer should be empty
     const tx2 = buf.beginTransaction(10);
-    expect(tx2.batch.length).toBe(0);
+    expect(tx2.metrics().length).toBe(0);
 
     buf.close();
   });
@@ -151,9 +151,9 @@ describe("Store-and-Forward Buffer", () => {
 
     // Metrics still available
     const tx2 = buf.beginTransaction(10);
-    expect(tx2.batch.length).toBe(2);
-    expect(tx2.batch[0]!.name).toBe("m1");
-    expect(tx2.batch[1]!.name).toBe("m2");
+    expect(tx2.metrics().length).toBe(2);
+    expect(tx2.metrics()[0]!.name).toBe("m1");
+    expect(tx2.metrics()[1]!.name).toBe("m2");
 
     buf.close();
   });
@@ -177,9 +177,9 @@ describe("Store-and-Forward Buffer", () => {
 
     // Remaining should be m1 and m3
     const tx2 = buf.beginTransaction(10);
-    expect(tx2.batch.length).toBe(2);
-    expect(tx2.batch[0]!.name).toBe("m1");
-    expect(tx2.batch[1]!.name).toBe("m3");
+    expect(tx2.metrics().length).toBe(2);
+    expect(tx2.metrics()[0]!.name).toBe("m1");
+    expect(tx2.metrics()[1]!.name).toBe("m3");
 
     buf.close();
   });
@@ -201,9 +201,32 @@ describe("Store-and-Forward Buffer", () => {
 
     // m0 and m2 remain for retry
     const tx2 = buf.beginTransaction(10);
-    expect(tx2.batch.length).toBe(2);
-    expect(tx2.batch[0]!.name).toBe("m0");
-    expect(tx2.batch[1]!.name).toBe("m2");
+    expect(tx2.metrics().length).toBe(2);
+    expect(tx2.metrics()[0]!.name).toBe("m0");
+    expect(tx2.metrics()[1]!.name).toBe("m2");
+
+    buf.close();
+  });
+
+  it("acceptAll() handles batch > 999 (SQLite parameter limit)", () => {
+    const buf = openBuffer("test", makeConfig({
+      metric_buffer_limit: 20000,
+      metric_batch_size: 1500,
+    }));
+
+    // Add 1500 metrics — exceeds SQLite's default 999-parameter limit
+    const metrics = Array.from({ length: 1500 }, (_, i) =>
+      makeMetric({ name: `m${i}`, fields: { value: i } }),
+    );
+    buf.add(metrics);
+    expect(buf.length).toBe(1500);
+
+    const tx = buf.beginTransaction(1500);
+    expect(tx.metrics().length).toBe(1500);
+
+    // This would crash without chunked deletes
+    tx.acceptAll();
+    expect(buf.length).toBe(0);
 
     buf.close();
   });
@@ -214,15 +237,15 @@ describe("Store-and-Forward Buffer", () => {
 
   it("Buffer limit (drop_oldest): oldest dropped when limit exceeded", () => {
     const buf = openBuffer("test", makeConfig({
-      metric_buffer_limit: 5,
+      metric_buffer_limit: 100,
       overflow_policy: "drop_oldest",
     }));
 
-    // Add 5 metrics (at limit)
-    for (let i = 0; i < 5; i++) {
+    // Add 100 metrics (at limit)
+    for (let i = 0; i < 100; i++) {
       buf.add([makeMetric({ name: `m${i}` })]);
     }
-    expect(buf.length).toBe(5);
+    expect(buf.length).toBe(100);
 
     // Add 3 more — oldest 3 should be dropped
     buf.add([
@@ -230,44 +253,45 @@ describe("Store-and-Forward Buffer", () => {
       makeMetric({ name: "new_1" }),
       makeMetric({ name: "new_2" }),
     ]);
-    expect(buf.length).toBe(5);
+    expect(buf.length).toBe(100);
 
-    // Remaining should be m2, m3, m4, new_0, new_1, new_2
-    // Wait — adding 3 to a buffer of 5 gives 8, excess = 3, so oldest 3 (m0, m1, m2) deleted
-    const tx = buf.beginTransaction(10);
-    expect(tx.batch.length).toBe(5);
-    expect(tx.batch[0]!.name).toBe("m3");
-    expect(tx.batch[1]!.name).toBe("m4");
-    expect(tx.batch[2]!.name).toBe("new_0");
+    // Adding 3 to buffer of 100 gives 103, excess = 3, oldest 3 (m0, m1, m2) deleted
+    const tx = buf.beginTransaction(200);
+    expect(tx.metrics().length).toBe(100);
+    expect(tx.metrics()[0]!.name).toBe("m3");
+    expect(tx.metrics()[1]!.name).toBe("m4");
+    expect(tx.metrics()[2]!.name).toBe("m5");
 
     buf.close();
   });
 
   it("disk_spill: metrics persist to SQLite, oldest dropped only at limit", () => {
     const buf = openBuffer("test", makeConfig({
-      metric_buffer_limit: 5,
+      metric_buffer_limit: 100,
       overflow_policy: "disk_spill",
     }));
 
-    // Add 4 metrics (under limit) — all should be kept
-    for (let i = 0; i < 4; i++) {
+    // Add 98 metrics (under limit) — all should be kept
+    for (let i = 0; i < 98; i++) {
       buf.add([makeMetric({ name: `m${i}` })]);
     }
-    expect(buf.length).toBe(4);
+    expect(buf.length).toBe(98);
 
-    // Add 3 more — total 7, exceeds limit of 5, oldest 2 dropped
+    // Add 5 more — total 103, exceeds limit of 100, oldest 3 dropped
     buf.add([
       makeMetric({ name: "new_0" }),
       makeMetric({ name: "new_1" }),
       makeMetric({ name: "new_2" }),
+      makeMetric({ name: "new_3" }),
+      makeMetric({ name: "new_4" }),
     ]);
-    expect(buf.length).toBe(5);
+    expect(buf.length).toBe(100);
 
-    // Verify oldest were dropped
-    const tx = buf.beginTransaction(10);
-    expect(tx.batch[0]!.name).toBe("m2");
-    expect(tx.batch[1]!.name).toBe("m3");
-    expect(tx.batch[2]!.name).toBe("new_0");
+    // Verify oldest were dropped (m0, m1, m2 gone)
+    const tx = buf.beginTransaction(200);
+    expect(tx.metrics()[0]!.name).toBe("m3");
+    expect(tx.metrics()[1]!.name).toBe("m4");
+    expect(tx.metrics()[2]!.name).toBe("m5");
 
     buf.close();
   });
@@ -292,11 +316,11 @@ describe("Store-and-Forward Buffer", () => {
     expect(buf2.length).toBe(2);
 
     const tx = buf2.beginTransaction(10);
-    expect(tx.batch.length).toBe(2);
-    expect(tx.batch[0]!.name).toBe("survivor_1");
-    expect(tx.batch[0]!.fields.get("value")).toBe(1);
-    expect(tx.batch[1]!.name).toBe("survivor_2");
-    expect(tx.batch[1]!.fields.get("value")).toBe(2);
+    expect(tx.metrics().length).toBe(2);
+    expect(tx.metrics()[0]!.name).toBe("survivor_1");
+    expect(tx.metrics()[0]!.fields.get("value")).toBe(1);
+    expect(tx.metrics()[1]!.name).toBe("survivor_2");
+    expect(tx.metrics()[1]!.fields.get("value")).toBe(2);
 
     buf2.close();
   });
@@ -309,7 +333,7 @@ describe("Store-and-Forward Buffer", () => {
     const buf = openBuffer();
 
     const tx = buf.beginTransaction(10);
-    expect(tx.batch.length).toBe(0);
+    expect(tx.metrics().length).toBe(0);
 
     // acceptAll on empty is a no-op
     tx.acceptAll();
@@ -350,12 +374,12 @@ describe("Store-and-Forward Buffer", () => {
     buf.add([makeMetric({ name: "batch3_m0" }), makeMetric({ name: "batch3_m1" })]);
 
     const tx = buf.beginTransaction(10);
-    expect(tx.batch.length).toBe(5);
-    expect(tx.batch[0]!.name).toBe("batch1_m0");
-    expect(tx.batch[1]!.name).toBe("batch1_m1");
-    expect(tx.batch[2]!.name).toBe("batch2_m0");
-    expect(tx.batch[3]!.name).toBe("batch3_m0");
-    expect(tx.batch[4]!.name).toBe("batch3_m1");
+    expect(tx.metrics().length).toBe(5);
+    expect(tx.metrics()[0]!.name).toBe("batch1_m0");
+    expect(tx.metrics()[1]!.name).toBe("batch1_m1");
+    expect(tx.metrics()[2]!.name).toBe("batch2_m0");
+    expect(tx.metrics()[3]!.name).toBe("batch3_m0");
+    expect(tx.metrics()[4]!.name).toBe("batch3_m1");
 
     buf.close();
   });
@@ -376,12 +400,12 @@ describe("Store-and-Forward Buffer", () => {
     expect(buf2.length).toBe(1);
 
     const tx1 = buf1.beginTransaction(10);
-    expect(tx1.batch.length).toBe(1);
-    expect(tx1.batch[0]!.name).toBe("mqtt_metric");
+    expect(tx1.metrics().length).toBe(1);
+    expect(tx1.metrics()[0]!.name).toBe("mqtt_metric");
 
     const tx2 = buf2.beginTransaction(10);
-    expect(tx2.batch.length).toBe(1);
-    expect(tx2.batch[0]!.name).toBe("http_metric");
+    expect(tx2.metrics().length).toBe(1);
+    expect(tx2.metrics()[0]!.name).toBe("http_metric");
 
     buf1.close();
     buf2.close();

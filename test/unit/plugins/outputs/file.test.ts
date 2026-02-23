@@ -65,7 +65,7 @@ describe("File Output Plugin", () => {
 
   it("JSON format: write batch → file contains valid JSON-lines (one per metric)", async () => {
     const path = join(tempDir, "metrics.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     const batch = [
@@ -101,7 +101,7 @@ describe("File Output Plugin", () => {
 
   it("CSV format: write batch → file has header row + data rows", async () => {
     const path = join(tempDir, "metrics.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     const batch = [
@@ -149,7 +149,7 @@ describe("File Output Plugin", () => {
 
   it("Append mode: two write() calls → all metrics in file (not overwritten)", async () => {
     const path = join(tempDir, "append.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     await output.write([makeMetric({ name: "metric_1" })]);
@@ -167,7 +167,7 @@ describe("File Output Plugin", () => {
 
   it("CSV append: two write() calls → header only once, all data rows present", async () => {
     const path = join(tempDir, "append.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     await output.write([makeMetric({ name: "m1", fields: { value: 1.5 } })]);
@@ -189,7 +189,7 @@ describe("File Output Plugin", () => {
 
   it("connect() creates file if it doesn't exist", async () => {
     const path = join(tempDir, "subdir", "new-file.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     // File should exist (possibly empty)
@@ -204,7 +204,7 @@ describe("File Output Plugin", () => {
     // Pre-populate file
     await writeFile(path, '{"existing":"data"}\n');
 
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
     await output.write([makeMetric({ name: "new_metric" })]);
     await output.close();
@@ -227,7 +227,7 @@ describe("File Output Plugin", () => {
 
   it("close() flushes buffered data", async () => {
     const path = join(tempDir, "flush.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     await output.write([makeMetric({ name: "before_close" })]);
@@ -246,7 +246,7 @@ describe("File Output Plugin", () => {
   it("Write error (invalid path) → error propagated, not swallowed", async () => {
     // Use a path that won't be writable (null byte in filename)
     const path = join(tempDir, "valid.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     // Manually break the path after connect
@@ -261,7 +261,7 @@ describe("File Output Plugin", () => {
 
   it("Empty batch → no error, nothing written", async () => {
     const path = join(tempDir, "empty.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     await output.write([]);
@@ -277,7 +277,7 @@ describe("File Output Plugin", () => {
 
   it("Metric fields of all types (number, bigint, string, boolean) serialised correctly — JSON", async () => {
     const path = join(tempDir, "types.jsonl");
-    const output = new FileOutput(makeConfig({ path, format: "json" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "json" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -303,7 +303,7 @@ describe("File Output Plugin", () => {
 
   it("Metric fields of all types serialised correctly — CSV", async () => {
     const path = join(tempDir, "types.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -338,7 +338,7 @@ describe("File Output Plugin", () => {
 
   it("CSV: bigint field value serialised as string", async () => {
     const path = join(tempDir, "bigint.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -361,7 +361,7 @@ describe("File Output Plugin", () => {
 
   it("CSV: field with comma is quoted", async () => {
     const path = join(tempDir, "comma.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -379,7 +379,7 @@ describe("File Output Plugin", () => {
 
   it("CSV: field with quotes is double-quoted", async () => {
     const path = join(tempDir, "quotes.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     const metric = makeMetric({
@@ -397,7 +397,7 @@ describe("File Output Plugin", () => {
 
   it("CSV: missing fields in later metrics → empty values", async () => {
     const path = join(tempDir, "missing.csv");
-    const output = new FileOutput(makeConfig({ path, format: "csv" }));
+    const output = new FileOutput(makeConfig({ path, data_format: "csv" }));
     await output.connect();
 
     // First batch establishes columns with two fields
@@ -427,7 +427,7 @@ describe("File Output Plugin", () => {
 
   it("config defaults to json format", () => {
     const config = FileOutputConfigSchema.parse({ path: "/tmp/test.jsonl" });
-    expect(config.format).toBe("json");
+    expect(config.data_format).toBe("json");
   });
 
   it("config requires path", () => {
@@ -435,6 +435,6 @@ describe("File Output Plugin", () => {
   });
 
   it("config rejects invalid format", () => {
-    expect(() => FileOutputConfigSchema.parse({ path: "/tmp/test", format: "xml" })).toThrow();
+    expect(() => FileOutputConfigSchema.parse({ path: "/tmp/test", data_format: "xml" })).toThrow();
   });
 });

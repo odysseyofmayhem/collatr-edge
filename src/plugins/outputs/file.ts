@@ -14,7 +14,7 @@ import { toJSON } from "@plugins/outputs/stdout";
 
 export const FileOutputConfigSchema = z.object({
   path: z.string().describe("Output file path"),
-  format: z.enum(["json", "csv"]).default("json")
+  data_format: z.enum(["json", "csv"]).default("json")
     .describe("Output format: 'json' for JSON-lines, 'csv' for CSV with header"),
 });
 
@@ -70,7 +70,7 @@ export class FileOutput implements Output {
   async write(batch: Metric[]): Promise<void> {
     if (batch.length === 0) return;
 
-    if (this.config.format === "csv") {
+    if (this.config.data_format === "csv") {
       await this.writeCSV(batch);
     } else {
       await this.writeJSON(batch);
@@ -94,7 +94,10 @@ export class FileOutput implements Output {
   }
 
   private async writeCSV(batch: Metric[]): Promise<void> {
-    // Determine columns from first batch if not yet established
+    // Determine columns from first batch if not yet established.
+    // Note: column schema is fixed after first write — new fields appearing
+    // in later batches are silently omitted. This is by design for append-only
+    // CSV where re-writing the header is not feasible.
     if (!this.csvColumns) {
       this.csvColumns = this.buildColumns(batch);
     }

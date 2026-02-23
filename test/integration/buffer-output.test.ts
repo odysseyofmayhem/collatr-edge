@@ -119,7 +119,7 @@ describe("Integration: S&F buffer + output", () => {
 
     // Simulate flush cycle: buffer → output
     const tx = buf.beginTransaction();
-    await output.write(tx.batch);
+    await output.write(tx.metrics());
     tx.acceptAll();
 
     // Buffer should be drained
@@ -149,7 +149,7 @@ describe("Integration: S&F buffer + output", () => {
     // First attempt: output fails → keepAll
     const tx1 = buf.beginTransaction();
     try {
-      await output.write(tx1.batch);
+      await output.write(tx1.metrics());
       tx1.acceptAll();
     } catch {
       tx1.keepAll();
@@ -162,7 +162,7 @@ describe("Integration: S&F buffer + output", () => {
     // Second attempt: still fails → keepAll again
     const tx2 = buf.beginTransaction();
     try {
-      await output.write(tx2.batch);
+      await output.write(tx2.metrics());
       tx2.acceptAll();
     } catch {
       tx2.keepAll();
@@ -174,9 +174,9 @@ describe("Integration: S&F buffer + output", () => {
 
     // Metrics are the same originals (correct order, correct data)
     const tx3 = buf.beginTransaction();
-    expect(tx3.batch[0]!.name).toBe("metric_0");
-    expect(tx3.batch[1]!.name).toBe("metric_1");
-    expect(tx3.batch[2]!.name).toBe("metric_2");
+    expect(tx3.metrics()[0]!.name).toBe("metric_0");
+    expect(tx3.metrics()[1]!.name).toBe("metric_1");
+    expect(tx3.metrics()[2]!.name).toBe("metric_2");
 
     buf.close();
     await output.close();
@@ -197,7 +197,7 @@ describe("Integration: S&F buffer + output", () => {
     // Flush: partial output accepts even indices (0, 2, 4), rejects odd (1, 3)
     const tx = buf.beginTransaction();
     try {
-      await output.write(tx.batch);
+      await output.write(tx.metrics());
       tx.acceptAll();
     } catch (e) {
       const err = e as Error & { acceptIndices: number[]; rejectIndices: number[] };
@@ -233,7 +233,7 @@ describe("Integration: S&F buffer + output", () => {
 
     const tx = buf1.beginTransaction();
     try {
-      await failOutput.write(tx.batch);
+      await failOutput.write(tx.metrics());
       tx.acceptAll();
     } catch {
       tx.keepAll();
@@ -255,12 +255,12 @@ describe("Integration: S&F buffer + output", () => {
     await successOutput.connect();
 
     const tx2 = buf2.beginTransaction();
-    expect(tx2.batch.length).toBe(4);
-    expect(tx2.batch[0]!.name).toBe("metric_0");
-    expect(tx2.batch[3]!.name).toBe("metric_3");
+    expect(tx2.metrics().length).toBe(4);
+    expect(tx2.metrics()[0]!.name).toBe("metric_0");
+    expect(tx2.metrics()[3]!.name).toBe("metric_3");
 
     // Successfully deliver this time
-    await successOutput.write(tx2.batch);
+    await successOutput.write(tx2.metrics());
     tx2.acceptAll();
 
     expect(buf2.length).toBe(0);

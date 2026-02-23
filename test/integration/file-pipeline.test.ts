@@ -62,7 +62,7 @@ function parseJSONLines(content: string): Record<string, unknown>[] {
 describe("Integration: mock input → pipeline → file output", () => {
   it("Mock input → pipeline → file output: JSON-lines file contains correct metrics", async () => {
     const path = join(tempDir, "metrics.jsonl");
-    const fileConfig = FileOutputConfigSchema.parse({ path, format: "json" });
+    const fileConfig = FileOutputConfigSchema.parse({ path, data_format: "json" });
     const fileOutput = new FileOutput(fileConfig);
     const mockInput = new MockPollingInput();
 
@@ -102,7 +102,7 @@ describe("Integration: mock input → pipeline → file output", () => {
 
   it("Global tags present in file output metrics", async () => {
     const path = join(tempDir, "global-tags.jsonl");
-    const fileConfig = FileOutputConfigSchema.parse({ path, format: "json" });
+    const fileConfig = FileOutputConfigSchema.parse({ path, data_format: "json" });
     const fileOutput = new FileOutput(fileConfig);
     const mockInput = new MockPollingInput();
 
@@ -142,7 +142,7 @@ describe("Integration: mock input → pipeline → file output", () => {
 
   it("Processor transforms reflected in file output", async () => {
     const path = join(tempDir, "processed.jsonl");
-    const fileConfig = FileOutputConfigSchema.parse({ path, format: "json" });
+    const fileConfig = FileOutputConfigSchema.parse({ path, data_format: "json" });
     const fileOutput = new FileOutput(fileConfig);
     const mockInput = new MockPollingInput();
     const processor = new TaggingProcessor();

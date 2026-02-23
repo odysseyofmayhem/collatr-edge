@@ -93,7 +93,7 @@ describe("Local Store Output Plugin", () => {
     const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(
       "SELECT timestamp, name, tags_hash, tags, quality FROM metrics ORDER BY name",
-    ).all() as { timestamp: number; name: string; tags_hash: number; tags: string; quality: number }[];
+    ).all() as { timestamp: string; name: string; tags_hash: number; tags: string; quality: number }[];
 
     expect(rows.length).toBe(2);
     expect(rows[0]!.name).toBe("pressure");
@@ -256,11 +256,11 @@ describe("Local Store Output Plugin", () => {
 
     const db = new Database(join(tempDir, "data_2024_01_15.db"), { readonly: true });
     const row = db.prepare("SELECT first_seen, last_seen FROM tag_index WHERE name = 'temp'").get() as {
-      first_seen: number; last_seen: number;
+      first_seen: string; last_seen: string;
     };
 
-    expect(row.first_seen).toBe(Number(ts1));
-    expect(row.last_seen).toBe(Number(ts2));
+    expect(row.first_seen).toBe(ts1.toString());
+    expect(row.last_seen).toBe(ts2.toString());
 
     db.close();
     await store.close();
@@ -474,11 +474,13 @@ describe("Local Store Output Plugin", () => {
     const lines = csv.trimEnd().split("\n");
 
     expect(lines.length).toBe(3); // header + 2 data rows
-    expect(lines[0]).toBe("timestamp,name,quality,status,value");
+    // Header includes tag columns between name and quality
+    expect(lines[0]).toBe("timestamp,name,sensor,quality,status,value");
 
     const row1Parts = lines[1]!.split(",");
     expect(row1Parts[1]).toBe("temp");
-    expect(row1Parts[2]).toBe("0"); // quality = good
+    expect(row1Parts[2]).toBe("s1"); // tag: sensor
+    expect(row1Parts[3]).toBe("0"); // quality = good
 
     await store.close();
   });
@@ -575,6 +577,29 @@ describe("Local Store Output Plugin", () => {
   // =========================================================================
   // Helpers
   // =========================================================================
+
+  it("Nanosecond timestamp precision preserved through storage round-trip", async () => {
+    const store = new LocalStoreOutput(makeConfig());
+    await store.connect();
+
+    // Timestamps with sub-second nanosecond precision that would lose precision via Number()
+    const ts1 = 1700000000123456789n;
+    const ts2 = 1700000000000000001n;
+
+    await store.write([
+      makeMetric({ name: "precise_1", fields: { value: 1 }, timestamp: ts1 }),
+      makeMetric({ name: "precise_2", fields: { value: 2 }, timestamp: ts2 }),
+    ]);
+
+    const results = store.query(ts2, ts1);
+    expect(results.length).toBe(2);
+
+    // Verify exact nanosecond precision — no rounding
+    expect(results[0]!.timestamp).toBe(ts2);
+    expect(results[1]!.timestamp).toBe(ts1);
+
+    await store.close();
+  });
 
   it("timestampToDateString: nanosecond timestamp → YYYY_MM_DD", () => {
     expect(timestampToDateString(JAN_15_NOON_NS)).toBe("2024_01_15");
