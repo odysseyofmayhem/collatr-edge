@@ -120,7 +120,7 @@
       "Midnight boundary: metric at 23:59:59 UTC → today's file, 00:00:00 → tomorrow's file",
       "Downsampling: 60 one-second points → 1 summary with correct min/max/mean/count"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "3.2i",
