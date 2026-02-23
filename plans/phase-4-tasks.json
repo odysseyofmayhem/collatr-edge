@@ -104,7 +104,7 @@
       "Multiple rename rules: both applied in output metrics",
       "Metric without matching field: passes through unchanged"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.2",

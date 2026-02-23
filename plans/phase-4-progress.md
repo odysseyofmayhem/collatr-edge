@@ -8,7 +8,7 @@
 | 4.0 | Metric filtering framework | ✅ |
 | 4.0i | Filtering → pipeline integration | ✅ |
 | 4.1 | Rename processor | ✅ |
-| 4.1i | Rename → pipeline integration | ⬜ |
+| 4.1i | Rename → pipeline integration | ✅ |
 | 4.2 | Filter processor | ⬜ |
 | 4.2i | Filter → pipeline integration | ⬜ |
 | 4.3 | Basicstats aggregator | ⬜ |
@@ -93,6 +93,18 @@
 - Config validation: 5 tests (empty array, defaults, dest required, field+dest, tag+dest)
 
 **Test results:** 389 pass, 0 fail (374 + 15 new)
+
+## Task 4.1i: Rename Pipeline Integration
+
+**Files created:**
+- `test/integration/rename-pipeline.test.ts` — 3 integration tests (all pass)
+
+**What was tested:**
+- Field rename in pipeline: input metric with `temperature` → output has `motor_temp_c`, original absent, other fields unaffected
+- Multiple rename rules: 2 field renames + 1 tag rename all applied in output
+- Missing field: metric without matching field passes through unchanged, no spurious fields added
+
+**Test results:** 392 pass, 0 fail (389 + 3 new)
 
 ## Notes
 
