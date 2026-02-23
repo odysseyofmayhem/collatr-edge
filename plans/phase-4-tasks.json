@@ -127,7 +127,7 @@
       "fieldpass: only specified fields kept",
       "All fields filtered → metric dropped entirely"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.2i",

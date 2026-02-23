@@ -9,7 +9,7 @@
 | 4.0i | Filtering → pipeline integration | ✅ |
 | 4.1 | Rename processor | ✅ |
 | 4.1i | Rename → pipeline integration | ✅ |
-| 4.2 | Filter processor | ⬜ |
+| 4.2 | Filter processor | ✅ |
 | 4.2i | Filter → pipeline integration | ⬜ |
 | 4.3 | Basicstats aggregator | ⬜ |
 | 4.3i | Basicstats → pipeline integration (E2E) | ⬜ |
@@ -105,6 +105,27 @@
 - Missing field: metric without matching field passes through unchanged, no spurious fields added
 
 **Test results:** 392 pass, 0 fail (389 + 3 new)
+
+## Task 4.2: Filter Processor
+
+**Files created:**
+- `src/plugins/processors/filter.ts` — FilterProcessor class + FilterConfigSchema
+- `test/unit/plugins/processors/filter.test.ts` — 7 tests (all pass)
+
+**What was built:**
+- `FilterConfigSchema` — reuses `MetricFilterSchema` directly (same fields)
+- `FilterProcessor` — thin wrapper around `MetricFilter.apply()`. Emits via `acc.addMetric()` if metric passes, emits nothing if dropped.
+
+**Test coverage (7 tests):**
+- namepass: matching pass, non-matching dropped
+- namedrop: matching dropped
+- tagpass: matching tags pass
+- Combined namepass + tagdrop: both applied
+- No-op: no filters → all pass
+- fieldpass: only specified fields kept
+- All fields filtered → metric dropped
+
+**Test results:** 399 pass, 0 fail (392 + 7 new)
 
 ## Notes
 
