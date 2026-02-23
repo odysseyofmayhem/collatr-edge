@@ -81,3 +81,27 @@ export class Channel<T> {
     return this._closed;
   }
 }
+
+export class Broadcaster<T> {
+  private consumers: Set<Channel<T>> = new Set();
+
+  addConsumer(channel: Channel<T>): void {
+    this.consumers.add(channel);
+  }
+
+  removeConsumer(channel: Channel<T>): void {
+    this.consumers.delete(channel);
+  }
+
+  async broadcast(value: T, copy: (v: T) => T): Promise<void> {
+    for (const channel of this.consumers) {
+      await channel.send(copy(value));
+    }
+  }
+
+  closeAll(): void {
+    for (const channel of this.consumers) {
+      channel.close();
+    }
+  }
+}

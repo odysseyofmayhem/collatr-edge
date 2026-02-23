@@ -94,7 +94,7 @@
       "closeAll() closes all consumer channels",
       "Broadcast to zero consumers is a no-op (no error)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.3i",

@@ -42,8 +42,20 @@
   - Waiter queue is a simple array of resolve callbacks — sufficient for single-threaded event loop
   - `send()` is `async` per PRD interface even though MVP drop-oldest never actually awaits — keeps interface compatible with future `block` overflow policy
 
+### Task 1.3 — Broadcaster<T>
+- **What:** Added `Broadcaster<T>` class to `src/core/channel.ts`
+- **Result:** 6 tests pass covering all 6 required test cases
+- **Implementation details:**
+  - Uses `Set<Channel<T>>` for consumer tracking — O(1) add/remove
+  - `broadcast()` sends `copy(value)` to each consumer independently
+  - Each consumer channel handles its own overflow — one full channel doesn't affect others
+  - `closeAll()` closes every consumer channel
+  - Zero-consumer broadcast is a safe no-op
+- **Decisions:**
+  - Broadcaster lives in same file as Channel since they're tightly coupled (Broadcaster depends on Channel)
+
 ## Current Task
-Task 1.3 — Implement Broadcaster<T>
+Task 1.3i — Integration test: Channel<Metric> + Broadcaster<Metric>
 
 ## Blockers
 (none)
