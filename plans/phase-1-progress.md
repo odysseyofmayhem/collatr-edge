@@ -75,6 +75,21 @@
   - Jitter is applied in the target calculation per PRD pseudocode. With anchor-based timing, spacing between ticks is `interval + jitter_new - jitter_old`, giving a range of [interval-jitter, interval+jitter]. This is the mathematically correct behavior for anchor-based jitter — it prevents thundering herd while maintaining long-term timing accuracy.
   - Jitter test uses tolerances accounting for this anchor-based behavior rather than naive [interval, interval+jitter] range.
 
+### Review Fixes — Code Review Remediation
+- **What:** Addressed all must-fix and should-fix findings from `plans/phase-1-review.md`
+- **Code fixes:**
+  - **T1/D3/D6:** Clock jump detection now compares wall elapsed vs monotonic elapsed (was mono vs expected). PRD prose/pseudocode discrepancy documented per Rule 5.
+  - **C1/D1:** Added `overflow: 'drop-oldest' | 'block'` to `ChannelOptions`. `'block'` throws (post-MVP).
+  - **D2:** Ticker `aligned` defaults to `true` per PRD §13.
+  - **M1/M2:** Documented `copy()` invariant (primitive-only FieldValue, tracking state deliberately not copied).
+  - **M3:** Added TODO on tracking methods for Phase 2 integration.
+  - **M4/M6:** Added comments on `addTag()` re-sort cost and `hashId()` serialization assumptions.
+- **New tests (14 added, total 55):**
+  - Metric: hashId empty tags, hashId field-independent, hashId mutation stability, copy→mutate→different hashId
+  - Channel: capacity=1, send-after-close, overflow option (block throws, drop-oldest explicit)
+  - Ticker: aligned mode e2e, offset, clock jump detection (4 tests covering agreement, tolerance, jump, scaling)
+- **Existing tests updated:** All ticker tests now explicitly pass `aligned: false` since default changed to `true`.
+
 ## Current Task
 Task 1.5 — Implement Accumulator
 

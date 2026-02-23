@@ -1,8 +1,13 @@
 // CollatrEdge — Channel<T> async primitive
 // PRD ref: §4 Architecture Overview
 
+export type OverflowPolicy = "drop-oldest" | "block";
+
 export interface ChannelOptions {
+  /** Maximum items the channel can buffer. Default: 1000 */
   capacity: number;
+  /** Behaviour when channel is full. MVP: drop-oldest only. Default: 'drop-oldest' */
+  overflow: OverflowPolicy;
 }
 
 export class Channel<T> {
@@ -11,11 +16,18 @@ export class Channel<T> {
   private tail = 0;
   private count = 0;
   private _capacity: number;
+  private _overflow: OverflowPolicy;
   private _closed = false;
   private waiters: Array<() => void> = [];
 
   constructor(options?: Partial<ChannelOptions>) {
     this._capacity = options?.capacity ?? 1000;
+    this._overflow = options?.overflow ?? "drop-oldest";
+    if (this._overflow === "block") {
+      throw new Error(
+        'Channel overflow policy "block" is not implemented (post-MVP). Use "drop-oldest".',
+      );
+    }
     this.buffer = new Array(this._capacity);
   }
 

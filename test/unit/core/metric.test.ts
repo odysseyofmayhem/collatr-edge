@@ -87,6 +87,51 @@ describe("Metric", () => {
       expect(base.hashId()).not.toBe(diffValue.hashId());
       expect(base.hashId()).not.toBe(diffKey.hashId());
     });
+
+    it("works with empty tags (base case)", () => {
+      const m = createMetric({
+        name: "simple_metric",
+        fields: { value: 42 },
+      });
+
+      const hash1 = m.hashId();
+      const hash2 = m.hashId();
+      expect(hash1).toBe(hash2);
+      expect(typeof hash1).toBe("bigint");
+    });
+
+    it("unchanged by field value differences (fields excluded from hash)", () => {
+      const m1 = createMetric({
+        name: "test",
+        fields: { value: 100, count: 1n },
+        tags: { host: "a" },
+      });
+
+      const m2 = createMetric({
+        name: "test",
+        fields: { value: 999, count: 999n, extra: "hello" },
+        tags: { host: "a" },
+      });
+
+      expect(m1.hashId()).toBe(m2.hashId());
+    });
+
+    it("stable across tag mutation cycles (add then remove)", () => {
+      const m = createMetric({
+        name: "test",
+        fields: { v: 1 },
+        tags: { host: "a", zone: "b" },
+      });
+
+      const hashBefore = m.hashId();
+
+      // Add a tag, then remove it — hash should return to original
+      m.addTag("temp", "xyz");
+      expect(m.hashId()).not.toBe(hashBefore);
+
+      m.removeTag("temp");
+      expect(m.hashId()).toBe(hashBefore);
+    });
   });
 
   describe("copy", () => {
@@ -108,6 +153,19 @@ describe("Metric", () => {
       expect(original.getField("rpm")).toBe(1500);
       expect(original.getTag("line")).toBe("A");
       expect(original.hasTag("new_tag")).toBe(false);
+    });
+
+    it("copy then mutate tags → different hashId", () => {
+      const original = createMetric({
+        name: "test",
+        fields: { v: 1 },
+        tags: { host: "a" },
+      });
+
+      const copied = original.copy();
+      copied.addTag("host", "b");
+
+      expect(copied.hashId()).not.toBe(original.hashId());
     });
 
     it("preserves name, tags, fields, timestamp, type, priority", () => {

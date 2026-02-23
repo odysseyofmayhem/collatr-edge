@@ -148,4 +148,69 @@ describe("Channel", () => {
     expect(received[0]).toBe(0);
     expect(received[999]).toBe(999);
   });
+
+  it("capacity=1: every send to full channel replaces the single item", async () => {
+    const ch = new Channel<number>({ capacity: 1 });
+
+    await ch.send(1);
+    expect(ch.length).toBe(1);
+
+    await ch.send(2); // drops 1
+    expect(ch.length).toBe(1);
+
+    await ch.send(3); // drops 2
+    ch.close();
+
+    const received: number[] = [];
+    for await (const item of ch.receive()) {
+      received.push(item);
+    }
+
+    expect(received).toEqual([3]);
+  });
+
+  it("send-after-close returns false and buffered items are still receivable", async () => {
+    const ch = new Channel<number>({ capacity: 10 });
+
+    await ch.send(1);
+    await ch.send(2);
+    await ch.send(3);
+
+    ch.close();
+
+    // Send after close should return false
+    const result = await ch.send(4);
+    expect(result).toBe(false);
+
+    // But buffered items should still be receivable
+    const received: number[] = [];
+    for await (const item of ch.receive()) {
+      received.push(item);
+    }
+
+    expect(received).toEqual([1, 2, 3]);
+  });
+
+  it("overflow: 'block' throws (not implemented)", () => {
+    expect(() => new Channel<number>({ capacity: 10, overflow: "block" })).toThrow(
+      /not implemented/i,
+    );
+  });
+
+  it("overflow: 'drop-oldest' is accepted explicitly", async () => {
+    const ch = new Channel<number>({ capacity: 3, overflow: "drop-oldest" });
+
+    await ch.send(1);
+    await ch.send(2);
+    await ch.send(3);
+    await ch.send(4); // drops 1
+    ch.close();
+
+    const received: number[] = [];
+    for await (const item of ch.receive()) {
+      received.push(item);
+    }
+
+    expect(received).toEqual([2, 3, 4]);
+  });
 });

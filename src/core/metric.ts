@@ -80,6 +80,9 @@ class MetricImpl implements Metric {
     this.priority = priority;
   }
 
+  // TODO: Phase 2 — integrate with delivery tracking / buffer manager.
+  // These flags are currently write-only. They will be read by the buffer
+  // manager to track end-to-end delivery status per metric.
   accept(): void {
     this._accepted = true;
   }
@@ -93,8 +96,10 @@ class MetricImpl implements Metric {
   }
 
   hashId(): bigint {
-    // FNV-64a of name + sorted tags (not fields)
-    // Format: "name\0key1=val1\0key2=val2\0..."
+    // FNV-64a of name + sorted tags (not fields).
+    // Format: "name\0key1=val1\0key2=val2"
+    // Assumes metric names don't contain \0 and tag keys don't contain '='.
+    // These are safe assumptions for IIoT metric naming conventions.
     let str = this.name;
     for (const [key, value] of this.tags) {
       str += "\0" + key + "=" + value;
@@ -102,6 +107,16 @@ class MetricImpl implements Metric {
     return fnv64a(encoder.encode(str));
   }
 
+  /**
+   * Hand-rolled deep copy for fan-out (PRD §5).
+   *
+   * Safe because all FieldValue types are primitives (number, bigint, string,
+   * boolean). If FieldValue is ever extended to include reference types (e.g.
+   * Uint8Array for binary payloads), this must be updated to deep-copy those.
+   *
+   * Tracking state (_accepted/_rejected/_dropped) is deliberately NOT copied.
+   * A copy is a new data point in the pipeline with its own delivery lifecycle.
+   */
   copy(): Metric {
     const tagsCopy = new Map(this.tags);
     const fieldsCopy = new Map(this.fields);
@@ -125,7 +140,8 @@ class MetricImpl implements Metric {
 
   addTag(key: string, value: string): void {
     this.tags.set(key, value);
-    // Re-sort tags to maintain sorted invariant
+    // Re-sort to maintain sorted invariant. O(N log N) per call —
+    // acceptable for small tag sets typical in IIoT (rarely >10 tags).
     this.tags = sortedMap(this.tags);
   }
 
