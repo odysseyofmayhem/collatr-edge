@@ -108,6 +108,8 @@ If you're a sub-agent working on a specific module, stay in your lane. Don't "he
 
 If the PRD says something, that's what we build. If you think the PRD is wrong, raise it — don't silently deviate.
 
+**Prose trumps pseudocode.** The PRD contains both prose descriptions and TypeScript pseudocode. If they contradict each other, the **prose is authoritative** — pseudocode is illustrative. When you spot a contradiction: (1) flag it explicitly in a code comment, (2) implement what the prose says, (3) mention the discrepancy in your status update so the PRD can be corrected. Never silently pick whichever version is easier to implement.
+
 If the PRD is ambiguous on something, check these in order:
 1. Other PRD sections (cross-reference — the answer is often in another section)
 2. `prd/spike-results-bun-runtime.md` (runtime capabilities and limitations)
@@ -128,6 +130,28 @@ If the PRD is ambiguous on something, check these in order:
 Build what the PRD specifies. Don't add extension points, plugin hooks, or abstractions "for the future" unless the PRD explicitly calls for them. You aren't gonna need it.
 
 The PRD already has the right abstractions. Trust it.
+
+### Rule 8: Interface Compliance Check
+
+When implementing a TypeScript interface defined in the PRD, **diff your implementation against the PRD definition field-by-field** before committing. Check:
+
+1. **Every field/property present** — don't silently drop fields even if the current phase doesn't use them. If a field is present in the PRD interface but not needed yet, include it with a `// TODO: Phase N` comment, or throw "not implemented" if it's a method.
+2. **Default values match** — if the PRD says "default: X", your code must default to X. Search your code for `?? ` and `|| ` and verify each default against the PRD.
+3. **Option types match** — if the PRD interface has `overflow: 'drop-oldest' | 'block'`, your options type must include that field. Accepting and validating the option is separate from implementing all variants — you can throw on unimplemented variants, but the type must exist.
+
+This prevents "interface drift" where the implementation quietly diverges from the spec. Downstream modules will be coded against the PRD interfaces and will break if the real interfaces don't match.
+
+### Rule 9: Test the Hard Paths First
+
+There's a natural tendency to write thorough tests for happy paths and skip the complex edge-case branches. **Invert this.** The most important tests are for:
+
+1. **Error recovery paths** — clock jump detection, reconnection logic, corruption handling
+2. **Branching conditions** — every `if` that handles a non-obvious case needs a test proving it triggers correctly and does the right thing
+3. **Configurable behaviours** — if an option exists (`aligned`, `offset`, `jitter`, `overflow`), every supported value must have at least one test exercising it
+
+**The rule:** If a code path exists but has no test, it's not implemented — it's a guess. Untested error-recovery code is worse than no error-recovery code, because it gives false confidence.
+
+Before committing a module, scan it for branches and ask: "Which of these branches has zero test coverage?" Then write those tests first.
 
 ---
 
@@ -217,11 +241,13 @@ Read the relevant PRD sections. Write `plans/phase-N-<name>.md` containing:
 For each module in the plan:
 1. Read the PRD sections for this module
 2. Write the implementation (types first, then logic)
-3. Write unit tests
-4. Run tests — all must pass
-5. Commit
-6. Integration test with prior modules
+3. **Interface compliance check** (Rule 8) — diff every exported type/interface against the PRD definition
+4. **Branch coverage audit** — list every `if`/`switch`/`??` branch in the module. Mark which are tested. Write tests for the untested ones, *especially* error/recovery paths (Rule 9)
+5. Write unit tests (prioritise hard paths per Rule 9)
+6. Run tests — all must pass
 7. Commit
+8. Integration test with prior modules
+9. Commit
 
 ### 3. Phase Completion
 
