@@ -10,7 +10,7 @@
 | 4.1 | Rename processor | ✅ |
 | 4.1i | Rename → pipeline integration | ✅ |
 | 4.2 | Filter processor | ✅ |
-| 4.2i | Filter → pipeline integration | ⬜ |
+| 4.2i | Filter → pipeline integration | ✅ |
 | 4.3 | Basicstats aggregator | ⬜ |
 | 4.3i | Basicstats → pipeline integration (E2E) | ⬜ |
 
@@ -126,6 +126,18 @@
 - All fields filtered → metric dropped
 
 **Test results:** 399 pass, 0 fail (392 + 7 new)
+
+## Task 4.2i: Filter Pipeline Integration
+
+**Files created:**
+- `test/integration/filter-pipeline.test.ts` — 3 integration tests (all pass)
+
+**What was tested:**
+- Mixed input: 5 metrics per cycle, namepass allows 3 → only matching names in output, count is multiple of 3
+- tagdrop: metrics with `env=test` removed, `env=production` pass through
+- fieldpass: 4-field metric trimmed to 2 fields in output
+
+**Test results:** 402 pass, 0 fail (399 + 3 new)
 
 ## Notes
 

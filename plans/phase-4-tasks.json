@@ -146,7 +146,7 @@
       "tagdrop removes metrics with test=true tag",
       "fieldpass trims fields: output metrics have only specified fields"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.3",
