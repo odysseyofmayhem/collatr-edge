@@ -15,7 +15,7 @@
 | 2.2 | OPC-UA input | ✅ |
 | 2.2i | OPC-UA → pipeline integration | ✅ |
 | 2.3 | MQTT consumer input | ✅ |
-| 2.3i | MQTT → pipeline integration | ⬜ |
+| 2.3i | MQTT → pipeline integration | ✅ |
 | 2.4 | Internal metrics input | ⬜ |
 | 2.4i | Internal metrics integration | ⬜ |
 
@@ -213,6 +213,27 @@
 ### Files changed
 - `src/plugins/inputs/mqtt-consumer.ts` — new file
 - `test/unit/plugins/inputs/mqtt-consumer.test.ts` — new file
+
+## Task 2.3i: MQTT → Pipeline Integration Test
+
+### What was built
+1. **`test/integration/mqtt-pipeline.test.ts`** — 3 integration tests wiring MqttConsumerInput (ServiceInput) → PipelineRuntime → MockOutput
+2. **MockMqttClient** — minimal mock implementing `MqttClientInterface` with `emitConnect()` and `emitMessage()` to simulate broker
+3. **MockOutput** — captures written metrics for assertion (same pattern as Modbus/OPC-UA integration)
+
+### Tests added (3 new, 232 total)
+- `test/integration/mqtt-pipeline.test.ts`
+- **"MQTT message → pipeline → output: JSON fields preserved"** — 2 JSON messages from different sub-topics, verifies correct metric names and all JSON fields flow through full pipeline
+- **"Topic tags present on output metrics"** — verifies topic_tag, topic_tags pattern extraction, and static config tags all appear on output metrics
+- **"Global tags applied to MQTT metrics"** — sets globalTags on pipeline, verifies they appear alongside MQTT topic tag on output metrics
+
+### Key design decisions
+- MQTT is a ServiceInput (push-based), so tests emit data via `mockClient.emitMessage()` after triggering `emitConnect()`
+- Used `Bun.sleep(200)` between data emission and stop() to allow flush cycle to deliver metrics
+- Mock client's `connect()` is a no-op — connection events controlled explicitly via `emitConnect()` for deterministic test timing
+
+### Files changed
+- `test/integration/mqtt-pipeline.test.ts` — new file
 
 ## Notes
 

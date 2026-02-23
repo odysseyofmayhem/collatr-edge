@@ -229,7 +229,7 @@
       "Topic tags present on output metrics",
       "Global tags applied to MQTT metrics"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.4",
