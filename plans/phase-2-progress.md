@@ -10,7 +10,7 @@
 | Task | Description | Status |
 |------|-------------|--------|
 | 2.0 | ServiceInput runtime support + metric_batch_size | ✅ |
-| 2.1 | Modbus TCP input | ⬜ |
+| 2.1 | Modbus TCP input | ✅ |
 | 2.1i | Modbus → pipeline integration | ⬜ |
 | 2.2 | OPC-UA input | ⬜ |
 | 2.2i | OPC-UA → pipeline integration | ⬜ |
@@ -45,6 +45,42 @@
 - `src/core/plugin-types.ts` — added `isServiceInput()` export
 - `src/pipeline/runtime.ts` — ServiceInput detection in start/stop, metricBatchSize in flush loop, updated PipelineOptions
 - `test/unit/pipeline/service-input.test.ts` — new test file
+
+## Task 2.1: Modbus TCP Input Plugin
+
+### What was built
+1. **`src/plugins/inputs/modbus.ts`** — full Modbus TCP polling Input implementation (~300 lines)
+2. **Zod config schema** — `ModbusConfigSchema` and `ModbusRegisterSchema` matching PRD §6 field-by-field
+3. **Register reading** — FC01 (coils), FC02 (discrete inputs), FC03 (holding registers), FC04 (input registers)
+4. **Multi-register types** — uint32, int32, float32 with 4 byte order variants (ABCD, CDAB, BADC, DCBA)
+5. **Scaling and bit extraction** — `output = raw * scale + offset`, single-bit boolean extraction
+6. **Batch reads** — contiguous same-type registers grouped into single requests, respecting `max_batch_size` and `max_gap`
+7. **Shared connection mode** — `connection_mode: "shared"` with `slaves` config, `setID()` per slave
+8. **Modbus exception handling** — per PRD §6 table: exceptions 01/02/03 disable register, 04/05/06/08/0A/0B retry
+9. **Reconnection** — auto-reconnect on connection loss during gather()
+10. **Dependency injection** — `ModbusClient` interface + optional client injection for testing
+
+### Key decisions
+- `ModbusClient` interface extracted for testability — tests inject `MockModbusClient` instead of real modbus-serial
+- Batch read fallback: on batch failure, retries individual registers to isolate the bad one (PRD §6)
+- `disabledRegisters` set is public readonly for observability (future: exposed in self-metrics and Web UI)
+- Per-register byte order override works: `config.byte_order` is the plugin-level default, `register.byte_order` overrides per-register
+- Connection errors during shared mode abort all remaining slaves (can't switch slave on dead TCP connection)
+
+### Dependencies added
+- `modbus-serial@8.0.23` — verified import works with Bun
+
+### Tests added (31 new, 151 total)
+- `test/unit/plugins/inputs/modbus.test.ts`
+- 18 tests matching all task requirements (FC01-04, byte orders, scaling, batch, shared mode, exceptions, reconnection, config validation)
+- 6 batch grouping unit tests
+- 6 byte order decoding unit tests
+- 1 additional config validation test
+
+### Files changed
+- `src/plugins/inputs/modbus.ts` — new file
+- `test/unit/plugins/inputs/modbus.test.ts` — new file
+- `package.json` — added modbus-serial dependency
 
 ## Notes
 

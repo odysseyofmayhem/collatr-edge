@@ -68,7 +68,7 @@
       "Reconnection after connection drop",
       "Config validation: missing controller → error, slave_id out of range → error"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.1i",

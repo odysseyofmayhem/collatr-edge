@@ -18,6 +18,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "modbus-serial": "^8.0.23",
     "msgpackr": "^1.11.8",
     "smol-toml": "^1.6.0",
     "zod": "^4.3.6"
