@@ -7,7 +7,7 @@
 |------|-------------|--------|
 | 3.0 | Stdout output | ✅ |
 | 3.1 | File output (JSON-lines, CSV) | ✅ |
-| 3.1i | File output → pipeline integration | ⬜ |
+| 3.1i | File output → pipeline integration | ✅ |
 | 3.2 | Local data store (SQLite, rotation, retention) | ⬜ |
 | 3.2i | Local store → pipeline integration | ⬜ |
 | 3.3 | Store-and-forward buffer | ⬜ |
@@ -56,6 +56,18 @@
 - `connect()` creates parent directories with `mkdir({ recursive: true })`.
 
 **Test count:** 287 pass (18 new), 0 fail
+
+## Task 3.1i: File Output Pipeline Integration — COMPLETE
+
+**Files created:**
+- `test/integration/file-pipeline.test.ts` — 3 integration tests
+
+**What was tested:**
+- Mock polling input → pipeline → FileOutput (JSON-lines): metrics arrive in file with correct names, fields, tags
+- Global tags (`site`, `line`) merged into every metric in the file
+- Processor (TaggingProcessor adds `processed=true`) transforms reflected in file output
+
+**Test count:** 290 pass (3 new), 0 fail
 
 ## Notes
 
