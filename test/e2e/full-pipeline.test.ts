@@ -496,6 +496,9 @@ describe("E2E: Full pipeline with real plugins (task 5.0)", () => {
     const aggPushes = events.filter((e) => e.event === "aggregator_push");
     expect(aggPushes.length).toBeGreaterThanOrEqual(1);
 
+    // 3b. Final aggregator push happens before output close (PRD §8 step 7 before step 9)
+    expect(aggPushes[aggPushes.length - 1]!.timestamp).toBeLessThanOrEqual(outputClose!.timestamp);
+
     // 4. Input close() was called
     const inputClose = events.find((e) => e.event === "input_close");
     expect(inputClose).toBeDefined();

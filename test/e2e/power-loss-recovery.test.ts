@@ -103,9 +103,11 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
       await store.write(makeMetrics(100));
     }
 
-    // Simulate crash: do NOT call store.close() — no explicit WAL checkpoint.
+    // Simulate crash: do NOT call store.close() before recovery verification.
+    // No WAL checkpoint has been explicitly triggered — data is in the WAL only.
     // The internal Database handles are still open (like a process that died).
     // Data should still be recoverable from the WAL.
+    // Note: store.close() is called AFTER recovery verification as cleanup only.
 
     // Re-open the daily file directly (simulates restart)
     const dbFiles = findDailyFiles(tmpDir);

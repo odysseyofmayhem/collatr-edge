@@ -308,6 +308,9 @@ async function runOutputFlushLoop(
           await output.write(chunk);
         }
       } catch (err) {
+        // TODO: Phase 7 — when S&F buffer is integrated, failed final-flush
+        // metrics should be persisted to the buffer for recovery on next startup.
+        // Currently these metrics are lost if the output is still failing at shutdown.
         console.error(`[pipeline] final flush error: ${(err as Error).message}`);
       }
     }

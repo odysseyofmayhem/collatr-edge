@@ -226,8 +226,8 @@ export class LocalStoreOutput implements Output {
     for (const [, db] of this.openDbs) {
       try {
         db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-      } catch {
-        // Ignore checkpoint errors during shutdown
+      } catch (err) {
+        console.warn(`[local_store] checkpoint error during shutdown: ${(err as Error).message}`);
       }
       db.close();
     }

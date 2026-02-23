@@ -7,6 +7,7 @@ import { PipelineRuntime } from "@pipeline/runtime";
 import type { Accumulator } from "@core/accumulator";
 import type { Metric } from "@core/metric";
 import type { Input, Processor, Output } from "@core/plugin-types";
+import { captureErrors } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Test helpers — error-producing plugins
@@ -106,25 +107,6 @@ class CollectorOutput implements Output {
   }
 
   async close(): Promise<void> {}
-}
-
-// ---------------------------------------------------------------------------
-// Error capture helper
-// ---------------------------------------------------------------------------
-
-function captureErrors(): { errors: string[]; restore: () => void } {
-  const errors: string[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-    original.apply(console, args); // still log to stderr for debugging visibility
-  };
-  return {
-    errors,
-    restore: () => {
-      console.error = original;
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -293,9 +275,10 @@ describe("E2E: Error resilience (task 5.4)", () => {
       );
       expect(writeErrors.length).toBe(3);
 
-      // Metrics from the failed period were retried and eventually delivered
-      // (the runtime re-adds failed metrics to the batch buffer)
-      // We can verify this by checking that early counter values are present
+      // Metrics from the failed period were retried and eventually delivered.
+      // Depends on runtime re-adding failed metrics to batch buffer via
+      // batch.unshift() in src/pipeline/runtime.ts runOutputFlushLoop().
+      // This will change when S&F buffer is integrated (Phase 7).
       const counters = output.written.map(
         (m) => m.getField("counter") as number,
       );
