@@ -11,7 +11,7 @@
 | 6.1 | CLI framework + arg parsing | ✅ |
 | 6.2 | version command | ✅ |
 | 6.3 | config validate command | ✅ |
-| 6.4 | config init command | ⬜ |
+| 6.4 | config init command | ✅ |
 | 6.5 | Plugin factory (config → pipeline) | ⬜ |
 | 6.6 | run command + signal handling | ⬜ |
 | 6.7 | Systemd unit file + docs | ⬜ |
@@ -115,3 +115,32 @@
 **Notes for next task:**
 - Task 6.4 (config init) should generate TOML that passes `configValidateCommand()` — good test to write
 - The `PLUGIN_SCHEMAS` registry in `src/core/plugin-schemas.ts` will be reused by task 6.5 (plugin factory)
+
+## Task 6.4: Config Init Command
+
+**What was built:**
+- `src/cli/commands/config-init.ts` — `configInitCommand()` generates a default TOML config template with comments
+- Arg parsing for `--output/-o` (default: `./collatr-edge.toml`), `--mode` (`connected`/`local_network`/`standalone`, default: `local_network`), `--force`
+- `generateConfigTemplate(mode)` — string literal template with mode-specific sections
+- Wired into `src/cli/index.ts` config subcommand routing (replaced stub)
+- 21 new tests in `test/unit/cli/config-init.test.ts`
+
+**Decisions:**
+- Template is a string literal in source code (bundled in compiled binary, no separate file)
+- Mode-specific sections: `[agent.hub]` uncommented only in connected mode, `[network_policy]` with mode-appropriate settings in all modes
+- Used `Bun.file().exists()` for pre-write check and `Bun.write()` for file creation (Bun-native, no `node:fs` dependency in production code)
+- TOML structure: `[agent]` then `[agent.hub]` (subtable) then `[network_policy]` — valid TOML v1.0 ordering, parser handles it correctly
+- `[outputs.local_store]` uses single-bracket notation (singleton plugin, consistent with PRD Appendix A)
+- `[[inputs.internal]]` uses double-bracket notation (consistent with PRD Appendix A and other input plugins)
+- Template includes commented examples for modbus, opcua, rename, filter, basicstats, file, stdout — self-documenting for operators
+
+**Files changed:**
+- New: `src/cli/commands/config-init.ts`, `test/unit/cli/config-init.test.ts`
+- Modified: `src/cli/index.ts` (import + wired configInitCommand), `test/unit/cli/cli.test.ts` (updated config init stub test)
+
+**Test results:** 515 pass, 0 fail (494 existing + 21 new)
+
+**Notes for next task:**
+- Task 6.5 (plugin factory) is the most complex remaining task — read all plugin constructors before implementing
+- The `generateConfigTemplate()` function is exported for potential reuse in tests
+- All three mode templates (connected, local_network, standalone) pass `configValidateCommand()` — confirmed by integration tests

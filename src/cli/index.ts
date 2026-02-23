@@ -2,6 +2,7 @@
 // PRD refs: §18 Deployment & Distribution (CLI command list)
 
 import { getLogger } from "../core/logger";
+import { configInitCommand } from "./commands/config-init";
 import { configValidateCommand } from "./commands/config-validate";
 import { versionCommand } from "./commands/version";
 
@@ -86,9 +87,7 @@ async function configCommand(
   const subcommand = args[0];
   switch (subcommand) {
     case "init":
-      // Implemented in task 6.4
-      process.stderr.write("Error: config init not yet implemented\n");
-      return 1;
+      return await configInitCommand(args.slice(1));
     case "validate":
       return await configValidateCommand(options.configPath);
     default:

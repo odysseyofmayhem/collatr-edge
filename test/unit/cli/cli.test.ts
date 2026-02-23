@@ -2,6 +2,9 @@
 // PRD refs: §18 Deployment & Distribution (CLI)
 
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { main, parseGlobalOptions } from "../../../src/cli/index";
 
 describe("CLI framework", () => {
@@ -175,10 +178,12 @@ describe("CLI framework", () => {
   // =========================================================================
 
   it("config init → routes to config init handler", async () => {
-    const code = await main(["config", "init"]);
-    // Currently stubbed — returns 1 with "not yet implemented"
-    expect(code).toBe(1);
-    expect(stderr()).toContain("config init");
+    const tmpDir = mkdtempSync(join(tmpdir(), "collatr-cli-init-"));
+    const outPath = join(tmpDir, "test.toml");
+    const code = await main(["config", "init", "--output", outPath]);
+    expect(code).toBe(0);
+    expect(stdout()).toContain("Generated default config");
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("config validate → routes to config validate handler", async () => {
