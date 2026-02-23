@@ -146,13 +146,12 @@ async function runMainLoop(
   outputBroadcaster: Broadcaster<Metric>,
   globalTags?: Record<string, string>,
 ): Promise<void> {
-  // LIMITATION: drop_original is evaluated as a single global flag. If ANY aggregator
-  // has dropOriginal=true, ALL originals are suppressed. In Telegraf, drop_original is
-  // per-aggregator — originals still flow if at least one aggregator wants them. The
-  // correct fix is: only drop if ALL aggregators have dropOriginal=true. This matters
-  // when multiple aggregators have mixed settings. Acceptable for Phase 1 where
-  // single-aggregator is the expected case; fix in Phase 2 if multi-aggregator
-  // scenarios with mixed drop_original settings are needed.
+  // drop_original semantics: originals are suppressed only when EVERY aggregator
+  // has dropOriginal=true. If any aggregator wants originals, they flow through.
+  // This is a global all-or-nothing decision rather than per-aggregator routing.
+  // Full per-aggregator routing (where each aggregator independently controls
+  // whether its downstream sees originals) would require separate output channels
+  // per aggregator — deferred until multi-aggregator mixed-mode scenarios arise.
   const shouldDropOriginals =
     aggregators.length > 0 && aggregators.every((a) => a.dropOriginal);
 

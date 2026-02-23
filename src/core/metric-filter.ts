@@ -159,22 +159,28 @@ export class MetricFilter {
     }
 
     // 5. fieldpass — keep only matching fields
+    //    Collect keys to remove first to avoid mutating Map during iteration.
     if (this.fieldpassRe !== null) {
+      const toRemove: string[] = [];
       for (const fieldKey of metric.fields.keys()) {
         if (!this.fieldpassRe.some((re) => re.test(fieldKey))) {
-          metric.removeField(fieldKey);
+          toRemove.push(fieldKey);
         }
       }
+      for (const key of toRemove) metric.removeField(key);
       if (metric.fields.size === 0) return null;
     }
 
     // 6. fielddrop — remove matching fields
+    //    Collect keys to remove first to avoid mutating Map during iteration.
     if (this.fielddropRe !== null) {
+      const toRemove: string[] = [];
       for (const fieldKey of metric.fields.keys()) {
         if (this.fielddropRe.some((re) => re.test(fieldKey))) {
-          metric.removeField(fieldKey);
+          toRemove.push(fieldKey);
         }
       }
+      for (const key of toRemove) metric.removeField(key);
       if (metric.fields.size === 0) return null;
     }
 

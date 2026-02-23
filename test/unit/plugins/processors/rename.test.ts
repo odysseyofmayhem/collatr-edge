@@ -311,5 +311,19 @@ describe("Rename Processor", () => {
       });
       expect(config.replace[0]!.tag).toBe("host");
     });
+
+    it("rejects rule with neither field nor tag", () => {
+      expect(() =>
+        RenameConfigSchema.parse({ replace: [{ dest: "foo" }] }),
+      ).toThrow();
+    });
+
+    it("rejects rule with both field and tag", () => {
+      expect(() =>
+        RenameConfigSchema.parse({
+          replace: [{ field: "temperature", tag: "host", dest: "renamed" }],
+        }),
+      ).toThrow();
+    });
   });
 });

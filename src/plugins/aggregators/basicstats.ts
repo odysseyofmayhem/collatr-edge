@@ -25,7 +25,10 @@ export const BasicstatsConfigSchema = z.object({
   stats: z
     .array(z.enum(STAT_NAMES))
     .default(["count", "min", "max", "sum", "mean"]),
-  // Per-plugin filtering (which metrics to aggregate)
+  // Per-plugin filtering (which metrics to aggregate).
+  // Intentionally limited to name/tag filters — not field filters. Aggregators
+  // accumulate ALL numeric fields from accepted metrics. Field-level filtering
+  // should be done upstream via a filter processor if needed.
   namepass: MetricFilterSchema.shape.namepass,
   namedrop: MetricFilterSchema.shape.namedrop,
   tagpass: MetricFilterSchema.shape.tagpass,

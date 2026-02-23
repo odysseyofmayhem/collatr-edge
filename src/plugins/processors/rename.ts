@@ -3,6 +3,9 @@
 //
 // Renames fields and/or tags on metrics passing through.
 // Processor contract: explicit emit via acc.addMetric(). No auto-forwarding.
+//
+// Per-plugin filtering (namepass/namedrop/tagpass/tagdrop) is handled at the
+// runtime config layer, not embedded in individual processor schemas.
 
 import { z } from "zod/v4";
 import type { Processor } from "@core/plugin-types";
@@ -17,7 +20,13 @@ const RenameRuleSchema = z.object({
   field: z.string().optional(),
   tag: z.string().optional(),
   dest: z.string(),
-});
+}).refine(
+  (rule) => rule.field !== undefined || rule.tag !== undefined,
+  { message: "Rename rule must specify either 'field' or 'tag'" },
+).refine(
+  (rule) => !(rule.field !== undefined && rule.tag !== undefined),
+  { message: "Rename rule must specify 'field' or 'tag', not both (use two separate rules)" },
+);
 
 export const RenameConfigSchema = z.object({
   replace: z.array(RenameRuleSchema).default([]),

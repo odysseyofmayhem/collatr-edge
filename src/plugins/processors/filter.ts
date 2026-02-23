@@ -4,6 +4,10 @@
 // Drops or passes metrics based on name, tag, and field criteria.
 // Wraps MetricFilter (from core) as a processor pipeline stage.
 // Processor contract: emit matching metrics via acc.addMetric(), drop non-matching (emit nothing).
+//
+// Per-plugin filtering (namepass/namedrop etc. on other plugin types) is handled at
+// the runtime config layer. This processor IS the standalone filter — its config
+// schema is the MetricFilterSchema itself.
 
 import { z } from "zod/v4";
 import { MetricFilter, MetricFilterSchema } from "@core/metric-filter";

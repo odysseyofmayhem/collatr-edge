@@ -347,6 +347,29 @@ describe("MetricFilter", () => {
   });
 
   // =========================================================================
+  // fieldpass + fielddrop combined
+  // =========================================================================
+
+  describe("fieldpass + fielddrop combined", () => {
+    it("fieldpass keeps matching, then fielddrop removes from survivors", () => {
+      const filter = makeFilter({
+        fieldpass: ["temp_*", "quality"],
+        fielddrop: ["temp_debug"],
+      });
+      const metric = makeMetric({
+        fields: { temp_motor: 23.5, temp_debug: 0, quality: 1, count: 42 },
+      });
+      const result = filter.apply(metric);
+      expect(result).not.toBeNull();
+      expect(result!.fields.size).toBe(2); // temp_motor + quality
+      expect(result!.hasField("temp_motor")).toBe(true);
+      expect(result!.hasField("quality")).toBe(true);
+      expect(result!.hasField("temp_debug")).toBe(false); // removed by fielddrop
+      expect(result!.hasField("count")).toBe(false); // removed by fieldpass
+    });
+  });
+
+  // =========================================================================
   // Glob wildcard edge cases
   // =========================================================================
 
