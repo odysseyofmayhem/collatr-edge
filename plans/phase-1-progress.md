@@ -114,8 +114,23 @@
   - Global tags: present on all received metrics, merged correctly with local tags
   - Auto-timestamp: nanosecond timestamp is within before/after window, sanity-checked against epoch
 
+### Task 1.6 — Plugin interfaces and registry
+- **What:** Defined all plugin interfaces in `src/core/plugin-types.ts` and implemented `PluginRegistry` class in `src/core/plugin-registry.ts`
+- **Result:** 5 tests pass covering all 5 required test cases
+- **Implementation details:**
+  - `plugin-types.ts`: `Input`, `ServiceInput`, `Processor`, `Aggregator`, `Output`, `StatefulPlugin` — all match PRD Appendix B field-by-field
+  - `PluginType` union: `"input" | "processor" | "aggregator" | "output"`
+  - `PluginRegistry` class with `registerPlugin()`, `getPlugin()`, `listPlugins()`
+  - `PluginMetadata`: name, type, description
+  - `PluginRegistration<T>`: metadata + factory function `() => T`
+  - Registry is a class (not module singleton) for test isolation
+- **Decisions:**
+  - Registry key is `metadata.name` (simple string). The PRD's `BUILTIN_PLUGINS` uses composite keys like `input/modbus`, but that's the lazy-loader map, not the registry. For Phase 1, simple name keys are sufficient.
+  - Duplicate name registration throws an error (prevents accidental overwrite). This is the safer default — if you want to replace a plugin, you need to be explicit about it.
+  - Factory returns a new instance each call (not singleton) — matches PRD §6 "Each config block creates a new instance via factory."
+
 ## Current Task
-Task 1.6 — Plugin interfaces and registry
+Task 1.7 — Config parser
 
 ## Blockers
 (none)

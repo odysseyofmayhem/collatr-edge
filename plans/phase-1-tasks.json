@@ -210,7 +210,7 @@
       "Factory creates new instance each call (not singleton)",
       "Register same name twice → error or overwrite (decide and document)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.7",
