@@ -476,6 +476,8 @@ describe("OPC-UA input plugin", () => {
     });
 
     expect(acc.metrics.length).toBe(1);
+    // I-01: group name used as measurement, not node name
+    expect(acc.metrics[0]!.measurement).toBe("conveyor_drives");
     expect(acc.metrics[0]!.tags.subsystem).toBe("conveyor"); // from group
     expect(acc.metrics[0]!.tags.location).toBe("east"); // from node
 

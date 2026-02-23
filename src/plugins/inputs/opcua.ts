@@ -712,7 +712,7 @@ export class OpcuaInput implements ServiceInput {
       ...node.tags,
     };
 
-    this.acc.addFields(node.name, fields, tags, timestamp);
+    this.acc.addFields(node.measurement, fields, tags, timestamp);
   }
 
   /** Reconnect with exponential backoff per PRD Appendix D. */

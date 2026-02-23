@@ -348,16 +348,7 @@ export class PipelineRuntime {
       await plugin.connect();
     }
 
-    // 3. Start output flush loops
-    for (let i = 0; i < this.options.outputs.length; i++) {
-      const outputOpts = this.options.outputs[i]!;
-      const ch = outputChannels[i]!;
-      this.loops.push(
-        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize),
-      );
-    }
-
-    // 4. Start aggregator push loops (timer-driven)
+    // 3. Start aggregator push loops (timer-driven — PRD §8 step 13)
     const globalTags = this.options.globalTags;
     for (const agg of this.options.aggregators) {
       const period = agg.period ?? this.options.gatherIntervalMs;
@@ -367,10 +358,10 @@ export class PipelineRuntime {
       );
     }
 
-    // 5. Create input channel (PRD §4: fan-in from all inputs)
+    // 4. Create input channel (PRD §4: fan-in from all inputs)
     this.inputChannel = new Channel<Metric>({ capacity: 10_000 });
 
-    // 6. Start main processing loop (processor chain + aggregator fork)
+    // 5. Start main processing loop (processor chain + aggregator fork — PRD §8 step 12)
     this.loops.push(
       runMainLoop(
         this.inputChannel,
@@ -384,7 +375,7 @@ export class PipelineRuntime {
       ),
     );
 
-    // 7. Init plugins and start inputs
+    // 6. Init plugins and start inputs
     for (const proc of this.options.processors) {
       if (proc.plugin.init) await proc.plugin.init();
     }
@@ -421,6 +412,15 @@ export class PipelineRuntime {
           runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal),
         );
       }
+    }
+
+    // 7. Start output flush loops (PRD §8 step 16: last — after all inputs are running)
+    for (let i = 0; i < this.options.outputs.length; i++) {
+      const outputOpts = this.options.outputs[i]!;
+      const ch = outputChannels[i]!;
+      this.loops.push(
+        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize),
+      );
     }
   }
 

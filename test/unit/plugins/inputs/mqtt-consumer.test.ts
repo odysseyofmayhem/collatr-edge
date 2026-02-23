@@ -187,7 +187,7 @@ describe("MQTT Consumer Input Plugin", () => {
 
     expect(mockClient.subscribeCalls.length).toBe(1);
     expect(mockClient.subscribeCalls[0]!.topics).toEqual(["sensors/temperature"]);
-    expect(mockClient.subscribeCalls[0]!.qos).toBe(0);
+    expect(mockClient.subscribeCalls[0]!.qos).toBe(1); // F-13: default QoS is 1
 
     // Simulate receiving a JSON message
     mockClient.emitMessage(
@@ -563,7 +563,7 @@ describe("MQTT Consumer Input Plugin", () => {
       topics: ["sensors/#"],
     });
     expect(valid.servers).toEqual(["tcp://localhost:1883"]);
-    expect(valid.qos).toBe(0);
+    expect(valid.qos).toBe(1); // F-13: default QoS is 1
     expect(valid.data_format).toBe("json");
     expect(valid.topic_tag).toBe("topic");
   });

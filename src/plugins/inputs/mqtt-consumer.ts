@@ -25,7 +25,7 @@ export const MqttConsumerConfigSchema = z.object({
   // Subscriptions
   topics: z.array(z.string()).min(1)
     .describe("MQTT topics to subscribe to (supports + and # wildcards)"),
-  qos: z.number().int().min(0).max(2).default(0)
+  qos: z.number().int().min(0).max(2).default(1)
     .describe("MQTT QoS level (0, 1, or 2)"),
 
   // Payload parsing
