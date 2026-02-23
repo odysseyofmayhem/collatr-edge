@@ -119,6 +119,6 @@
       "Output retry: metrics delivered after output recovers",
       "Gather timeout: slow input timed out, fast input unaffected, pipeline responsive"
     ],
-    "passes": false
+    "passes": true
   }
 ]

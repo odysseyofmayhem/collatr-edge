@@ -239,6 +239,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
   // -------------------------------------------------------------------------
 
   it("5.1.3: data loss bound — at most 1s of data lost with synchronous=NORMAL", async () => {
+    // Test writes 50 batches × 100ms = ~5s of simulated collection
     const tmpDir = makeTempDir("513");
 
     const store = new LocalStoreOutput(makeLocalStoreConfig(tmpDir));
@@ -291,7 +292,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
     // Cleanup
     await store.close();
     openStores.length = 0;
-  });
+  }, 15_000); // 15s timeout — test writes 50 batches × 100ms = ~5s + overhead
 
   // -------------------------------------------------------------------------
   // 5.1.4 — Corruption detection: corrupt file moved aside, fresh DB created

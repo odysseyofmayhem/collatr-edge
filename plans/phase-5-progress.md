@@ -1,6 +1,6 @@
 # Phase 5 Progress
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Task Status
 
@@ -11,7 +11,7 @@
 | 5.1 | SQLite recovery & power loss simulation | ✅ |
 | 5.2 | Sustained operation (60s compressed soak) | ✅ |
 | 5.3 | Buffer overflow & backpressure | ✅ |
-| 5.4 | Error resilience | ⬜ |
+| 5.4 | Error resilience | ✅ |
 
 ## Notes
 
@@ -88,3 +88,48 @@
 - Test 5.3.2 follows plan guidance (isolation variant 5.3.2a) since runtime integration is too large for Phase 5.
 
 **Test count:** 441 pass, 0 fail (437 existing + 4 new)
+
+### Task 5.4 — Error resilience
+
+**Test file:** `test/e2e/error-resilience.test.ts` (4 tests, 20 expect() calls)
+
+**Production code change:** `src/pipeline/runtime.ts`
+- Added try/catch around `proc.process(m, acc)` in `runMainLoop` (PRD §14: processor error → metric dropped, pipeline continues). Previously a processor throw would crash the main processing loop.
+
+**Other fix:** `test/e2e/power-loss-recovery.test.ts`
+- Added 15s timeout to test 5.1.3 (data loss bound) — the test writes 50 batches × 100ms = ~5s, which marginally exceeded the default 5000ms timeout under load from the soak tests.
+
+**What was built:**
+- Created test helpers: `HealthyInput`, `FailingInput`, `AlternatingInput`, `ThrowingProcessor`, `FailNTimesOutput`, `SlowInput`, `CollectorOutput`
+- 5.4.1: Input gather error — two inputs (one healthy, one throws every gather), verified: pipeline survives, output receives metrics from healthy input only, gather errors logged.
+- 5.4.2: Processor error — alternating good/bad metrics, ThrowingProcessor rejects bad_metric. Verified: output contains only good_metric, processor errors logged, pipeline stable. This test exercises the NEW try/catch added in runtime.ts.
+- 5.4.3: Output write failure with retry — FailNTimesOutput fails first 3 writes. Verified: output eventually received metrics (successCount > 0), 3 write errors logged, early metrics (counter ≤ 5) present in output (proving retry worked).
+- 5.4.4: Gather timeout — normal input (100ms) + slow input (5s gather), gatherTimeoutMs=200ms. Verified: output has normal input's metrics, timeout errors logged, metrics span ≥500ms of the 1s window (pipeline stayed responsive).
+
+**Decisions:**
+- Processor error isolation was NOT previously implemented in the runtime — added it as a production code change per PRD §14
+- SlowInput uses 500ms gather interval (not 50ms) to reduce orphan background gathers during the test
+- Error capture via console.error override with try/finally restore pattern
+
+**Test count:** 445 pass, 0 fail (441 existing + 4 new)
+
+---
+
+## Phase 5 Summary
+
+**All tasks complete.** 19 new E2E tests across 5 test files (exceeds the ≥15 threshold).
+
+| Metric | Result |
+|--------|--------|
+| Total tests | 445 pass, 0 fail across 41 files |
+| New E2E tests | 19 (4 + 4 + 3 + 4 + 4) |
+| New expect() calls | 933 |
+| Production code changes | 2 (corruption detection in local-store.ts, processor error isolation in runtime.ts) |
+| Test suite runtime | ~154s (dominated by two 60s soak tests) |
+
+**Phase 5 acceptance criteria:**
+1. ✅ All E2E tests pass — full pipeline, power loss, sustained operation, buffer overflow, error resilience
+2. ✅ All existing tests still pass — zero regressions
+3. ✅ No new `// TODO` items without context (existing TODO in runtime.ts for cooperative gather cancellation is pre-existing)
+4. ✅ Test count: 19 new E2E tests (≥15 threshold met)
+5. ✅ Long test suite runs in ~154s (soak tests dominate as expected)

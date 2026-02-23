@@ -162,8 +162,15 @@ async function runMainLoop(
       const next: Metric[] = [];
       for (const m of metrics) {
         const acc = new CollectingAccumulator(globalTags);
-        await proc.process(m, acc);
-        next.push(...acc.drain());
+        try {
+          await proc.process(m, acc);
+          next.push(...acc.drain());
+        } catch (err) {
+          // PRD §14: processor error → metric dropped, pipeline continues
+          console.error(
+            `[pipeline] processor error: ${(err as Error).message}`,
+          );
+        }
       }
       metrics = next;
     }
