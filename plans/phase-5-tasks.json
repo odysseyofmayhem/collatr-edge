@@ -98,7 +98,7 @@
       "Partial write: accept/reject/keep granularity correct, subsequent transaction starts at right place",
       "Unacknowledged transaction: metrics survive restart, at-least-once guarantee"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "5.4",

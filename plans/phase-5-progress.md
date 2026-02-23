@@ -10,7 +10,7 @@
 | 5.0 | Full pipeline E2E with real plugins | ✅ |
 | 5.1 | SQLite recovery & power loss simulation | ✅ |
 | 5.2 | Sustained operation (60s compressed soak) | ✅ |
-| 5.3 | Buffer overflow & backpressure | ⬜ |
+| 5.3 | Buffer overflow & backpressure | ✅ |
 | 5.4 | Error resilience | ⬜ |
 
 ## Notes
@@ -72,3 +72,19 @@
 - Daily rotation uses generous day spacing (10 days ago vs 5-day retention) to avoid boundary timing issues near UTC midnight
 
 **Test count:** 437 pass, 0 fail (434 existing + 3 new)
+
+### Task 5.3 — Buffer overflow & backpressure
+
+**Test file:** `test/e2e/buffer-overflow.test.ts` (4 tests, 193 expect() calls)
+
+**What was built:**
+- 5.3.1: drop_oldest overflow — created buffer with `metric_buffer_limit=100`, added 200 metrics, verified length=100, `beginTransaction(100)` returns the newest 100 (counters 101-200 in ascending id order).
+- 5.3.2: Failing output isolation — added 100 metrics, ran 3 `beginTransaction(50)` + `keepAll()` cycles (simulating repeated write failures), verified same first 50 metrics returned each time (at-least-once). Then `acceptAll()` → length 50, next transaction returns remaining counters 51-100.
+- 5.3.3: Partial write — added 100 metrics, `beginTransaction(50)`, accepted indices [0-29] (30 removed), rejected indices [30-39] (10 removed), kept [40-49] implicitly. Verified: length=60, next transaction returns 10 kept metrics (counters 41-50) followed by 40 untouched (counters 51-90). Drained remaining 10 (counters 91-100).
+- 5.3.4: Unacknowledged transaction survives restart — added 100, accepted first 50, added 50 more (length=100), began transaction but didn't resolve, closed+reopened. Verified: length=100, all metrics recoverable in correct order (counters 51-100 then 101-150).
+
+**Decisions:**
+- S&F buffer is NOT wired into PipelineRuntime's output flush loop — tests validate buffer in isolation. Runtime/buffer integration documented as Phase 7 prerequisite.
+- Test 5.3.2 follows plan guidance (isolation variant 5.3.2a) since runtime integration is too large for Phase 5.
+
+**Test count:** 441 pass, 0 fail (437 existing + 4 new)
