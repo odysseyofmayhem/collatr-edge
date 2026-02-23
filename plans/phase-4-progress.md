@@ -1,6 +1,6 @@
 # Phase 4: Processors & Aggregators — Progress
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Tasks
 | Task | Description | Status |
@@ -12,7 +12,7 @@
 | 4.2 | Filter processor | ✅ |
 | 4.2i | Filter → pipeline integration | ✅ |
 | 4.3 | Basicstats aggregator | ✅ |
-| 4.3i | Basicstats → pipeline integration (E2E) | ⬜ |
+| 4.3i | Basicstats → pipeline integration (E2E) | ✅ |
 
 ## Task 4.0: Metric Filtering Framework
 
@@ -177,6 +177,24 @@
 - Config validation: 4 tests (defaults, custom stats, invalid stat, period string)
 
 **Test results:** 419 pass, 0 fail (402 + 17 new)
+
+## Task 4.3i: Basicstats Pipeline Integration (E2E)
+
+**Files created:**
+- `test/integration/basicstats-pipeline.test.ts` — 4 integration tests (all pass)
+
+**What was tested:**
+- Originals + summaries: both original metrics (field=value) and summaries (field=value_count etc.) arrive at output with drop_original=false
+- Summary accuracy: incrementing input → verify min=1, sum=N*(N+1)/2, mean=sum/count
+- drop_original=true: only summary metrics in output, zero originals
+- Multiple windows: incrementing input across 2+ aggregation periods, second window's min > first window's min (proving reset works)
+
+**Design notes:**
+- Tests use real PipelineRuntime with real aggregator push loop timers
+- Timing: 30ms gather/flush intervals, 100-200ms aggregation periods, 250-500ms total run time
+- Incrementing input makes it easy to verify that stats reset between windows (min increases)
+
+**Test results:** 423 pass, 0 fail (419 + 4 new)
 
 ## Notes
 

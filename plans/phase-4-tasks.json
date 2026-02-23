@@ -206,6 +206,6 @@
       "drop_original=true: only summary metrics in output (no originals)",
       "Multiple aggregation periods: stats reset between windows"
     ],
-    "passes": false
+    "passes": true
   }
 ]
