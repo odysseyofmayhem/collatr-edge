@@ -94,6 +94,8 @@ export interface MqttClientOptions {
   username?: string;
   password?: string;
   reconnectPeriod?: number;
+  maxReconnectDelay?: number;
+  maxReconnectAttempts?: number;
   ca?: string;
   cert?: string;
   key?: string;
@@ -101,7 +103,7 @@ export interface MqttClientOptions {
 }
 
 export interface MqttClientInterface {
-  connect(brokerUrl: string, options: MqttClientOptions): void;
+  connect(servers: string[], options: MqttClientOptions): void;
   subscribe(topics: string[], qos: number): Promise<void>;
   unsubscribe(topics: string[]): Promise<void>;
   onMessage(handler: (event: MqttMessageEvent) => void): void;
@@ -219,6 +221,7 @@ export class MqttConsumerInput implements ServiceInput {
   private client: MqttClientInterface;
   private acc: Accumulator | null = null;
   private _stopped = false;
+  private reconnectAttempts = 0;
 
   constructor(config: MqttConsumerConfig, client?: MqttClientInterface) {
     this.config = config;
@@ -247,14 +250,23 @@ export class MqttConsumerInput implements ServiceInput {
       if (this.acc) this.acc.addError(error);
     });
 
-    // Set up reconnect handler for logging
+    // Set up reconnect handler with retry tracking (F-05: wire max_retry)
     this.client.onReconnect(() => {
-      console.log("[mqtt_consumer] reconnecting...");
+      if (this._stopped) return;
+      this.reconnectAttempts++;
+      const maxRetry = this.config.reconnect.max_retry;
+      if (maxRetry > 0 && this.reconnectAttempts > maxRetry) {
+        console.error(`[mqtt_consumer] max reconnect attempts (${maxRetry}) exceeded — giving up`);
+        this.client.disconnect().catch(() => {});
+        return;
+      }
+      console.log(`[mqtt_consumer] reconnecting (attempt ${this.reconnectAttempts})...`);
     });
 
     // Set up connect handler to (re)subscribe on connect
     this.client.onConnect(() => {
       if (this._stopped) return;
+      this.reconnectAttempts = 0; // reset on successful connect
       // Subscribe on connect (and re-connect)
       this.client.subscribe(this.config.topics, this.config.qos).catch((err: Error) => {
         console.error(`[mqtt_consumer] subscribe error: ${err.message}`);
@@ -262,15 +274,19 @@ export class MqttConsumerInput implements ServiceInput {
       });
     });
 
-    // Connect to broker
+    // Connect to broker(s) — F-02: pass full servers list for failover
     const reconnectConfig = this.config.reconnect;
     const initialDelayMs = parseDuration(reconnectConfig.initial_delay);
+    const maxDelayMs = parseDuration(reconnectConfig.max_delay);
+    const maxRetry = reconnectConfig.max_retry;
 
     const options: MqttClientOptions = {
       clientId: this.config.client_id,
       username: this.config.username,
       password: this.config.password,
       reconnectPeriod: initialDelayMs,
+      maxReconnectDelay: maxDelayMs,
+      maxReconnectAttempts: maxRetry > 0 ? maxRetry : undefined,
     };
 
     // TLS options
@@ -281,7 +297,7 @@ export class MqttConsumerInput implements ServiceInput {
       options.rejectUnauthorized = !this.config.tls.insecure_skip_verify;
     }
 
-    this.client.connect(this.config.servers[0]!, options);
+    this.client.connect(this.config.servers, options);
   }
 
   async stop(): Promise<void> {

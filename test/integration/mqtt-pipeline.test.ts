@@ -27,7 +27,7 @@ class MockMqttClient implements MqttClientInterface {
 
   get isConnected(): boolean { return this._isConnected; }
 
-  connect(_brokerUrl: string, _options: MqttClientOptions): void {
+  connect(_servers: string[], _options: MqttClientOptions): void {
     // Connection events triggered explicitly via emitConnect()
   }
   async subscribe(_topics: string[], _qos: number): Promise<void> {}

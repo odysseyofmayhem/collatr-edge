@@ -28,7 +28,7 @@ class MockMqttClient implements MqttClientInterface {
   private reconnectHandler: (() => void) | null = null;
 
   // Tracking for assertions
-  connectCalls: Array<{ brokerUrl: string; options: MqttClientOptions }> = [];
+  connectCalls: Array<{ servers: string[]; options: MqttClientOptions }> = [];
   subscribeCalls: Array<{ topics: string[]; qos: number }> = [];
   unsubscribeCalls: string[][] = [];
   disconnected = false;
@@ -39,8 +39,8 @@ class MockMqttClient implements MqttClientInterface {
 
   get isConnected(): boolean { return this._isConnected; }
 
-  connect(brokerUrl: string, options: MqttClientOptions): void {
-    this.connectCalls.push({ brokerUrl, options });
+  connect(servers: string[], options: MqttClientOptions): void {
+    this.connectCalls.push({ servers, options });
     // Connection events are triggered explicitly via emitConnect()/emitError()
     // to give tests full control over timing.
   }
@@ -714,7 +714,7 @@ describe("MQTT Consumer Input Plugin", () => {
     await input.stop();
   });
 
-  it("reconnect config: initial_delay passed as reconnectPeriod", async () => {
+  it("reconnect config: all reconnect params passed to client options", async () => {
     const config = makeConfig({
       topics: ["sensors/temp"],
       reconnect: {
@@ -728,7 +728,129 @@ describe("MQTT Consumer Input Plugin", () => {
     await input.start(acc);
 
     expect(mockClient.connectCalls.length).toBe(1);
-    expect(mockClient.connectCalls[0]!.options.reconnectPeriod).toBe(500);
+    const opts = mockClient.connectCalls[0]!.options;
+    expect(opts.reconnectPeriod).toBe(500);
+    expect(opts.maxReconnectDelay).toBe(10_000);
+    expect(opts.maxReconnectAttempts).toBe(5);
+
+    await input.stop();
+  });
+
+  // =========================================================================
+  // F-02: Server failover — full servers list passed to client
+  // =========================================================================
+
+  it("server failover: full servers list passed to client", async () => {
+    const config = makeConfig({
+      servers: ["tcp://broker1:1883", "tcp://broker2:1883", "tcp://broker3:1883"],
+      topics: ["sensors/temp"],
+    });
+    const input = new MqttConsumerInput(config, mockClient);
+
+    await input.start(acc);
+
+    expect(mockClient.connectCalls.length).toBe(1);
+    expect(mockClient.connectCalls[0]!.servers).toEqual([
+      "tcp://broker1:1883",
+      "tcp://broker2:1883",
+      "tcp://broker3:1883",
+    ]);
+
+    await input.stop();
+  });
+
+  // =========================================================================
+  // F-05: max_retry limits reconnection attempts
+  // =========================================================================
+
+  it("max_retry exceeded: disconnects after limit reached", async () => {
+    const config = makeConfig({
+      topics: ["sensors/temp"],
+      reconnect: {
+        initial_delay: "100ms",
+        max_delay: "1s",
+        max_retry: 2,
+      },
+    });
+    const input = new MqttConsumerInput(config, mockClient);
+
+    await input.start(acc);
+    mockClient.emitConnect();
+    await Bun.sleep(10);
+
+    // 2 reconnect attempts within limit
+    mockClient.emitReconnect(); // attempt 1
+    mockClient.emitReconnect(); // attempt 2
+    expect(mockClient.disconnected).toBe(false);
+
+    // 3rd attempt exceeds max_retry of 2 → disconnect called
+    mockClient.emitReconnect(); // attempt 3
+    await Bun.sleep(10);
+    expect(mockClient.disconnected).toBe(true);
+
+    await input.stop();
+  });
+
+  it("reconnect attempts reset on successful connect", async () => {
+    const config = makeConfig({
+      topics: ["sensors/temp"],
+      reconnect: {
+        initial_delay: "100ms",
+        max_delay: "1s",
+        max_retry: 2,
+      },
+    });
+    const input = new MqttConsumerInput(config, mockClient);
+
+    await input.start(acc);
+    mockClient.emitConnect();
+    await Bun.sleep(10);
+
+    // 2 reconnect attempts (within limit)
+    mockClient.emitReconnect();
+    mockClient.emitReconnect();
+    expect(mockClient.disconnected).toBe(false);
+
+    // Successful re-connect resets the counter
+    mockClient.emitConnect();
+    await Bun.sleep(10);
+
+    // Can tolerate 2 more reconnect attempts
+    mockClient.emitReconnect();
+    mockClient.emitReconnect();
+    expect(mockClient.disconnected).toBe(false);
+
+    // 3rd exceeds again
+    mockClient.emitReconnect();
+    await Bun.sleep(10);
+    expect(mockClient.disconnected).toBe(true);
+
+    await input.stop();
+  });
+
+  it("max_retry=0: unlimited reconnection (never disconnects)", async () => {
+    const config = makeConfig({
+      topics: ["sensors/temp"],
+      reconnect: {
+        initial_delay: "100ms",
+        max_delay: "1s",
+        max_retry: 0,
+      },
+    });
+    const input = new MqttConsumerInput(config, mockClient);
+
+    await input.start(acc);
+    mockClient.emitConnect();
+    await Bun.sleep(10);
+
+    // maxReconnectAttempts should be undefined (unlimited)
+    expect(mockClient.connectCalls[0]!.options.maxReconnectAttempts).toBeUndefined();
+
+    // Many reconnects — never disconnects
+    for (let i = 0; i < 10; i++) {
+      mockClient.emitReconnect();
+    }
+    expect(mockClient.disconnected).toBe(false);
 
     await input.stop();
   });

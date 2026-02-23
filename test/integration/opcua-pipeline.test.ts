@@ -43,6 +43,9 @@ class MockOpcuaClient implements OpcuaClient {
   onDataChange(handler: (event: DataChangeEvent) => void): void {
     this.dataChangeHandler = handler;
   }
+  onClose(_handler: () => void): void {
+    // Not used in integration tests — reconnection tested in unit tests
+  }
   async transferSubscriptions(): Promise<boolean> { return false; }
   async browse(_rootNodeId: string, _maxDepth: number, _nodeClasses: string[]): Promise<BrowseResultNode[]> {
     return [];

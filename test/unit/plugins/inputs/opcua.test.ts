@@ -29,6 +29,7 @@ class MockOpcuaClient implements OpcuaClient {
   private _sessionActive = false;
   private _subscriptionCreated = false;
   private dataChangeHandler: ((event: DataChangeEvent) => void) | null = null;
+  private closeHandler: (() => void) | null = null;
 
   // Tracking for assertions
   connectCalls: Array<{ endpoint: string; options: OpcuaClientOptions }> = [];
@@ -75,6 +76,10 @@ class MockOpcuaClient implements OpcuaClient {
     this.dataChangeHandler = handler;
   }
 
+  onClose(handler: () => void): void {
+    this.closeHandler = handler;
+  }
+
   async transferSubscriptions(): Promise<boolean> {
     return this.transferResult;
   }
@@ -108,11 +113,19 @@ class MockOpcuaClient implements OpcuaClient {
     }
   }
 
+  /** Simulate connection loss. */
+  emitClose(): void {
+    this._isConnected = false;
+    this._sessionActive = false;
+    if (this.closeHandler) this.closeHandler();
+  }
+
   reset(): void {
     this._isConnected = false;
     this._sessionActive = false;
     this._subscriptionCreated = false;
     this.dataChangeHandler = null;
+    this.closeHandler = null;
     this.connectCalls = [];
     this.sessionCalls = [];
     this.subscriptionCalls = [];
@@ -924,6 +937,53 @@ describe("OPC-UA input plugin", () => {
   // -------------------------------------------------------------------------
   // Per-node tags
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // F-03: Auto-reconnect on connection loss
+  // -------------------------------------------------------------------------
+
+  it("auto-reconnect: connection loss triggers reconnection", async () => {
+    const config = minimalConfig({
+      reconnect: {
+        initial_delay: "10ms",
+        max_delay: "100ms",
+        max_retry: 2,
+      },
+    });
+    const input = new OpcuaInput(config, client);
+    await input.start(acc);
+
+    const connectCountBefore = client.connectCalls.length;
+    expect(client.isConnected).toBe(true);
+
+    // Simulate connection loss — onClose triggers reconnect()
+    client.emitClose();
+    expect(client.isConnected).toBe(false);
+
+    // Wait for reconnect attempt (10ms delay + reconnect time)
+    await Bun.sleep(100);
+
+    // Should have reconnected (additional connect calls)
+    expect(client.connectCalls.length).toBeGreaterThan(connectCountBefore);
+    expect(client.isConnected).toBe(true);
+    expect(client.sessionActive).toBe(true);
+
+    // Data should flow again after reconnection
+    client.emitDataChange({
+      nodeId: "ns=2;s=Temperature",
+      value: 30.0,
+      dataType: "Double",
+      sourceTimestamp: new Date(),
+      serverTimestamp: null,
+      statusCode: 0x00000000,
+      quality: "good",
+    });
+
+    expect(acc.metrics.length).toBe(1);
+    expect(acc.metrics[0]!.fields.value).toBe(30.0);
+
+    await input.stop();
+  });
 
   it("per-node tags included in emitted metrics", async () => {
     const config = minimalConfig({

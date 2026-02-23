@@ -1,6 +1,6 @@
 # Phase 2: Inputs — Progress
 
-## Status: ALL TASKS COMPLETE — pending code review
+## Status: COMPLETE — code review done, F-02/F-03/F-05 resolved
 
 ## Pre-Phase Fixes
 - [x] ServiceInput support in runtime (task 2.0)

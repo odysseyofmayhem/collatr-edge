@@ -189,6 +189,7 @@ export interface OpcuaClient {
   createSubscription(params: OpcuaSubscriptionParams): Promise<void>;
   addMonitoredItem(item: OpcuaMonitoredItemParams): Promise<void>;
   onDataChange(handler: (event: DataChangeEvent) => void): void;
+  onClose(handler: () => void): void;
   transferSubscriptions(): Promise<boolean>;
   browse(rootNodeId: string, maxDepth: number, nodeClasses: string[]): Promise<BrowseResultNode[]>;
   resolveNamespaceUri(uri: string): Promise<number>;
@@ -645,6 +646,14 @@ export class OpcuaInput implements ServiceInput {
     // Register data change handler
     this.client.onDataChange((event: DataChangeEvent) => {
       this.handleDataChange(event);
+    });
+
+    // Register connection loss handler — triggers automatic reconnection (F-03)
+    this.client.onClose(() => {
+      if (!this.stopped) {
+        console.warn("[opcua] connection lost — initiating reconnection");
+        this.reconnect();
+      }
     });
 
     // Add monitored items for each configured node
