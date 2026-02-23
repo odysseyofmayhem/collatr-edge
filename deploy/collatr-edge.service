@@ -1,0 +1,35 @@
+[Unit]
+Description=CollatrEdge - IIoT Data Collection Agent
+Documentation=https://docs.collatr.com/edge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=collatr-edge
+Group=collatr-edge
+ExecStart=/usr/local/bin/collatr-edge run --config /etc/collatr-edge/config.toml
+Restart=on-failure
+RestartSec=5
+WatchdogSec=60
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/collatr /var/log/collatr-edge
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+
+# Logging (journald captures stdout/stderr)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=collatr-edge
+
+# Shutdown timeout matches agent's internal timeout
+TimeoutStopSec=35
+
+[Install]
+WantedBy=multi-user.target

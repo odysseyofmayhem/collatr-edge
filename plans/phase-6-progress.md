@@ -1,6 +1,6 @@
 # Phase 6 Progress
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Task Status
 
@@ -14,7 +14,7 @@
 | 6.4 | config init command | ✅ |
 | 6.5 | Plugin factory (config → pipeline) | ✅ |
 | 6.6 | run command + signal handling | ✅ |
-| 6.7 | Systemd unit file + docs | ⬜ |
+| 6.7 | Systemd unit file + docs | ✅ |
 
 ## Task 6.0: Structured Logger
 
@@ -227,3 +227,36 @@
 - Task 6.7 (systemd unit file + docs) is the final task — a static file with no tests needed
 - The run command is now fully functional for local development: `bun run src/index.ts run --config ./config.toml`
 - The double-signal test uses `process.emit("SIGINT")` to trigger the force exit handler — this fires JS-level handlers without sending a real POSIX signal, safe for testing
+
+## Task 6.7: Systemd Unit File + README Docs
+
+**What was built:**
+- `deploy/collatr-edge.service` — systemd unit file with hardening options (NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp, etc.)
+- Updated `README.md` — comprehensive project documentation with system requirements, quick start guide, CLI commands, systemd service setup/management, and development instructions
+
+**Decisions:**
+- Systemd unit file follows the plan template exactly — Type=simple, Restart=on-failure, RestartSec=5, WatchdogSec=60, TimeoutStopSec=35 (matches agent's internal 30s shutdown timeout + 5s margin)
+- ReadWritePaths set to `/var/collatr` (data) and `/var/log/collatr-edge` (logs) — matches the default `local_store` path in config templates
+- README includes a setup section with service user creation and directory permissions — operators need this before the systemd service will work
+- README kept focused on usage, not internals — operators and developers are the audience
+
+**Files changed:**
+- New: `deploy/collatr-edge.service`
+- Modified: `README.md` (expanded from 2-line stub to full project documentation)
+- Modified: `plans/phase-6-tasks.json` (marked 6.7 as passes: true)
+- Modified: `plans/phase-6-progress.md` (this file)
+
+**Test results:** 555 pass, 0 fail (no new tests — static files only)
+
+## Phase 6 Complete
+
+All 9 tasks (6.pre through 6.7) pass. Phase 6 acceptance criteria met:
+1. ✅ `collatr-edge version` works
+2. ✅ `collatr-edge config init` generates valid config
+3. ✅ `collatr-edge config validate` validates correctly
+4. ✅ `collatr-edge run` starts and stops cleanly
+5. ✅ Structured JSON logging throughout src/
+6. ✅ All 555 tests pass (0 regressions)
+7. ✅ 93 new tests across CLI and plugin factory modules
+8. ✅ `deploy/collatr-edge.service` exists
+9. ✅ Zero console.error/console.log in src/
