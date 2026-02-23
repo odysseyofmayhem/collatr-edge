@@ -106,8 +106,16 @@
   - `addMetric()` does NOT copy the metric — it sends the exact object reference. The PRD says "forward an existing metric", and copying is the caller's responsibility (processors can copy if needed).
   - Global tag merge uses `{ ...globalTags, ...localTags }` — spread order ensures per-metric tags win on conflict.
 
+### Task 1.5i — Integration: Accumulator → Channel → consumer
+- **What:** Integration test verifying end-to-end data flow from Accumulator through Channel to consumer
+- **Result:** 3 tests pass covering all 3 required test cases
+- **Tests:**
+  - Full data flow: addFields creates metric with correct name, fields, tags — consumer receives intact
+  - Global tags: present on all received metrics, merged correctly with local tags
+  - Auto-timestamp: nanosecond timestamp is within before/after window, sanity-checked against epoch
+
 ## Current Task
-Task 1.5i — Integration: Accumulator → Channel → consumer
+Task 1.6 — Plugin interfaces and registry
 
 ## Blockers
 (none)

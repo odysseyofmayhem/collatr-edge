@@ -186,7 +186,7 @@
       "Global tags present on received metric",
       "Auto-timestamp is reasonable (within last few seconds)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.6",
