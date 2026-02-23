@@ -16,7 +16,7 @@
 | 2.2i | OPC-UA → pipeline integration | ✅ |
 | 2.3 | MQTT consumer input | ✅ |
 | 2.3i | MQTT → pipeline integration | ✅ |
-| 2.4 | Internal metrics input | ⬜ |
+| 2.4 | Internal metrics input | ✅ |
 | 2.4i | Internal metrics integration | ⬜ |
 
 ## Task 2.0: ServiceInput Runtime Support + metric_batch_size
@@ -234,6 +234,34 @@
 
 ### Files changed
 - `test/integration/mqtt-pipeline.test.ts` — new file
+
+## Task 2.4: Internal Metrics Input Plugin
+
+### What was built
+1. **`src/core/stats.ts`** — `StatsCollector` interface + `SimpleStatsCollector` mutable implementation
+2. **`src/plugins/inputs/internal.ts`** — polling Input that emits `agent.*` metrics on each gather cycle
+3. **Agent-level metrics** — uptime_seconds, metrics_gathered, metrics_written, metrics_dropped, gather_errors, write_errors, memory_usage (heap_used, heap_total, rss, external)
+4. **Per-input metrics** — `agent.input` with gather_time_ms and metrics_count, tagged by input name
+5. **Per-output metrics** — `agent.output` with write_time_ms and buffer_size, tagged by output name
+6. **Hostname tag** — `host` tag from `os.hostname()` on all internal metrics
+
+### Key decisions
+- `StatsCollector` interface lives in `src/core/stats.ts` — shared between pipeline runtime (provider) and internal input (consumer)
+- `SimpleStatsCollector` is a mutable implementation with public fields — used for testing and will be used by PipelineRuntime for integration
+- Metric names follow PRD §15 exactly: `agent.uptime_seconds`, `agent.metrics_gathered`, etc. (not `collatr.agent.*` — PRD is authoritative per Rule 5)
+- `collect_memstats` config option allows disabling memory stats collection
+- InternalInput is a polling Input (not ServiceInput) — stats are read on each gather cycle
+- DI pattern: StatsCollector injected via constructor, same pattern as other plugins
+
+### Tests added (12 new, 244 total)
+- `test/unit/plugins/inputs/internal.test.ts`
+- **7 task-spec tests**: uptime positive value, memory positive bytes, metrics_gathered increases, per-input gather_time non-negative, correct agent.* prefix, hostname tag present, metrics flow through accumulator
+- **5 additional tests**: per-output stats with tags, collect_memstats=false, no per-input/output when empty, config defaults, error counters reflected
+
+### Files changed
+- `src/core/stats.ts` — new file (StatsCollector interface + SimpleStatsCollector)
+- `src/plugins/inputs/internal.ts` — new file (InternalInput plugin)
+- `test/unit/plugins/inputs/internal.test.ts` — new file
 
 ## Notes
 

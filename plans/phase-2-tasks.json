@@ -258,7 +258,7 @@
       "Agent hostname/instance tag present",
       "Internal metrics flow through pipeline like normal metrics"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.4i",
