@@ -58,7 +58,7 @@
       "Data loss ≤1s with synchronous=NORMAL",
       "Corruption: detected, file moved aside, fresh DB usable"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "5.2",

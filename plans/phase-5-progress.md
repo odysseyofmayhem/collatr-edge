@@ -8,7 +8,7 @@
 |------|-------------|--------|
 | 5.pre | Phase 4 review cleanup (R4, F1, F4) | ✅ (already done in prior session, commit b12e712) |
 | 5.0 | Full pipeline E2E with real plugins | ✅ |
-| 5.1 | SQLite recovery & power loss simulation | ⬜ |
+| 5.1 | SQLite recovery & power loss simulation | ✅ |
 | 5.2 | Sustained operation (60s compressed soak) | ⬜ |
 | 5.3 | Buffer overflow & backpressure | ⬜ |
 | 5.4 | Error resilience | ⬜ |
@@ -26,18 +26,31 @@
 - 5.0.3: Processor chain — DualSensorInput (`sensor_temperature` + `sensor_humidity`) → RenameProcessor (temp_c → temperature_celsius) → FilterProcessor (namepass `sensor_temperature`) → BasicstatsAggregator (200ms) → LocalStoreOutput. Verified: rename applied before filter (field is `temperature_celsius`), filter dropped `sensor_humidity` (zero rows), aggregator summaries have `temperature_celsius_count`/`temperature_celsius_mean`.
 - 5.0.4: Shutdown ordering — instrumented plugins record event timestamps. Verified: service inputs stop before output close, aggregator push fires, input close called, output received data before close, total shutdown < 5s, both polling and service metrics in output.
 
-**Test helpers created (local to test file):**
-- `DualSensorInput` — emits two metric types (sensor_temperature, sensor_humidity)
-- `TestServiceInput` — ServiceInput that pushes on a timer
-- `SimplePollingInput` — emits a single metric type with incrementing counter
-- `CollectorOutput` — captures written metrics
-- `InstrumentedOutput` — records close timestamp
-- `queryDailyDb()` — opens SQLite daily file directly for assertions
+**Test count:** 430 pass, 0 fail (426 existing + 4 new)
+
+### Task 5.1 — SQLite recovery & power loss simulation
+
+**Test file:** `test/e2e/power-loss-recovery.test.ts` (4 tests, 19 expect() calls)
+
+**Production code change:** `src/plugins/outputs/local-store.ts`
+- Added `integrity_check: z.boolean().default(false)` to `LocalStoreConfigSchema`
+- Added `renameSync` to node:fs imports
+- Implemented corruption detection path in `getOrOpenDb()` (PRD §8 step 6):
+  - Wraps DB initialization in try/catch when `integrity_check` is enabled
+  - Runs `PRAGMA integrity_check` after schema setup
+  - On failure (either integrity check result or SQLiteError from corrupt file):
+    closes DB, moves corrupt file + WAL/SHM to `*.corrupt.<timestamp>`, recurses to create fresh DB
+  - Without `integrity_check`, errors propagate normally (no behavior change)
+
+**What was built:**
+- 5.1.1: WAL recovery — wrote 1000 metrics via real LocalStoreOutput, skipped close() (simulated crash), re-opened daily file directly, ran `PRAGMA wal_checkpoint(TRUNCATE)`, verified all 1000 rows recovered, integrity_check = "ok", fields decodable via msgpackr.
+- 5.1.2: S&F buffer recovery — added 500 metrics, began transaction (100), did NOT resolve, closed buffer, re-opened. Verified length = 500 (all survived), next transaction returns same first 100 metrics (at-least-once guarantee).
+- 5.1.3: Data loss bound — wrote 50 batches of 10 metrics over 5s with synchronous=NORMAL, skipped close(), re-opened with WAL checkpoint. Verified: at most 1s of data lost (≤100 metrics). In practice all 500 survived (WAL commits are on-disk even without fsync).
+- 5.1.4: Corruption detection — wrote 100 metrics, closed cleanly, corrupted 256 bytes in the middle of the DB file, re-opened with `integrity_check: true`. Verified: SQLiteError caught, corrupt file moved to `*.corrupt.<timestamp>`, fresh DB created and usable (wrote + read 50 new metrics).
 
 **Decisions:**
-- Used test-local helper classes rather than shared test utilities (per YAGNI — extract to shared when needed by 5.1+)
-- Queried SQLite directly after pipeline.stop() rather than using LocalStoreOutput.query() (the store's DBs are closed after shutdown, and direct query proves data actually persisted)
-- Used 100ms gather/flush intervals and 200ms aggregator period for fast tests (~1-3s each)
-- Aggregator summaries confirmed to bypass the processor chain (emitted directly to output broadcaster, not re-processed) — this matches PRD §4 architecture
+- Corruption detection wraps the entire DB open/init in try/catch (not just the integrity_check PRAGMA), because severe corruption causes SQLiteError during page reads even before the explicit check
+- Used `integrity_check: false` as default to avoid performance overhead on normal startups (full table scan on every open would be slow for large daily files)
+- Buffer recovery test uses normal close() (not crash simulation) — the key assertion is that unresolved transactions don't cause data loss, which holds regardless of shutdown type
 
-**Test count:** 430 pass, 0 fail (426 existing + 4 new)
+**Test count:** 434 pass, 0 fail (430 existing + 4 new)

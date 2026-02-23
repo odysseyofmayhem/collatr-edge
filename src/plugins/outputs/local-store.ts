@@ -4,7 +4,7 @@
 import { z } from "zod/v4";
 import { Database } from "bun:sqlite";
 import { pack, unpack } from "msgpackr";
-import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync } from "node:fs";
+import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { Output } from "@core/plugin-types";
 import type { Metric, FieldValue } from "@core/metric";
@@ -21,6 +21,10 @@ export const LocalStoreConfigSchema = z.object({
   rotation: z.enum(["daily"]).default("daily"),
   downsample_after_days: z.number().int().min(1).default(7),
   downsample_interval: z.string().default("1m"),
+  // PRD §8 step 6: optional integrity check on database open.
+  // When true, runs PRAGMA integrity_check on each daily file at open.
+  // If corruption is detected, the file is moved aside and a fresh DB is created.
+  integrity_check: z.boolean().default(false),
 });
 
 export type LocalStoreConfig = z.infer<typeof LocalStoreConfigSchema>;
@@ -234,21 +238,57 @@ export class LocalStoreOutput implements Output {
     if (db) return db;
 
     const dbPath = join(this.config.path, filename);
-    db = new Database(dbPath);
 
-    // PRAGMAs (PRD §11: WAL mode, synchronous=NORMAL, busy_timeout=5000)
-    db.exec("PRAGMA journal_mode = WAL");
-    db.exec("PRAGMA synchronous = NORMAL");
-    db.exec("PRAGMA busy_timeout = 5000");
+    try {
+      db = new Database(dbPath);
 
-    // WAL checkpoint on open (startup recovery per PRD §8 step 6)
-    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      // PRAGMAs (PRD §11: WAL mode, synchronous=NORMAL, busy_timeout=5000)
+      db.exec("PRAGMA journal_mode = WAL");
+      db.exec("PRAGMA synchronous = NORMAL");
+      db.exec("PRAGMA busy_timeout = 5000");
 
-    // Create tables
-    db.exec(CREATE_METRICS_TABLE);
-    db.exec(CREATE_METRICS_TIME_INDEX);
-    db.exec(CREATE_METRICS_NAME_TIME_INDEX);
-    db.exec(CREATE_TAG_INDEX_TABLE);
+      // WAL checkpoint on open (startup recovery per PRD §8 step 6)
+      db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+
+      // Create tables
+      db.exec(CREATE_METRICS_TABLE);
+      db.exec(CREATE_METRICS_TIME_INDEX);
+      db.exec(CREATE_METRICS_NAME_TIME_INDEX);
+      db.exec(CREATE_TAG_INDEX_TABLE);
+
+      // Integrity check (PRD §8 step 6: optional, move corrupt file aside)
+      if (this.config.integrity_check) {
+        const result = db.prepare("PRAGMA integrity_check").get() as {
+          integrity_check: string;
+        };
+        if (result.integrity_check !== "ok") {
+          throw new Error(`Integrity check failed: ${result.integrity_check}`);
+        }
+      }
+    } catch (err) {
+      // If integrity_check is enabled, treat any open/init error as corruption
+      if (this.config.integrity_check && existsSync(dbPath)) {
+        console.error(
+          `[local_store] corruption detected in ${filename}: ${(err as Error).message}`,
+        );
+        try { db?.close(); } catch { /* ignore close errors on corrupt DB */ }
+        // Move corrupt file aside (PRD §8: "move corrupt file aside, create fresh")
+        const corruptPath = `${dbPath}.corrupt.${Date.now()}`;
+        renameSync(dbPath, corruptPath);
+        for (const ext of ["-wal", "-shm"]) {
+          if (existsSync(dbPath + ext)) {
+            try {
+              renameSync(dbPath + ext, corruptPath + ext);
+            } catch {
+              // Ignore — WAL/SHM may already be cleaned up
+            }
+          }
+        }
+        // Recursive call creates a fresh database (won't be corrupt)
+        return this.getOrOpenDb(filename);
+      }
+      throw err;
+    }
 
     this.openDbs.set(filename, db);
     return db;
