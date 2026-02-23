@@ -20,6 +20,7 @@
   "dependencies": {
     "modbus-serial": "^8.0.23",
     "msgpackr": "^1.11.8",
+    "node-opcua": "^2.163.1",
     "smol-toml": "^1.6.0",
     "zod": "^4.3.6"
   }

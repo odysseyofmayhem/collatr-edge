@@ -12,7 +12,7 @@
 | 2.0 | ServiceInput runtime support + metric_batch_size | ✅ |
 | 2.1 | Modbus TCP input | ✅ |
 | 2.1i | Modbus → pipeline integration | ✅ |
-| 2.2 | OPC-UA input | ⬜ |
+| 2.2 | OPC-UA input | ✅ |
 | 2.2i | OPC-UA → pipeline integration | ⬜ |
 | 2.3 | MQTT consumer input | ⬜ |
 | 2.3i | MQTT → pipeline integration | ⬜ |
@@ -103,11 +103,67 @@
 ### Files changed
 - `test/integration/modbus-pipeline.test.ts` — new file
 
+## Task 2.2: OPC-UA Input Plugin
+
+### What was built
+1. **`src/plugins/inputs/opcua.ts`** — full OPC-UA ServiceInput implementation (~450 lines)
+2. **Zod config schema** — `OpcuaConfigSchema`, `OpcuaNodeSchema`, `OpcuaGroupSchema` matching PRD Appendix D §D.1 field-by-field
+3. **ServiceInput lifecycle** — `start(acc)` connects → creates session → creates subscription → adds monitored items; `stop()` closes session → disconnects
+4. **Security auto-negotiation** — tries 5 fallback policies (Basic256Sha256+SignAndEncrypt → None+None) per PRD D.1
+5. **Data type mapping** — 22+ OPC-UA types → FieldValue per PRD D.3 table (Boolean, Int/UInt 16/32/64, Float, Double, String, DateTime, ByteString, Guid, NodeId, StatusCode, LocalizedText, QualifiedName, Array, ExtensionObject)
+6. **Quality mapping** — StatusCode → "good" / "uncertain" / "bad" tag; bad-quality values still emitted per PRD D.3
+7. **Timestamp source selection** — source (device PLC), server (OPC-UA server), gather (local)
+8. **Node groups** — `groups` config expands to flat node list with inherited defaults; per-node overrides win
+9. **Subscription parameters** — publishing_interval, queue_size, max_keep_alive_count, lifetime_count, max_notifications_per_publish from config
+10. **Data change filter (deadband)** — absolute/percent/none, configurable per-node and globally
+11. **Reconnection with exponential backoff** — initial_delay, max_delay, max_retry (0=forever)
+12. **Namespace URI resolution** — `nsu=` → `ns=` at connect time via `resolveNamespaceUri()`
+13. **Browse mode** — discovers nodes, writes TOML snippet to output_file
+14. **Authentication** — anonymous, username/password
+15. **Error handling** — bad NodeID skipped (logged, others continue), connection refused → retry, auth failure → throw (config error)
+16. **Dependency injection** — `OpcuaClient` interface + mock injection for testing
+
+### Key decisions
+- `OpcuaClient` interface abstracts node-opcua for testability — same DI pattern as Modbus
+- Zod v4 `.default({})` does NOT apply inner field defaults. Fixed by providing full default objects explicitly. This is a Zod v4 behaviour difference from v3.
+- Zod v4 `z.record()` requires both key and value schemas: `z.record(z.string(), z.string())`
+- `gather()` is a no-op — OPC-UA is subscription-based (push), not polling. All data flows through `onDataChange` callback.
+- Array values unpacked to `name[0]`, `name[1]`, `name.length` per PRD D.3
+- ExtensionObject/Structure flattened with dot notation, max 3 levels deep per PRD D.3
+- Int64/UInt64 values beyond MAX_SAFE_INTEGER log a warning but still emit as number (PRD D.3: precision loss noted)
+
+### Dependencies added
+- `node-opcua@2.163.1` — verified import works with Bun (pure JS in v4.x)
+
+### Tests added (42 new, 196 total)
+- `test/unit/plugins/inputs/opcua.test.ts`
+- **Connection/lifecycle**: connect + read single node, subscription data change, stop() cleanup, stop() suppresses further events
+- **Data types**: Boolean, Int32, Float, Double, String, DateTime, ByteString, LocalizedText, QualifiedName, Guid, Int64 (precision warning), Array (unpacking), null/undefined, unknown type fallback
+- **Quality**: good → tag "good" + value emitted, bad → tag "bad" + value STILL emitted
+- **Timestamps**: source, server, gather modes
+- **Node groups**: group defaults inherited, per-node overrides win, tags merged
+- **Certificate config**: paths passed through to client
+- **TOFU config**: server certificate path passed through
+- **Reconnection**: exponential backoff with max_retry limit
+- **Browse mode**: discovers nodes, passes params to client
+- **Auth**: anonymous (no credentials), username/password
+- **Error handling**: bad NodeID skipped + others continue, connection refused → throws, auth failure → throws
+- **Deadband**: absolute config passed to monitored item params
+- **Security auto-negotiation**: fallback order until success, all fail → clear error
+- **Subscription params**: config values passed through correctly
+- **Namespace URI**: nsu= resolved to ns= at connect time
+- **Per-node tags**: included in emitted metrics
+
+### Files changed
+- `src/plugins/inputs/opcua.ts` — new file
+- `test/unit/plugins/inputs/opcua.test.ts` — new file
+- `package.json` — added node-opcua dependency
+
 ## Notes
 
 ### Dependencies
 - `modbus-serial` — validated in Bun spike, use `--external=@serialport/bindings-cpp` at compile
-- `node-opcua` — validated in Bun spike, pure JS v4.x
+- `node-opcua` — validated in Bun spike, pure JS v4.x, installed v2.163.1
 - MQTT library — needs validation before task 2.3
 
 ### Test Infrastructure

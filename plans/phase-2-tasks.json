@@ -147,7 +147,7 @@
       "Array type → multiple fields (name[0], name[1], name.length)",
       "Config validation: missing endpoint → error, invalid security policy → error"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.2i",
