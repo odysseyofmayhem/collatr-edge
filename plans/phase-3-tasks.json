@@ -142,7 +142,7 @@
       "Tag index reflects stored metric series",
       "Global tags present in stored metrics"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "3.3",

@@ -9,7 +9,7 @@
 | 3.1 | File output (JSON-lines, CSV) | ✅ |
 | 3.1i | File output → pipeline integration | ✅ |
 | 3.2 | Local data store (SQLite, rotation, retention) | ✅ |
-| 3.2i | Local store → pipeline integration | ⬜ |
+| 3.2i | Local store → pipeline integration | ✅ |
 | 3.3 | Store-and-forward buffer | ⬜ |
 | 3.3i | S&F buffer + output integration | ⬜ |
 
@@ -100,6 +100,19 @@
 - Exported `encodeFields()`, `decodeFields()`, `timestampToDateString()` helpers for testing and future reuse
 
 **Test count:** 311 pass (21 new), 0 fail
+
+## Task 3.2i: Local Store Pipeline Integration — COMPLETE
+
+**Files created:**
+- `test/integration/local-store-pipeline.test.ts` — 4 integration tests
+
+**What was tested:**
+- Mock polling input → pipeline → LocalStoreOutput: metrics persisted to SQLite with correct names, fields, tags
+- MessagePack round-trip: all stored fields decode back to original values via `decodeFields()`
+- Tag index populated: both metric series (temperature, pressure) have entries with correct tags_hash and parseable tags JSON
+- Global tags (`site`, `line`) merged into every stored metric alongside original tags
+
+**Test count:** 315 pass (4 new), 0 fail
 
 ## Notes
 
