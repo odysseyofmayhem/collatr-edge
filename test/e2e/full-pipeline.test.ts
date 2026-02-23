@@ -3,22 +3,22 @@
 // PRD refs: §4 Architecture, §7 Config, §8 Pipeline Lifecycle, §22 Acceptance Criteria
 
 import { describe, it, expect, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Database } from "bun:sqlite";
 
 import { PipelineRuntime } from "@pipeline/runtime";
 import { InternalInput } from "@plugins/inputs/internal";
 import { FilterProcessor } from "@plugins/processors/filter";
 import { RenameProcessor } from "@plugins/processors/rename";
 import { BasicstatsAggregator } from "@plugins/aggregators/basicstats";
-import { LocalStoreOutput, decodeFields } from "@plugins/outputs/local-store";
+import { LocalStoreOutput } from "@plugins/outputs/local-store";
 import { FileOutput } from "@plugins/outputs/file";
 import { SimpleStatsCollector } from "@core/stats";
 import type { Accumulator } from "@core/accumulator";
 import type { Metric } from "@core/metric";
 import type { Input, ServiceInput, Output } from "@core/plugin-types";
+import { findDailyFiles, queryDailyDb } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -139,35 +139,6 @@ async function runFor(pipeline: PipelineRuntime, durationMs: number): Promise<vo
   await pipeline.stop();
 }
 
-/** Open a daily SQLite DB file and return all metrics rows. */
-function queryDailyDb(dbPath: string): {
-  timestamp: bigint;
-  name: string;
-  tags: Record<string, string>;
-  fields: Record<string, unknown>;
-}[] {
-  const db = new Database(dbPath);
-  db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-  const rows = db
-    .prepare(
-      "SELECT timestamp, name, tags, fields FROM metrics ORDER BY timestamp",
-    )
-    .safeIntegers(true)
-    .all() as {
-    timestamp: bigint;
-    name: string;
-    tags: string;
-    fields: Uint8Array;
-  }[];
-  db.close();
-  return rows.map((row) => ({
-    timestamp: row.timestamp,
-    name: row.name,
-    tags: JSON.parse(row.tags) as Record<string, string>,
-    fields: decodeFields(row.fields) as Record<string, unknown>,
-  }));
-}
-
 // ---------------------------------------------------------------------------
 // Temp directory management
 // ---------------------------------------------------------------------------
@@ -233,14 +204,11 @@ describe("E2E: Full pipeline with real plugins (task 5.0)", () => {
     await runFor(pipeline, 1200);
 
     // Find daily DB file(s)
-    const dbFiles = readdirSync(tmpDir).filter(
-      (f) => f.startsWith("data_") && f.endsWith(".db"),
-    );
+    const dbFiles = findDailyFiles(tmpDir);
     expect(dbFiles.length).toBeGreaterThanOrEqual(1);
 
     // Query the daily DB directly
-    const dbPath = join(tmpDir, dbFiles[0]!);
-    const rows = queryDailyDb(dbPath);
+    const rows = queryDailyDb(join(tmpDir, dbFiles[0]!));
 
     // Should have rows (both raw metrics and aggregator summaries)
     expect(rows.length).toBeGreaterThan(0);
@@ -367,9 +335,7 @@ describe("E2E: Full pipeline with real plugins (task 5.0)", () => {
     await runFor(pipeline, 1000);
 
     // Query daily DB
-    const dbFiles = readdirSync(tmpDir).filter(
-      (f) => f.startsWith("data_") && f.endsWith(".db"),
-    );
+    const dbFiles = findDailyFiles(tmpDir);
     expect(dbFiles.length).toBe(1);
 
     const rows = queryDailyDb(join(tmpDir, dbFiles[0]!));

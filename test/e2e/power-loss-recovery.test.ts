@@ -18,13 +18,13 @@ import { Database } from "bun:sqlite";
 import { createMetric, type Metric } from "@core/metric";
 import {
   LocalStoreOutput,
-  LocalStoreConfigSchema,
   decodeFields,
 } from "@plugins/outputs/local-store";
 import {
   StoreForwardBuffer,
   StoreForwardConfigSchema,
 } from "@buffer/store-forward";
+import { findDailyFiles, countRows, makeLocalStoreConfig } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,22 +44,6 @@ function makeMetrics(count: number, namePrefix = "test_sensor"): Metric[] {
     );
   }
   return metrics;
-}
-
-function makeLocalStoreConfig(
-  path: string,
-  overrides: Record<string, unknown> = {},
-) {
-  return LocalStoreConfigSchema.parse({
-    enabled: true,
-    path,
-    retention_days: 90,
-    retention_max_gb: 10,
-    rotation: "daily",
-    downsample_after_days: 7,
-    downsample_interval: "1m",
-    ...overrides,
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -97,24 +81,6 @@ function makeTempDir(prefix: string): string {
   return dir;
 }
 
-/** Open a daily DB file and count metrics rows. */
-function countRows(dbPath: string): number {
-  const db = new Database(dbPath);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-  const row = db.prepare("SELECT COUNT(*) as cnt FROM metrics").get() as {
-    cnt: number;
-  };
-  db.close();
-  return row.cnt;
-}
-
-/** Find daily DB files in a directory. */
-function findDailyFiles(dir: string): string[] {
-  return readdirSync(dir)
-    .filter((f) => f.startsWith("data_") && f.endsWith(".db"))
-    .map((f) => join(dir, f));
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -145,7 +111,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
     const dbFiles = findDailyFiles(tmpDir);
     expect(dbFiles.length).toBe(1);
 
-    const recoveryDb = new Database(dbFiles[0]!);
+    const recoveryDb = new Database(join(tmpDir, dbFiles[0]!));
     recoveryDb.exec("PRAGMA journal_mode = WAL");
 
     // PRD §8 step 6: WAL checkpoint to recover uncommitted data
@@ -266,7 +232,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
     const dbFiles = findDailyFiles(tmpDir);
     expect(dbFiles.length).toBe(1);
 
-    const recoveryDb = new Database(dbFiles[0]!);
+    const recoveryDb = new Database(join(tmpDir, dbFiles[0]!));
     recoveryDb.exec("PRAGMA journal_mode = WAL");
     recoveryDb.exec("PRAGMA wal_checkpoint(TRUNCATE)");
 
@@ -310,7 +276,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
     // Verify data was written
     const dbFiles = findDailyFiles(tmpDir);
     expect(dbFiles.length).toBe(1);
-    const dbPath = dbFiles[0]!;
+    const dbPath = join(tmpDir, dbFiles[0]!);
 
     const beforeCount = countRows(dbPath);
     expect(beforeCount).toBe(100);
@@ -347,7 +313,7 @@ describe("E2E: SQLite recovery & power loss simulation (task 5.1)", () => {
     openStores.length = 0;
 
     // Verify new data was written
-    const freshCount = countRows(freshFiles[0]!);
+    const freshCount = countRows(join(tmpDir, freshFiles[0]!));
     expect(freshCount).toBe(50);
   });
 });

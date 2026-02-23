@@ -24,6 +24,10 @@ export const LocalStoreConfigSchema = z.object({
   // PRD §8 step 6: optional integrity check on database open.
   // When true, runs PRAGMA integrity_check on each daily file at open.
   // If corruption is detected, the file is moved aside and a fresh DB is created.
+  // TODO: Phase 6/7 — PRD uses `config.agent.integrity_check_on_startup` as a
+  // global agent-level setting that applies to all SQLite databases (local store +
+  // S&F buffer). Current implementation is per-output. Migrate to [agent] config
+  // section when building the config parser, and wire it into S&F buffer too.
   integrity_check: z.boolean().default(false),
 });
 
@@ -127,6 +131,7 @@ const textEncoder = new TextEncoder();
  * the sorted tag key=value pairs. Ensures positive value for SQLite.
  */
 function tagsHash(tags: Map<string, string>): number {
+  // Assumes tags Map is already sorted by key (guaranteed by createMetric()).
   let str = "";
   for (const [key, value] of tags) {
     if (str.length > 0) str += "\0";
@@ -233,7 +238,7 @@ export class LocalStoreOutput implements Output {
   // Daily database management
   // ---------------------------------------------------------------------------
 
-  private getOrOpenDb(filename: string): Database {
+  private getOrOpenDb(filename: string, isRetry = false): Database {
     let db = this.openDbs.get(filename);
     if (db) return db;
 
@@ -266,8 +271,9 @@ export class LocalStoreOutput implements Output {
         }
       }
     } catch (err) {
-      // If integrity_check is enabled, treat any open/init error as corruption
-      if (this.config.integrity_check && existsSync(dbPath)) {
+      // If integrity_check is enabled, treat any open/init error as corruption.
+      // Guard against unbounded recursion: only attempt recovery once (isRetry).
+      if (this.config.integrity_check && existsSync(dbPath) && !isRetry) {
         console.error(
           `[local_store] corruption detected in ${filename}: ${(err as Error).message}`,
         );
@@ -284,8 +290,8 @@ export class LocalStoreOutput implements Output {
             }
           }
         }
-        // Recursive call creates a fresh database (won't be corrupt)
-        return this.getOrOpenDb(filename);
+        // Retry once with a fresh database; isRetry=true prevents further recursion
+        return this.getOrOpenDb(filename, true);
       }
       throw err;
     }

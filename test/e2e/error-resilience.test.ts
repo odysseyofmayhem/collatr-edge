@@ -117,6 +117,7 @@ function captureErrors(): { errors: string[]; restore: () => void } {
   const original = console.error;
   console.error = (...args: unknown[]) => {
     errors.push(args.map(String).join(" "));
+    original.apply(console, args); // still log to stderr for debugging visibility
   };
   return {
     errors,
@@ -185,6 +186,7 @@ describe("E2E: Error resilience (task 5.4)", () => {
       expect(healthyMetrics.length).toBeGreaterThan(0);
 
       // Errors from FailingInput were logged
+      // Matches "[pipeline] gather error:" log in src/pipeline/runtime.ts runGatherLoop()
       const gatherErrors = errors.filter((e) =>
         e.includes("FailingInput error"),
       );
@@ -234,6 +236,7 @@ describe("E2E: Error resilience (task 5.4)", () => {
       }
 
       // Processor errors were logged
+      // Matches "[pipeline] processor error:" log in src/pipeline/runtime.ts runMainLoop()
       const procErrors = errors.filter((e) =>
         e.includes("processor error"),
       );
@@ -284,6 +287,7 @@ describe("E2E: Error resilience (task 5.4)", () => {
       expect(output.failCount).toBe(3);
 
       // Write errors were logged
+      // Matches "[pipeline] output write error:" log in src/pipeline/runtime.ts runOutputFlushLoop()
       const writeErrors = errors.filter((e) =>
         e.includes("output write error"),
       );
@@ -339,6 +343,7 @@ describe("E2E: Error resilience (task 5.4)", () => {
       expect(normalMetrics.length).toBeGreaterThan(0);
 
       // Timeout errors were logged for slow input
+      // Matches "Gather timeout" error in src/pipeline/runtime.ts runGatherLoop() Promise.race
       const timeoutErrors = errors.filter((e) =>
         e.includes("Gather timeout"),
       );
