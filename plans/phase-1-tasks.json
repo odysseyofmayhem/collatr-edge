@@ -71,7 +71,7 @@
       "closed property is false initially, true after close()",
       "Concurrent producer/consumer: producer sends 1000, consumer receives 1000"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.3",
