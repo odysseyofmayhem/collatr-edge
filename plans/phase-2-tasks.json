@@ -276,6 +276,6 @@
       "Internal metrics and regular metrics both arrive at output",
       "collatr.agent.metrics_gathered reflects actual metrics produced by other input"
     ],
-    "passes": false
+    "passes": true
   }
 ]

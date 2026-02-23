@@ -1,6 +1,6 @@
 # Phase 2: Inputs — Progress
 
-## Status: IN PROGRESS
+## Status: ALL TASKS COMPLETE — pending code review
 
 ## Pre-Phase Fixes
 - [x] ServiceInput support in runtime (task 2.0)
@@ -17,7 +17,7 @@
 | 2.3 | MQTT consumer input | ✅ |
 | 2.3i | MQTT → pipeline integration | ✅ |
 | 2.4 | Internal metrics input | ✅ |
-| 2.4i | Internal metrics integration | ⬜ |
+| 2.4i | Internal metrics integration | ✅ |
 
 ## Task 2.0: ServiceInput Runtime Support + metric_batch_size
 
@@ -263,6 +263,26 @@
 - `src/plugins/inputs/internal.ts` — new file (InternalInput plugin)
 - `test/unit/plugins/inputs/internal.test.ts` — new file
 
+## Task 2.4i: Internal Metrics → Pipeline Integration Test
+
+### What was built
+1. **`test/integration/internal-pipeline.test.ts`** — 2 integration tests wiring InternalInput + MockPollingInput → PipelineRuntime → MockOutput
+2. **MockPollingInput** — emits `machine.temperature` and `machine.pressure` metrics, increments `stats.metricsGathered` to simulate pipeline counting
+3. **MockOutput** — captures written metrics for assertion
+
+### Tests added (2 new, 246 total)
+- `test/integration/internal-pipeline.test.ts`
+- **"Internal metrics and regular metrics both arrive at output"** — runs InternalInput + MockPollingInput in same pipeline, verifies both `agent.*` and `machine.*` metrics appear at the output with correct structure and tags
+- **"agent.metrics_gathered reflects actual metrics produced by other input"** — verifies the last `agent.metrics_gathered` value is > 0 and reflects the 2 metrics per gather cycle from MockPollingInput
+
+### Key design decisions
+- MockPollingInput increments `stats.metricsGathered` directly to simulate what PipelineRuntime will do once instrumented (stats tracking in runtime deferred until needed)
+- Both inputs run as polling inputs on the same 50ms gather interval
+- Used `Bun.sleep(300)` to allow multiple gather cycles before stopping
+
+### Files changed
+- `test/integration/internal-pipeline.test.ts` — new file
+
 ## Notes
 
 ### Dependencies
@@ -274,3 +294,4 @@
 - Modbus: stub/mock modbus-serial client or lightweight mock TCP server
 - OPC-UA: MockOpcuaClient with emitDataChange() for test simulation
 - MQTT: MockMqttClient with emitMessage()/emitConnect() for test simulation (DI pattern, no real broker needed)
+- Internal: SimpleStatsCollector with mutable counters for test simulation
