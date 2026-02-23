@@ -2,6 +2,7 @@
 // PRD refs: §18 Deployment & Distribution (CLI command list)
 
 import { getLogger } from "../core/logger";
+import { versionCommand } from "./commands/version";
 
 // ---------------------------------------------------------------------------
 // Help text
@@ -124,9 +125,7 @@ export async function main(
     case "config":
       return await configCommand(remaining.slice(1), options);
     case "version":
-      // Implemented in task 6.2
-      process.stderr.write("Error: version command not yet implemented\n");
-      return 1;
+      return versionCommand();
     case "--help":
     case "-h":
     case undefined:

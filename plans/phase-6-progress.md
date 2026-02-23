@@ -9,7 +9,7 @@
 | 6.pre | Phase 5 review cleanup (Y-NEW-1 through G-NEW-2) | ✅ (already done, commit e89ad4f) |
 | 6.0 | Structured logger | ✅ |
 | 6.1 | CLI framework + arg parsing | ✅ |
-| 6.2 | version command | ⬜ |
+| 6.2 | version command | ✅ |
 | 6.3 | config validate command | ⬜ |
 | 6.4 | config init command | ⬜ |
 | 6.5 | Plugin factory (config → pipeline) | ⬜ |
@@ -67,3 +67,26 @@
 **Notes for next task:**
 - `version` command (6.2) just needs to create `src/cli/commands/version.ts` and wire it into the switch case in `src/cli/index.ts`
 - The `ParsedGlobalOptions` interface is exported for use by future command handlers
+
+## Task 6.2: Version Command
+
+**What was built:**
+- `src/cli/commands/version.ts` — `versionCommand()` function printing version, runtime, platform, and build timestamp
+- Wired into `src/cli/index.ts` switch case (replaced stub)
+- 7 new tests in `test/unit/cli/version.test.ts`
+
+**Decisions:**
+- Version read from `package.json` via direct import (Bun resolves JSON imports at build time)
+- Build timestamp uses `Bun.env.BUILD_TIME` with `new Date().toISOString()` fallback — compile-time injection via env var
+- Output goes to `process.stdout.write()` (user-facing data, not log output)
+- Updated existing CLI test that asserted version stub returned exit code 1 — now returns 0
+
+**Files changed:**
+- New: `src/cli/commands/version.ts`, `test/unit/cli/version.test.ts`
+- Modified: `src/cli/index.ts` (import + wired versionCommand), `test/unit/cli/cli.test.ts` (updated version stub test)
+
+**Test results:** 482 pass, 0 fail (475 existing + 7 new)
+
+**Notes for next task:**
+- Task 6.3 (config validate) requires exporting Zod schemas from all plugin files and creating `src/core/plugin-schemas.ts`
+- The plugin schema registry will also be reused by task 6.5 (plugin factory)

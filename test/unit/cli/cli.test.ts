@@ -209,9 +209,10 @@ describe("CLI framework", () => {
     expect(code).toBe(1);
   });
 
-  it("version → currently stubbed (exit 1)", async () => {
+  it("version → returns 0", async () => {
     const code = await main(["version"]);
-    expect(code).toBe(1);
+    expect(code).toBe(0);
+    expect(stdout()).toContain("CollatrEdge");
   });
 
   // =========================================================================
