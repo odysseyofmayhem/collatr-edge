@@ -153,6 +153,46 @@ There's a natural tendency to write thorough tests for happy paths and skip the 
 
 Before committing a module, scan it for branches and ask: "Which of these branches has zero test coverage?" Then write those tests first.
 
+### Rule 10: No Hardcoded Config Overrides
+
+**Never hardcode a value that should come from config.** If the PRD defines a configurable option with a default, your code must respect both the config value AND the default. Examples of violations:
+
+- Passing `{ aligned: false }` to a function when the config or PRD says the default is `true`
+- Using a literal number where `config.batchSize` should be read
+- Ignoring a parsed config field and using a constant instead
+
+**Before committing,** search for literals (numbers, booleans, strings) passed to functions that accept options objects. Ask: "Should this be coming from config?"
+
+### Rule 11: Handle Return Values and Errors in Async Code
+
+In async code, **every Promise and every return value that signals success/failure must be handled:**
+
+1. **`send()` / `write()` return values** — if a function returns `boolean` or `Promise<boolean>` to indicate success, **check it**. Fire-and-forgetting a `Promise<boolean>` hides data loss.
+2. **`async` functions in loops** — wrap in `try/catch`. An unhandled rejection in a flush loop or gather loop crashes the pipeline silently.
+3. **`Promise.race()` doesn't cancel losers** — if you race a timeout against an async operation, the loser keeps running. Document this with a TODO when cancellation isn't feasible yet.
+
+**The test:** After writing an async function, ask: "What happens if every `await` in this function throws?" If the answer is "the pipeline crashes with no logging," add error handling.
+
+### Rule 12: Lifecycle Ordering Matches the PRD
+
+The PRD §8 defines a specific startup and shutdown sequence. **Follow it exactly.** Common mistakes:
+
+- Connecting outputs inside their flush loop (lazy) instead of during startup (fail-fast)
+- Starting data collection before outputs are ready
+- Not draining channels before closing outputs during shutdown
+
+If you're writing lifecycle code (`start()`, `stop()`, `connect()`, `close()`), **read PRD §8 and verify your ordering matches step-by-step.**
+
+### Rule 13: Per-Instance, Not Global
+
+When the PRD defines a per-plugin or per-instance option, **implement it per-instance.** Don't collapse multiple instances into a single global flag. Examples:
+
+- `drop_original` is per-aggregator, not a global "any aggregator wants to drop" flag
+- Intervals can be per-input, not just global
+- Timeouts can be per-output, not just global
+
+If you're tempted to write `plugins.some(p => p.option)` to compute a global flag, stop and ask whether the PRD intends per-instance semantics.
+
 ---
 
 ## Technical Standards
@@ -257,6 +297,33 @@ When all modules pass:
 3. Update `plans/phase-N-status.md` with final status
 4. Update README.md if public API changed
 5. Commit with message: `phase-N: complete — <summary>`
+
+### 4. Pre-Next-Phase Fix Pass
+
+Before starting Phase N+1, check `plans/phase-N-review-final.md` for:
+- **🔴 Must Fix** — resolve these before ANY new work
+- **🟡 Should Fix (Priority 1)** — resolve these before building on top of the affected module
+- **🟡 Should Fix (Priority 2)** — can fix during Phase N+1 when the context arises
+
+This prevents technical debt from compounding. Phase 2 outputs will break if Phase 1 runtime issues (error handling, lifecycle ordering, global flags) aren't addressed first.
+
+---
+
+## Lessons from Phase 1
+
+These patterns were caught in code review. Don't repeat them.
+
+1. **PRD pseudocode had the same bug as the implementation.** The clock jump detection pseudocode compared the wrong clocks — and the implementation faithfully copied the pseudocode bug. **Rule 5 exists for this reason:** prose trumps pseudocode. When implementing from pseudocode, cross-check against the prose description.
+
+2. **A fix in one module was undone by a hardcode in another.** The Ticker default was corrected to `aligned: true`, but the PipelineRuntime hardcoded `{ aligned: false }` when calling the Ticker — silently reverting the fix. **Rule 10 exists for this reason.** After fixing a default, grep for call sites that override it.
+
+3. **`send()` return values were silently discarded.** The Accumulator called `channel.send(metric)` without checking the `boolean` return. On a closed channel during shutdown, metrics vanish with no trace. **Rule 11 exists for this reason.**
+
+4. **The output connection happened in the wrong lifecycle phase.** `output.connect()` was called inside the flush loop instead of during `start()`, so a connection failure wouldn't be detected until shutdown. **Rule 12 exists for this reason.**
+
+5. **`drop_original` was collapsed into a global flag across all aggregators.** One aggregator's `drop_original = true` would suppress originals for ALL aggregators. **Rule 13 exists for this reason.**
+
+6. **Tests covered happy paths thoroughly but skipped the complex branches.** Clock jump detection, aligned mode, offset — the most interesting ticker logic — had zero test coverage initially. Rule 9 was added to counter this, and the fix pass added the missing tests.
 
 ---
 
