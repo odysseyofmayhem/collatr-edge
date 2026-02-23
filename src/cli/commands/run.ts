@@ -30,6 +30,8 @@ export interface RunCommandDeps {
   awaitSignal: () => { promise: Promise<string>; cleanup: () => void };
   /** Called for force-exit on double-signal or shutdown timeout. */
   forceExit: (code: number) => void;
+  /** Shutdown timeout in ms (safety net if graceful shutdown hangs). Default: 30000. */
+  shutdownTimeoutMs: number;
 }
 
 function createDefaultSignalAwaiter(): { promise: Promise<string>; cleanup: () => void } {
@@ -57,6 +59,7 @@ const DEFAULT_DEPS: RunCommandDeps = {
   createRuntime: (opts) => new PipelineRuntime(opts),
   awaitSignal: createDefaultSignalAwaiter,
   forceExit: (code) => process.exit(code),
+  shutdownTimeoutMs: 30_000,
 };
 
 // ---------------------------------------------------------------------------
@@ -143,13 +146,11 @@ export async function runCommand(
   process.on("SIGTERM", forceExitHandler);
 
   const shutdownTimer = setTimeout(() => {
-    log.error("Shutdown timeout (30s), forcing exit");
+    log.error("Shutdown timeout, forcing exit", { timeout_ms: d.shutdownTimeoutMs });
     d.forceExit(1);
-  }, 30_000);
+  }, d.shutdownTimeoutMs);
   // Unref so the timer doesn't keep the process alive if shutdown completes first
-  if (shutdownTimer && typeof (shutdownTimer as Record<string, unknown>).unref === "function") {
-    (shutdownTimer as unknown as { unref: () => void }).unref();
-  }
+  shutdownTimer.unref();
 
   // 9. Graceful shutdown (PRD §8 shutdown sequence)
   try {

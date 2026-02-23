@@ -39,7 +39,8 @@ import { StdoutConfigSchema } from "../plugins/outputs/stdout";
 // Filter fields extracted from raw plugin config
 // ---------------------------------------------------------------------------
 
-const FILTER_KEYS = [
+/** Filter fields that can appear on any plugin (PRD §7). Exported for config-validate. */
+export const FILTER_KEYS = [
   "namepass", "namedrop", "tagpass", "tagdrop", "fieldpass", "fielddrop",
 ] as const;
 
@@ -93,9 +94,26 @@ interface PluginOverrides {
   logLevel?: string;
 }
 
-const OVERRIDE_KEYS = [
+// All PRD-defined per-plugin override keys (§7). Keys are extracted from raw
+// config before Zod schema parsing so they don't cause unknown-field errors.
+// Some overrides are wired to PipelineOptions (interval, timeout, etc.);
+// others are extracted-and-discarded until their Phase 7+ features are built.
+/** All PRD per-plugin override keys. Exported for config-validate. */
+export const OVERRIDE_KEYS = [
+  // Wired in Phase 6
   "interval", "timeout", "metric_batch_size", "period",
   "drop_original", "enabled", "order", "alias", "log_level",
+  // PRD §7 — extracted to avoid Zod errors, wired in Phase 7+
+  "error_behavior",       // per-plugin startup error behaviour
+  "retry_max",            // output retry limit
+  "retry_backoff",        // output backoff strategy
+  "flush_interval",       // per-output flush interval override
+  "flush_jitter",         // per-output flush jitter
+  "collection_jitter",    // per-input collection jitter
+  "collection_offset",    // per-input collection offset
+  "precision",            // per-input timestamp precision
+  "metric_buffer_limit",  // per-output buffer limit
+  "tags",                 // per-input/processor additional tags
 ] as const;
 
 function extractOverrides(
@@ -134,6 +152,9 @@ function extractOverrides(
         overrides.logLevel = value as string;
         break;
       default:
+        // Strip remaining OVERRIDE_KEYS (Phase 7+ features) so they don't
+        // leak into plugin Zod schemas. The values are intentionally discarded.
+        if ((OVERRIDE_KEYS as readonly string[]).includes(key)) break;
         pluginConfig[key] = value;
         break;
     }
@@ -216,12 +237,14 @@ export function buildPipeline(
         interval: overrides.interval,
         timeout: overrides.timeout,
         filter,
+        alias: overrides.alias,
+        logLevel: overrides.logLevel,
       });
     }
   }
 
   // -- Processors (sorted by order) --
-  const processorEntries: { plugin: Processor; filter?: MetricFilter; order: number }[] = [];
+  const processorEntries: { plugin: Processor; filter?: MetricFilter; order: number; alias?: string; logLevel?: string }[] = [];
   for (const [pluginName, instances] of Object.entries(config.processors)) {
     const factory = PROCESSOR_FACTORIES[pluginName];
     if (!factory) {
@@ -237,17 +260,25 @@ export function buildPipeline(
         plugin,
         filter,
         order: overrides.order ?? 0,
+        alias: overrides.alias,
+        logLevel: overrides.logLevel,
       });
     }
   }
   // Sort by order (stable — preserves config order for equal values)
   processorEntries.sort((a, b) => a.order - b.order);
-  const processors: PipelineOptions["processors"] = processorEntries.map(({ plugin, filter }) => ({
+  const processors: PipelineOptions["processors"] = processorEntries.map(({ plugin, filter, alias, logLevel }) => ({
     plugin,
     filter,
+    alias,
+    logLevel,
   }));
 
   // -- Aggregators --
+  // Note: aggregators handle their own filter fields (namepass, namedrop,
+  // tagpass, tagdrop) in their Zod schemas — they build their own internal
+  // MetricFilter in the constructor. We do NOT call extractFilterConfig()
+  // here because that would strip the fields before the schema sees them.
   const aggregators: PipelineOptions["aggregators"] = [];
   for (const [pluginName, instances] of Object.entries(config.aggregators)) {
     const factory = AGGREGATOR_FACTORIES[pluginName];
@@ -255,14 +286,15 @@ export function buildPipeline(
       throw new Error(`Unknown aggregator plugin: "${pluginName}"`);
     }
     for (const rawInstance of instances) {
-      const { filterConfig: _filterConfig, pluginConfig: afterFilter } = extractFilterConfig(rawInstance);
-      const { overrides, pluginConfig } = extractOverrides(afterFilter);
+      const { overrides, pluginConfig } = extractOverrides(rawInstance);
       if (overrides.enabled === false) continue;
       const plugin = factory(pluginConfig);
       aggregators.push({
         plugin,
         period: overrides.period,
         dropOriginal: overrides.dropOriginal,
+        alias: overrides.alias,
+        logLevel: overrides.logLevel,
       });
     }
   }
@@ -284,6 +316,8 @@ export function buildPipeline(
         plugin,
         metricBatchSize: overrides.metricBatchSize,
         filter,
+        alias: overrides.alias,
+        logLevel: overrides.logLevel,
       });
     }
   }

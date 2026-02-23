@@ -257,6 +257,31 @@ describe("run command", () => {
   // Double signal / force exit
   // =========================================================================
 
+  it("shutdown timeout → forceExit called", async () => {
+    let forceExitCode: number | null = null;
+    let resolveStop: (() => void) | undefined;
+
+    const runPromise = runCommand("/any/path.toml", mockDeps({
+      createRuntime: () => ({
+        start: async () => {},
+        stop: () =>
+          new Promise<void>((resolve) => {
+            resolveStop = resolve;
+          }),
+      }),
+      shutdownTimeoutMs: 50, // Very short timeout for test
+      forceExit: (code) => {
+        forceExitCode = code;
+        resolveStop?.();
+      },
+    }));
+
+    await runPromise;
+
+    expect(forceExitCode).toBe(1);
+    expect(stderr()).toContain("Shutdown timeout");
+  }, 5_000);
+
   it("double signal during shutdown → forceExit called", async () => {
     let forceExitCode: number | null = null;
     let resolveStop: (() => void) | undefined;

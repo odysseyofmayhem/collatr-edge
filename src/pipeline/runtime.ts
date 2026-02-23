@@ -8,17 +8,17 @@ import { Ticker } from "../core/ticker";
 import type { Input, Processor, Aggregator, Output, ServiceInput } from "../core/plugin-types";
 import { isServiceInput } from "../core/plugin-types";
 import { getLogger } from "../core/logger";
-import type { MetricFilter } from "../core/metric-filter";
+import { MetricFilter } from "../core/metric-filter";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
 // ---------------------------------------------------------------------------
 
 export interface PipelineOptions {
-  inputs: { plugin: Input; interval?: number; timeout?: number; filter?: MetricFilter }[];
-  processors: { plugin: Processor; filter?: MetricFilter }[];
-  aggregators: { plugin: Aggregator; period?: number; dropOriginal?: boolean }[];
-  outputs: { plugin: Output; metricBatchSize?: number; filter?: MetricFilter }[];
+  inputs: { plugin: Input; interval?: number; timeout?: number; filter?: MetricFilter; alias?: string; logLevel?: string }[];
+  processors: { plugin: Processor; filter?: MetricFilter; alias?: string; logLevel?: string }[];
+  aggregators: { plugin: Aggregator; period?: number; dropOriginal?: boolean; alias?: string; logLevel?: string }[];
+  outputs: { plugin: Output; metricBatchSize?: number; filter?: MetricFilter; alias?: string; logLevel?: string }[];
   gatherIntervalMs: number;
   flushIntervalMs: number;
   gatherTimeoutMs?: number;
@@ -98,6 +98,45 @@ class BroadcastAccumulator implements Accumulator {
 }
 
 // ---------------------------------------------------------------------------
+// FilteringAccumulator — wraps another Accumulator and applies MetricFilter
+// Used for per-input filters: metrics are filtered before entering the pipeline.
+// ---------------------------------------------------------------------------
+
+class FilteringAccumulator implements Accumulator {
+  private inner: Accumulator;
+  private filter: MetricFilter;
+  private globalTags: Record<string, string>;
+
+  constructor(inner: Accumulator, filter: MetricFilter, globalTags?: Record<string, string>) {
+    this.inner = inner;
+    this.filter = filter;
+    this.globalTags = globalTags ?? {};
+  }
+
+  addFields(
+    measurement: string,
+    fields: Record<string, FieldValue>,
+    tags?: Record<string, string>,
+    timestamp?: bigint,
+  ): void {
+    // Create metric to apply filter (need name/tags/fields for filter evaluation)
+    const mergedTags = { ...this.globalTags, ...(tags ?? {}) };
+    const metric = createMetric({ name: measurement, fields, tags: mergedTags, timestamp });
+    const result = this.filter.apply(metric);
+    if (result) this.inner.addMetric(result);
+  }
+
+  addMetric(metric: Metric): void {
+    const result = this.filter.apply(metric);
+    if (result) this.inner.addMetric(result);
+  }
+
+  addError(error: Error): void {
+    this.inner.addError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline loop functions
 // ---------------------------------------------------------------------------
 
@@ -143,7 +182,7 @@ async function runGatherLoop(
  */
 async function runMainLoop(
   inputChannel: Channel<Metric>,
-  processors: Processor[],
+  processors: { plugin: Processor; filter?: MetricFilter }[],
   aggregators: { plugin: Aggregator; dropOriginal: boolean }[],
   outputBroadcaster: Broadcaster<Metric>,
   globalTags?: Record<string, string>,
@@ -160,9 +199,17 @@ async function runMainLoop(
   for await (const metric of inputChannel.receive()) {
     // Run through processor chain sequentially
     let metrics = [metric];
-    for (const proc of processors) {
+    for (const { plugin: proc, filter } of processors) {
       const next: Metric[] = [];
       for (const m of metrics) {
+        // If processor has a filter and metric doesn't match, pass through unmodified
+        if (filter) {
+          const filtered = filter.apply(m.copy());
+          if (filtered === null) {
+            next.push(m);
+            continue;
+          }
+        }
         const acc = new CollectingAccumulator(globalTags);
         try {
           await proc.process(m, acc);
@@ -241,14 +288,20 @@ async function runOutputFlushLoop(
   flushIntervalMs: number,
   _signal: AbortSignal,
   metricBatchSize?: number,
+  filter?: MetricFilter,
 ): Promise<void> {
   const batch: Metric[] = [];
   let done = false;
 
-  // Reader: accumulates metrics from channel
+  // Reader: accumulates metrics from channel, applying per-output filter
   const reader = (async () => {
     for await (const metric of channel.receive()) {
-      batch.push(metric);
+      if (filter) {
+        const result = filter.apply(metric);
+        if (result) batch.push(result);
+      } else {
+        batch.push(metric);
+      }
     }
     done = true;
   })();
@@ -379,7 +432,7 @@ export class PipelineRuntime {
     this.loops.push(
       runMainLoop(
         this.inputChannel,
-        this.options.processors.map((p) => p.plugin),
+        this.options.processors.map((p) => ({ plugin: p.plugin, filter: p.filter })),
         this.options.aggregators.map((a) => ({
           plugin: a.plugin,
           dropOriginal: a.dropOriginal ?? false,
@@ -398,7 +451,7 @@ export class PipelineRuntime {
     }
 
     const aligned = this.options.roundInterval ?? true;
-    const inputAcc = new ChannelAccumulator(
+    const baseInputAcc = new ChannelAccumulator(
       this.inputChannel,
       globalTags,
     );
@@ -408,6 +461,12 @@ export class PipelineRuntime {
 
     for (const input of this.options.inputs) {
       if (input.plugin.init) await input.plugin.init();
+
+      // Per-input MetricFilter: wrap the accumulator so only matching metrics
+      // enter the pipeline (PRD §7: filtering on every plugin)
+      const inputAcc: Accumulator = input.filter
+        ? new FilteringAccumulator(baseInputAcc, input.filter, globalTags)
+        : baseInputAcc;
 
       if (isServiceInput(input.plugin)) {
         // ServiceInput: call start(acc) — pushes metrics asynchronously (PRD §8 step 14)
@@ -433,7 +492,7 @@ export class PipelineRuntime {
       const outputOpts = this.options.outputs[i]!;
       const ch = outputChannels[i]!;
       this.loops.push(
-        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize),
+        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter),
       );
     }
   }

@@ -4,7 +4,20 @@
 import { loadConfigFile, parseConfig } from "../../core/config";
 import type { AgentConfig, PluginInstanceConfig } from "../../core/config";
 import { PLUGIN_SCHEMAS } from "../../core/plugin-schemas";
+import { OVERRIDE_KEYS, FILTER_KEYS } from "../../pipeline/plugin-factory";
 import { z } from "zod/v4";
+
+/** Strip per-plugin override and filter fields from raw config before schema validation. */
+function stripOverrideFields(instance: PluginInstanceConfig): PluginInstanceConfig {
+  const stripped: Record<string, unknown> = {};
+  const overrideSet = new Set<string>([...(OVERRIDE_KEYS as readonly string[]), ...(FILTER_KEYS as readonly string[])]);
+  for (const [key, value] of Object.entries(instance)) {
+    if (!overrideSet.has(key)) {
+      stripped[key] = value;
+    }
+  }
+  return stripped as PluginInstanceConfig;
+}
 
 /**
  * Validate a config file: parse TOML, validate [agent], validate per-plugin schemas.
@@ -82,7 +95,7 @@ export async function configValidateCommand(
           continue;
         }
 
-        const result = schema.safeParse(instance);
+        const result = schema.safeParse(stripOverrideFields(instance));
         if (result.success) {
           process.stdout.write(`  - ${instanceLabel} \u2014 valid\n`);
         } else {
