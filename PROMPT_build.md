@@ -1,19 +1,20 @@
 Read CLAUDE.md for project rules and conventions.
-Read plans/phase-2-inputs.md for the Phase 2 implementation plan.
-Read plans/phase-2-tasks.json for the structured task list.
-Read plans/phase-2-progress.md for current progress.
+Read plans/phase-3-outputs.md for the Phase 3 implementation plan.
+Read plans/phase-3-tasks.json for the structured task list.
+Read plans/phase-3-progress.md for current progress.
 Check `git log --oneline -10` to see recent commits.
 
-You are implementing Phase 2: Input Plugins for CollatrEdge.
+You are implementing Phase 3: Output Plugins for CollatrEdge.
 
 ## CONTEXT
 
-Phase 1 (core pipeline) is complete. You have:
-- Metric, Channel<T>, Broadcaster<T>, Ticker, Accumulator, Plugin Registry, Config Parser, Pipeline Runtime
-- 109 passing tests across 12 files
-- All source in src/core/ and src/pipeline/
+Phase 1 (core pipeline) and Phase 2 (input plugins) are complete. You have:
+- Core: Metric, Channel<T>, Broadcaster<T>, Ticker, Accumulator, Plugin Registry, Config Parser, Pipeline Runtime
+- Inputs: Modbus TCP, OPC-UA, MQTT consumer, internal metrics
+- 251 passing tests across 21 files
+- All source in src/core/, src/pipeline/, src/plugins/inputs/
 
-Phase 2 adds real input plugins: Modbus TCP, OPC-UA, MQTT consumer, and internal metrics.
+Phase 3 adds output plugins: stdout, file, local data store (SQLite), and store-and-forward buffer.
 
 ## WORKFLOW
 
@@ -23,10 +24,10 @@ Phase 2 adds real input plugins: Modbus TCP, OPC-UA, MQTT consumer, and internal
 4. Write tests (using `bun:test`) that cover every item in the task's "tests" array.
 5. Run `bun test` — ALL tests must pass (not just your new ones).
 6. If tests fail: understand the root cause. Fix the CODE, not the tests. If a test expectation is genuinely wrong (you can explain why), fix it — but document the reasoning in the progress file.
-7. If you cannot fix a failure after 3 genuine attempts: STOP. Document the failure in plans/phase-2-progress.md with full error output and what you tried. Do NOT mark the task as passing.
-8. When all tests pass: update the task's "passes" field to true in plans/phase-2-tasks.json.
-9. Update plans/phase-2-progress.md with: what you built, decisions made, any notes for next task.
-10. Git commit with message format: `phase-2: <what you built>`
+7. If you cannot fix a failure after 3 genuine attempts: STOP. Document the failure in plans/phase-3-progress.md with full error output and what you tried. Do NOT mark the task as passing.
+8. When all tests pass: update the task's "passes" field to true in plans/phase-3-tasks.json.
+9. Update plans/phase-3-progress.md with: what you built, decisions made, any notes for next task.
+10. Git commit with message format: `phase-3: <what you built>`
 11. ONLY WORK ON ONE TASK PER SESSION.
 
 ## RULES
@@ -40,18 +41,20 @@ Phase 2 adds real input plugins: Modbus TCP, OPC-UA, MQTT consumer, and internal
 - Run the FULL test suite before committing, not just your new tests.
 - Use `bun:test` (describe/it/expect). Not Jest, not Vitest.
 - Use ESM imports. No require().
-- For external libraries (modbus-serial, node-opcua, mqtt): verify the import works with Bun BEFORE writing the full module. If it doesn't import, document the error and STOP.
-- Mock/stub external services in tests (no real PLC/server/broker connections in CI).
 
-## TEST INFRASTRUCTURE
+## SQLITE NOTES
 
-- **Modbus:** Stub the modbus-serial client methods, or create a minimal mock TCP server for integration tests.
-- **OPC-UA:** Use `node-opcua` server module (`OPCUAServer`) to create in-process test servers.
-- **MQTT:** Use `aedes` or similar in-process MQTT broker. If not available, mock the mqtt client.
-- **Internal metrics:** Use the mock plugins from Phase 1 tests.
+- Use `bun:sqlite` (built-in). NOT `better-sqlite3`.
+- WAL mode: `PRAGMA journal_mode=WAL`
+- Synchronous: `PRAGMA synchronous=NORMAL` (default, ≤1s loss on crash)
+- Busy timeout: `PRAGMA busy_timeout=5000`
+- Field encoding: `msgpackr` (already in package.json)
+- Daily files: `data_YYYY_MM_DD.db` in the configured data directory
+- BEGIN IMMEDIATE for write transactions
+- Test with real SQLite (no mocking the database — it's built-in and fast)
 
 ## COMPLETION
 
 When your single task is done and committed, output: TASK_COMPLETE
 
-If ALL tasks in phase-2-tasks.json have "passes": true, output: PHASE_COMPLETE
+If ALL tasks in phase-3-tasks.json have "passes": true, output: PHASE_COMPLETE

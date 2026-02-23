@@ -1,0 +1,207 @@
+[
+  {
+    "id": "3.0",
+    "category": "output",
+    "description": "Implement stdout output plugin — simplest output, validates Output interface with real pipeline",
+    "prd_refs": ["prd/19-mvp-plugin-inventory.md", "prd/appendix-b-metric-interface.md"],
+    "steps": [
+      "Create src/plugins/outputs/stdout.ts",
+      "Implement Zod config schema (format: json | line_protocol)",
+      "Implement connect() as no-op",
+      "Implement write(batch): format each metric and console.log()",
+      "Implement JSON format: name, tags, fields, timestamp as JSON object",
+      "Implement line_protocol format: Telegraf-compatible line protocol string",
+      "Implement close() as no-op",
+      "Write unit tests",
+      "Register plugin in plugin registry"
+    ],
+    "verification": "Stdout output prints metrics in correct format. All tests pass.",
+    "tests": [
+      "write() outputs JSON representation of each metric",
+      "write() with line_protocol format outputs Telegraf-compatible strings",
+      "connect() and close() don't throw",
+      "Batch of 10 metrics → 10 output lines",
+      "Metric with tags and multiple fields serialised correctly in JSON",
+      "Metric with special characters in names/tags handled correctly"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.1",
+    "category": "output",
+    "description": "Implement file output plugin — JSON-lines and CSV formats, append mode",
+    "prd_refs": ["prd/19-mvp-plugin-inventory.md", "prd/appendix-a-full-config-example.md"],
+    "steps": [
+      "Create src/plugins/outputs/file.ts",
+      "Implement Zod config schema (path, format: json | csv)",
+      "Implement connect(): open/create file in append mode",
+      "Implement write(batch): serialise and append metrics",
+      "Implement JSON-lines format: one JSON object per line",
+      "Implement CSV format: header on first write, data rows after",
+      "Implement close(): flush and close file handle",
+      "Handle write errors (disk full, permissions) gracefully",
+      "Write unit tests"
+    ],
+    "verification": "File output writes correct JSON-lines and CSV. Append mode works. All tests pass.",
+    "tests": [
+      "JSON format: write batch → file contains valid JSON-lines (one per metric)",
+      "CSV format: write batch → file has header row + data rows",
+      "Append mode: two write() calls → all metrics in file (not overwritten)",
+      "connect() creates file if it doesn't exist",
+      "connect() appends to existing file (doesn't truncate)",
+      "close() flushes buffered data",
+      "Write error (invalid path) → error propagated, not swallowed",
+      "Empty batch → no error, nothing written",
+      "Metric fields of all types (number, bigint, string, boolean) serialised correctly"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.1i",
+    "category": "integration",
+    "description": "Integration test: file output in pipeline — metrics flow from input through pipeline to file",
+    "prd_refs": [],
+    "steps": [
+      "Create test/integration/file-pipeline.test.ts",
+      "Configure pipeline with mock input + file output (JSON-lines)",
+      "Verify metrics written to file match what input produced",
+      "Verify global tags present in file output",
+      "Test with processor in pipeline — transformed metrics in file"
+    ],
+    "verification": "Integration test passes. Pipeline metrics arrive in file correctly.",
+    "tests": [
+      "Mock input → pipeline → file output: JSON-lines file contains correct metrics",
+      "Global tags present in file output metrics",
+      "Processor transforms reflected in file output"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.2",
+    "category": "output",
+    "description": "Implement local data store output — SQLite with daily rotation, retention, batch writes, MessagePack encoding",
+    "prd_refs": ["prd/11-local-data-store.md"],
+    "steps": [
+      "Create src/plugins/outputs/local-store.ts",
+      "Implement Zod config schema matching PRD §11",
+      "Implement connect(): create data directory, open/create today's daily DB, create tables, set PRAGMAs (WAL, synchronous=NORMAL, busy_timeout=5000)",
+      "Implement daily file routing: getDailyDatabase() returns correct DB for current date",
+      "Implement SQLite schema: metrics table + tag_index table per PRD §11",
+      "Implement write(batch): BEGIN IMMEDIATE transaction, batch INSERT with MessagePack-encoded fields, update tag_index with upsert",
+      "Implement MessagePack encoding/decoding of metric fields via msgpackr",
+      "Implement tags_hash using metric's hashId() (FNV-64a)",
+      "Implement quality mapping: good=0, uncertain=1, bad=2",
+      "Implement retention: time-based (delete old daily files), size-based (evict oldest when exceeding limit)",
+      "Implement downsampling: aggregate old data to min/max/mean/count per interval",
+      "Implement CSV export: query time range across daily files → CSV output",
+      "Implement startup recovery: WAL checkpoint + integrity check on open",
+      "Implement close(): WAL checkpoint, close all open DB handles",
+      "Implement SQLITE_BUSY retry (one retry)",
+      "Write comprehensive tests"
+    ],
+    "verification": "Local store persists and retrieves metrics correctly. Retention works. All tests pass.",
+    "tests": [
+      "write() inserts metrics into daily SQLite file with correct schema",
+      "Metrics retrievable: query by time range returns correct data",
+      "MessagePack round-trip: all FieldValue types encode and decode correctly",
+      "Daily rotation: metrics on different UTC days go to different files",
+      "Tag index populated: name + tags_hash entries created on write",
+      "Tag index upsert: last_seen updated on subsequent writes for same series",
+      "Retention time-based: daily files older than retention_days are deleted",
+      "Retention size-based: oldest daily file deleted when total exceeds retention_max_gb",
+      "WAL mode enabled on new databases (PRAGMA journal_mode check)",
+      "Startup recovery: WAL checkpoint runs on connect()",
+      "Batch write atomicity: all-or-nothing transaction",
+      "SQLITE_BUSY: handled gracefully with retry",
+      "CSV export: correct headers and data for time range",
+      "Empty write (no metrics) → no error, no empty transaction",
+      "connect() creates data directory if missing",
+      "close() checkpoints WAL and closes handles",
+      "Midnight boundary: metric at 23:59:59 UTC → today's file, 00:00:00 → tomorrow's file",
+      "Downsampling: 60 one-second points → 1 summary with correct min/max/mean/count"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.2i",
+    "category": "integration",
+    "description": "Integration test: local store in pipeline — full data path from input to SQLite",
+    "prd_refs": ["prd/11-local-data-store.md"],
+    "steps": [
+      "Create test/integration/local-store-pipeline.test.ts",
+      "Configure pipeline with mock input + local store output",
+      "Verify metrics persisted to SQLite with correct structure",
+      "Verify MessagePack fields decode correctly from stored data",
+      "Verify tag_index populated",
+      "Verify global tags present in stored metrics"
+    ],
+    "verification": "Integration test passes. Pipeline metrics persisted to SQLite correctly.",
+    "tests": [
+      "Mock input → pipeline → local store: metrics in SQLite with correct fields",
+      "Stored metrics decode back to original values via MessagePack",
+      "Tag index reflects stored metric series",
+      "Global tags present in stored metrics"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.3",
+    "category": "buffer",
+    "description": "Implement store-and-forward buffer — per-output SQLite buffer with transaction model and overflow policies",
+    "prd_refs": ["prd/12-buffers-delivery-guarantees.md"],
+    "steps": [
+      "Create src/buffer/store-forward.ts",
+      "Implement StoreForwardBuffer class with SQLite persistence",
+      "Implement add(metrics): encode and INSERT into buffer table",
+      "Implement beginTransaction(batchSize): SELECT oldest N, return BufferTransaction",
+      "Implement BufferTransaction.acceptAll(): DELETE acknowledged metrics",
+      "Implement BufferTransaction.keepAll(): no-op (leave for retry)",
+      "Implement BufferTransaction.accept(indices) / reject(indices): granular control",
+      "Implement overflow policy drop_oldest: DELETE oldest when limit exceeded",
+      "Implement overflow policy disk_spill: memory buffer overflows to SQLite",
+      "Implement startup recovery: unacknowledged metrics still available after restart",
+      "Implement buffer length tracking",
+      "Implement close(): flush and close SQLite handle",
+      "Implement per-output buffer table naming: buffer_{alias}",
+      "Write comprehensive tests"
+    ],
+    "verification": "S&F buffer provides at-least-once delivery. Recovery works after simulated crash. All tests pass.",
+    "tests": [
+      "add() persists metrics to SQLite buffer table",
+      "beginTransaction() returns oldest N metrics in order",
+      "acceptAll() removes all transaction metrics from buffer",
+      "keepAll() leaves all metrics for retry (buffer unchanged)",
+      "accept(indices) removes selected metrics, keeps others",
+      "reject(indices) removes rejected metrics (won't retry)",
+      "Buffer limit (drop_oldest): oldest dropped when limit exceeded",
+      "disk_spill: memory overflow goes to SQLite without dropping",
+      "Recovery: metrics written → close → reopen → metrics still in buffer",
+      "Empty buffer: beginTransaction returns empty batch",
+      "Buffer length tracks current count accurately",
+      "Multiple add() calls → beginTransaction returns all in order",
+      "Per-output table naming: different aliases get different tables"
+    ],
+    "passes": false
+  },
+  {
+    "id": "3.3i",
+    "category": "integration",
+    "description": "Integration test: S&F buffer with output — buffer wraps output, handles failures, recovers",
+    "prd_refs": ["prd/12-buffers-delivery-guarantees.md"],
+    "steps": [
+      "Create test/integration/buffer-output.test.ts",
+      "Test buffer with mock output that succeeds → metrics delivered and removed from buffer",
+      "Test buffer with mock output that fails → metrics kept for retry",
+      "Test buffer with mock output that partially fails → granular accept/reject",
+      "Test crash recovery: add metrics, simulate crash, reopen, metrics still buffered"
+    ],
+    "verification": "Buffer integrates with outputs correctly. Recovery works. All tests pass.",
+    "tests": [
+      "Buffer + successful output: metrics delivered and buffer drained",
+      "Buffer + failing output: metrics retained for retry",
+      "Buffer + partial failure: accepted removed, rejected removed, rest kept",
+      "Crash recovery: buffer survives simulated restart"
+    ],
+    "passes": false
+  }
+]
