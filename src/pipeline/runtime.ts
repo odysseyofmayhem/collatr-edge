@@ -180,7 +180,12 @@ async function runMainLoop(
     }
   }
 
-  // Input channel closed — push final aggregator summaries
+  // Input channel closed — push final aggregator summaries.
+  // Note: the timer-driven push loop may have fired just before shutdown,
+  // calling push()+reset(). Any metrics added after that reset() are captured
+  // by this final push. In rare cases this may produce a partial overlap with
+  // the last timer push — acceptable for monitoring/IIoT data where minor
+  // duplication during shutdown is preferable to data loss.
   const pushAcc = new BroadcastAccumulator(outputBroadcaster, globalTags);
   for (const { plugin } of aggregators) {
     plugin.push(pushAcc);

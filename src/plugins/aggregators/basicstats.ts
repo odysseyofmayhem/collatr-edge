@@ -20,6 +20,9 @@ const STAT_NAMES = ["count", "min", "max", "sum", "mean", "variance", "stdev"] a
 type StatName = (typeof STAT_NAMES)[number];
 
 export const BasicstatsConfigSchema = z.object({
+  // period is stored as a string here for config schema completeness. The config
+  // layer is responsible for parsing duration strings (e.g. "60s" → 60000ms) and
+  // passing the numeric value to PipelineOptions.aggregators[].period at runtime.
   period: z.string().default("60s"),
   drop_original: z.boolean().default(false),
   stats: z
