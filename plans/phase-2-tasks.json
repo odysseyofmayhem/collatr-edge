@@ -170,7 +170,7 @@
       "Quality tags present on output metrics",
       "Global tags applied to OPC-UA metrics"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.3",

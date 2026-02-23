@@ -13,7 +13,7 @@
 | 2.1 | Modbus TCP input | ✅ |
 | 2.1i | Modbus → pipeline integration | ✅ |
 | 2.2 | OPC-UA input | ✅ |
-| 2.2i | OPC-UA → pipeline integration | ⬜ |
+| 2.2i | OPC-UA → pipeline integration | ✅ |
 | 2.3 | MQTT consumer input | ⬜ |
 | 2.3i | MQTT → pipeline integration | ⬜ |
 | 2.4 | Internal metrics input | ⬜ |
@@ -158,6 +158,28 @@
 - `src/plugins/inputs/opcua.ts` — new file
 - `test/unit/plugins/inputs/opcua.test.ts` — new file
 - `package.json` — added node-opcua dependency
+
+## Task 2.2i: OPC-UA → Pipeline Integration Test
+
+### What was built
+1. **`test/integration/opcua-pipeline.test.ts`** — 4 integration tests wiring OpcuaInput (ServiceInput) → PipelineRuntime → MockOutput
+2. **MockOpcuaClient** — minimal mock implementing `OpcuaClient` interface with `emitDataChange()` to simulate server notifications
+3. **MockOutput** — captures written metrics for assertion (same pattern as Modbus integration)
+
+### Tests added (4 new, 200 total)
+- `test/integration/opcua-pipeline.test.ts`
+- **"OPC-UA subscription → pipeline → output: value changes produce metrics"** — 2 nodes (temperature, pressure), emits data changes, verifies correct metric names and values flow through full pipeline
+- **"Data types preserved through pipeline (number, string, boolean)"** — 3 nodes with Double, String, Boolean data types, verifies each type arrives correctly at the output
+- **"Quality tags present on output metrics"** — emits good and bad quality data, verifies quality tags flow through and bad-quality values are NOT dropped (PRD D.3)
+- **"Global tags applied to OPC-UA metrics"** — sets globalTags on pipeline, verifies they appear alongside OPC-UA quality tag on output metrics
+
+### Key design decisions
+- OPC-UA is a ServiceInput (push-based), so tests emit data via `mockClient.emitDataChange()` rather than relying on a gather loop
+- Used `Bun.sleep(200)` between data emission and stop() to allow flush cycle to deliver metrics
+- Used explicit `security_policy: "None"` to skip auto-negotiation in integration tests (avoids 5 connect attempts)
+
+### Files changed
+- `test/integration/opcua-pipeline.test.ts` — new file
 
 ## Notes
 
