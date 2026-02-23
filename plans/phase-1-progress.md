@@ -54,8 +54,13 @@
 - **Decisions:**
   - Broadcaster lives in same file as Channel since they're tightly coupled (Broadcaster depends on Channel)
 
+### Task 1.3i — Integration: Channel<Metric> + Broadcaster<Metric>
+- **What:** Integration test verifying Metric data integrity through Channel and Broadcaster
+- **Result:** 3 tests pass covering all 3 required test cases
+- **Tests:** 100-metric data integrity, Broadcaster copy isolation (mutate one consumer, other unaffected), hashId consistency across channel transit
+
 ## Current Task
-Task 1.3i — Integration test: Channel<Metric> + Broadcaster<Metric>
+Task 1.4 — Implement Ticker
 
 ## Blockers
 (none)

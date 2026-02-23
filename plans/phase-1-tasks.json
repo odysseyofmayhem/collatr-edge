@@ -113,7 +113,7 @@
       "Broadcaster copies to 2 consumers — mutating one consumer's metric doesn't affect the other's",
       "hashId() is identical before send and after receive"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.4",
