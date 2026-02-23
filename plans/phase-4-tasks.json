@@ -37,7 +37,7 @@
       "Empty filter arrays → no filtering (pass everything)",
       "Case-sensitive matching: Temperature ≠ temperature"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "4.0i",
