@@ -4,6 +4,7 @@
 import { getLogger } from "../core/logger";
 import { configInitCommand } from "./commands/config-init";
 import { configValidateCommand } from "./commands/config-validate";
+import { runCommand } from "./commands/run";
 import { versionCommand } from "./commands/version";
 
 // ---------------------------------------------------------------------------
@@ -117,9 +118,7 @@ export async function main(
 
   switch (command) {
     case "run":
-      // Implemented in task 6.6
-      process.stderr.write("Error: run command not yet implemented\n");
-      return 1;
+      return await runCommand(options.configPath);
     case "config":
       return await configCommand(remaining.slice(1), options);
     case "version":

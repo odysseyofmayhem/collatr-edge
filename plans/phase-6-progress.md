@@ -13,7 +13,7 @@
 | 6.3 | config validate command | ✅ |
 | 6.4 | config init command | ✅ |
 | 6.5 | Plugin factory (config → pipeline) | ✅ |
-| 6.6 | run command + signal handling | ⬜ |
+| 6.6 | run command + signal handling | ✅ |
 | 6.7 | Systemd unit file + docs | ⬜ |
 
 ## Task 6.0: Structured Logger
@@ -183,3 +183,47 @@
 - The `buildPipeline()` function does NOT configure the logger — that's the run command's responsibility (reading `agent.log_level`)
 - MetricFilter is now in PipelineOptions but PipelineRuntime doesn't apply it yet — runtime integration is a future task (the filters are wired from config and ready to use)
 - OpcuaInput and MqttConsumerInput can now be factory-instantiated without real protocol clients — they defer connection to `start()`/`init()` time
+
+## Task 6.6: Run Command + Signal Handling
+
+**What was built:**
+- `src/cli/commands/run.ts` — `runCommand(configPath, deps?)` with full pipeline lifecycle: load config → configure logger → log banner → build pipeline → start → await signal → graceful shutdown
+- Signal handling: SIGINT/SIGTERM → graceful shutdown via `PipelineRuntime.stop()`
+- Double-signal force exit: second SIGINT/SIGTERM during shutdown triggers `process.exit(1)`
+- 30-second shutdown timeout safety net (unreffed timer)
+- Dependency injection via optional `RunCommandDeps` parameter for clean testability
+- Wired into `src/cli/index.ts` switch case (replaced stub)
+- 12 new tests in `test/unit/cli/run.test.ts`
+
+**Decisions:**
+- Used dependency injection pattern (`Partial<RunCommandDeps>`) instead of module-level mocking. Each dep (loadConfig, buildPipeline, createRuntime, awaitSignal, forceExit) can be overridden independently. This makes tests fast, deterministic, and readable without fragile module mocks.
+- `forceExit` is injected so tests can verify the double-signal path without calling real `process.exit(1)`.
+- `awaitSignal` is injected so tests can resolve immediately (via `Promise.resolve("SIGINT")`) instead of waiting for real OS signals.
+- Startup errors (config load, parse, pipeline build, connect) return exit code 1. Shutdown errors are logged but return exit code 0 (the pipeline was running and we attempted graceful shutdown).
+- Updated existing CLI test from "run → currently stubbed" to "run (default config path) → exit 1 when config not found" since the run command now actually tries to load the config.
+
+**Test coverage:**
+1. Config load failure (missing file) → exit 1 with error
+2. Config parse failure (invalid TOML) → exit 1 with parse error
+3. Invalid agent config → exit 1
+4. buildPipeline throws → exit 1
+5. pipeline.start() throws (connect error) → exit 1
+6. SIGINT → pipeline.stop() called, exit 0
+7. Logs startup banner and shutdown summary
+8. Startup banner includes version and config path
+9. Pipeline started log includes plugin counts
+10. Logger configured from agent.log_level
+11. Shutdown error logged but still returns 0
+12. Double signal during shutdown → forceExit called
+
+**Files changed:**
+- New: `src/cli/commands/run.ts`, `test/unit/cli/run.test.ts`
+- Modified: `src/cli/index.ts` (import + wired runCommand, replaced stub)
+- Modified: `test/unit/cli/cli.test.ts` (updated run stub test description)
+
+**Test results:** 555 pass, 0 fail (543 existing + 12 new)
+
+**Notes for next task:**
+- Task 6.7 (systemd unit file + docs) is the final task — a static file with no tests needed
+- The run command is now fully functional for local development: `bun run src/index.ts run --config ./config.toml`
+- The double-signal test uses `process.emit("SIGINT")` to trigger the force exit handler — this fires JS-level handlers without sending a real POSIX signal, safe for testing

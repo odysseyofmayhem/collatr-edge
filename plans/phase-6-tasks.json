@@ -125,7 +125,7 @@
         "Run bun test — all tests must pass",
         "Commit: phase-6: add run command with signal handling and graceful shutdown"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "6.7",

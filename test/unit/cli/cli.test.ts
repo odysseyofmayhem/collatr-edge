@@ -209,7 +209,7 @@ describe("CLI framework", () => {
   // Stub commands return non-zero until implemented
   // =========================================================================
 
-  it("run → currently stubbed (exit 1)", async () => {
+  it("run (default config path) → exit 1 when config not found", async () => {
     const code = await main(["run"]);
     expect(code).toBe(1);
   });
