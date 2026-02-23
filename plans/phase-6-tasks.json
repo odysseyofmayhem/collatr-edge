@@ -1,0 +1,143 @@
+{
+  "phase": 6,
+  "name": "CLI",
+  "tasks": [
+    {
+      "id": "6.pre",
+      "description": "Phase 5 review cleanup: address independent review findings Y-NEW-1 through G-NEW-2",
+      "prd_refs": [],
+      "steps": [
+        "Import captureErrors from ./helpers in test/e2e/error-resilience.test.ts, delete local duplicate",
+        "Add clarifying comment in test 5.1.1 about crash sim cleanup ordering",
+        "Add comment in test 5.4.3 about coupling to runtime re-add pattern",
+        "Add TODO comment in runOutputFlushLoop final flush for Phase 7",
+        "Run bun test — all tests must pass",
+        "Commit: phase-5: address independent review findings (Y-NEW-1 through G-NEW-2)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "6.0",
+      "description": "Structured logger: JSON output to stderr, level filtering, child loggers, global singleton. Replace all console.error/console.log in src/ with logger calls.",
+      "prd_refs": ["15-observability.md"],
+      "steps": [
+        "Create src/core/logger.ts with Logger interface, createLogger(), setGlobalLogger(), getLogger()",
+        "JSON output to stderr via process.stderr.write(), ISO 8601 timestamps",
+        "Level filtering: debug < info < warn < error",
+        "child() method creates sub-logger with inherited context + optional level override",
+        "Write tests in test/unit/core/logger.test.ts: level filtering, JSON format, child logger, extra fields, per-plugin level, global setter/getter",
+        "Replace all console.error/console.log in src/ with logger calls (grep and replace)",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add structured JSON logger with level filtering and child loggers"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.1",
+      "description": "CLI framework: arg parsing, subcommand routing, --help, --config global option, entry point update",
+      "prd_refs": ["18-deployment-distribution.md"],
+      "steps": [
+        "Create src/cli/index.ts with main() function: parse argv, route to subcommands",
+        "Support: run, config (init|validate), version, --help/-h",
+        "Parse --config/-c global option (env COLLATR_EDGE_CONFIG, default /etc/collatr-edge/config.toml)",
+        "Update src/index.ts to call main() and process.exit()",
+        "Write tests in test/unit/cli/cli.test.ts: unknown command, no command, --help, config path parsing, config subcommand routing",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add CLI framework with subcommand routing and arg parsing"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.2",
+      "description": "version command: print version, runtime, platform, build time",
+      "prd_refs": ["18-deployment-distribution.md"],
+      "steps": [
+        "Create src/cli/commands/version.ts",
+        "Output: CollatrEdge version, Bun version, platform-arch, build timestamp",
+        "Write tests in test/unit/cli/version.test.ts: output format, exit code 0",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add version command"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.3",
+      "description": "config validate command: parse and validate config file, validate per-plugin schemas, report results. Requires exporting Zod schemas from all plugin files and creating a schema registry.",
+      "prd_refs": ["07-configuration.md", "14-error-handling-resilience.md"],
+      "steps": [
+        "Export Zod config schemas from all plugin source files (modbus, opcua, mqtt-consumer, internal, rename, filter, basicstats, local-store, file, stdout)",
+        "Create src/core/plugin-schemas.ts: central registry mapping plugin type+name to Zod schema",
+        "Create src/cli/commands/config-validate.ts: load file, parse config, validate per-plugin, report to stdout",
+        "Human-readable output with checkmarks/crosses/warnings",
+        "Write tests in test/unit/cli/config-validate.test.ts: valid config, invalid agent, invalid TOML, unknown plugin, invalid plugin config, secret refs, missing file, empty config",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add config validate command with per-plugin schema validation"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.4",
+      "description": "config init command: generate default TOML config template with comments, --output, --mode, --force options",
+      "prd_refs": ["07-configuration.md", "18-deployment-distribution.md", "appendix-a-full-config-example.md"],
+      "steps": [
+        "Create src/cli/commands/config-init.ts",
+        "Config template as string literal: [agent], [global_tags], inputs.internal, example modbus/opcua (commented), outputs.local_store, example file (commented)",
+        "--mode flag adjusts network_policy and hub sections (connected/local_network/standalone)",
+        "--output/-o flag for custom path (default ./collatr-edge.toml)",
+        "--force flag to overwrite existing",
+        "Write tests in test/unit/cli/config-init.test.ts: default generation, file exists error, --force, --output, --mode variations, generated config validates",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add config init command with mode-aware template generation"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.5",
+      "description": "Plugin factory: turn parsed AgentConfig into PipelineOptions. Instantiate real plugins from config, wire per-plugin overrides (interval, timeout, batch_size, period, drop_original, enabled), wire metric filters from config.",
+      "prd_refs": ["06-plugin-system.md", "07-configuration.md", "08-pipeline-lifecycle.md"],
+      "steps": [
+        "Create src/pipeline/plugin-factory.ts with buildPipeline(config: AgentConfig): PipelineOptions",
+        "Plugin constructor registry: map plugin names to factory functions",
+        "Validate each plugin instance config against Zod schema",
+        "Wire per-plugin overrides: interval (duration parse), timeout (duration parse), metric_batch_size, period, drop_original",
+        "Respect enabled: false (skip plugin)",
+        "Wire metric filter fields (namepass/namedrop/tagpass/tagdrop/fieldpass/fielddrop) from config",
+        "Pass global_tags through to PipelineOptions",
+        "Refactor plugin constructors if needed to accept config objects",
+        "Write tests in test/unit/pipeline/plugin-factory.test.ts: minimal config, full config, unknown plugin, invalid config, duration parsing, per-plugin overrides, enabled:false, global tags, drop_original, filter wiring",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add plugin factory for config-to-pipeline wiring"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.6",
+      "description": "run command + signal handling: load config, instantiate plugins, start pipeline, handle SIGINT/SIGTERM with graceful shutdown, double-signal force exit, shutdown timeout",
+      "prd_refs": ["08-pipeline-lifecycle.md", "14-error-handling-resilience.md", "18-deployment-distribution.md"],
+      "steps": [
+        "Create src/cli/commands/run.ts",
+        "Implementation flow: parse config → configure logger → log banner → build pipeline → start → register signals → await termination → stop → exit",
+        "Signal handling: SIGINT/SIGTERM → graceful shutdown, double signal → force exit",
+        "Shutdown timeout: 30s safety net",
+        "Error handling: config errors → exit 1, connect errors → exit 1, service input errors → warn + continue",
+        "Log startup banner and shutdown summary",
+        "Write tests in test/unit/cli/run.test.ts: config load failure, parse failure, plugin connect error, graceful shutdown sequence",
+        "Run bun test — all tests must pass",
+        "Commit: phase-6: add run command with signal handling and graceful shutdown"
+      ],
+      "passes": false
+    },
+    {
+      "id": "6.7",
+      "description": "Systemd unit file and README docs",
+      "prd_refs": ["18-deployment-distribution.md"],
+      "steps": [
+        "Create deploy/collatr-edge.service with hardening options",
+        "Add installation instructions to README.md (systemd section)",
+        "Run bun test — all tests must pass (no regressions from any README changes)",
+        "Commit: phase-6: add systemd unit file and deployment docs"
+      ],
+      "passes": false
+    }
+  ]
+}
