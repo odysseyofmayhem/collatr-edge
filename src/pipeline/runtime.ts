@@ -5,7 +5,8 @@ import { Channel, Broadcaster } from "../core/channel";
 import { ChannelAccumulator, type Accumulator } from "../core/accumulator";
 import { createMetric, type FieldValue, type Metric } from "../core/metric";
 import { Ticker } from "../core/ticker";
-import type { Input, Processor, Aggregator, Output } from "../core/plugin-types";
+import type { Input, Processor, Aggregator, Output, ServiceInput } from "../core/plugin-types";
+import { isServiceInput } from "../core/plugin-types";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
@@ -15,7 +16,7 @@ export interface PipelineOptions {
   inputs: { plugin: Input; interval?: number; timeout?: number }[];
   processors: { plugin: Processor }[];
   aggregators: { plugin: Aggregator; period?: number; dropOriginal?: boolean }[];
-  outputs: { plugin: Output }[];
+  outputs: { plugin: Output; metricBatchSize?: number }[];
   gatherIntervalMs: number;
   flushIntervalMs: number;
   gatherTimeoutMs?: number;
@@ -219,12 +220,16 @@ async function runAggregatorPushLoop(
  *
  * When the channel closes, the reader finishes, and the flusher does
  * one final flush of remaining items.
+ *
+ * If metricBatchSize is set, large batches are split into chunks before
+ * calling output.write() to respect payload limits.
  */
 async function runOutputFlushLoop(
   channel: Channel<Metric>,
   output: Output,
   flushIntervalMs: number,
   _signal: AbortSignal,
+  metricBatchSize?: number,
 ): Promise<void> {
   const batch: Metric[] = [];
   let done = false;
@@ -237,25 +242,60 @@ async function runOutputFlushLoop(
     done = true;
   })();
 
+  /**
+   * Write a batch to the output, splitting into chunks if metricBatchSize is set.
+   * Returns true if all chunks were written successfully, false if any failed.
+   */
+  async function writeBatch(metrics: Metric[]): Promise<boolean> {
+    if (metrics.length === 0) return true;
+
+    if (metricBatchSize && metricBatchSize > 0) {
+      // Split into chunks respecting metricBatchSize
+      for (let i = 0; i < metrics.length; i += metricBatchSize) {
+        const chunk = metrics.slice(i, i + metricBatchSize);
+        try {
+          await output.write(chunk);
+        } catch (err) {
+          console.error(`[pipeline] output write error: ${(err as Error).message}`);
+          // Re-add remaining (unwritten) metrics to batch for retry
+          const remaining = metrics.slice(i);
+          batch.unshift(...remaining);
+          return false;
+        }
+      }
+      return true;
+    } else {
+      try {
+        await output.write(metrics);
+        return true;
+      } catch (err) {
+        console.error(`[pipeline] output write error: ${(err as Error).message}`);
+        batch.unshift(...metrics);
+        return false;
+      }
+    }
+  }
+
   // Flusher: periodically writes batch to output
   const flusher = (async () => {
     while (!done) {
       await Bun.sleep(flushIntervalMs);
       if (batch.length > 0) {
         const chunk = batch.splice(0);
-        try {
-          await output.write(chunk);
-        } catch (err) {
-          console.error(`[pipeline] output write error: ${(err as Error).message}`);
-          // Re-add failed metrics to batch for retry on next flush cycle
-          batch.unshift(...chunk);
-        }
+        await writeBatch(chunk);
       }
     }
     // Final flush after reader finishes
     if (batch.length > 0) {
+      const chunk = batch.splice(0);
       try {
-        await output.write(batch.splice(0));
+        if (metricBatchSize && metricBatchSize > 0) {
+          for (let i = 0; i < chunk.length; i += metricBatchSize) {
+            await output.write(chunk.slice(i, i + metricBatchSize));
+          }
+        } else {
+          await output.write(chunk);
+        }
       } catch (err) {
         console.error(`[pipeline] final flush error: ${(err as Error).message}`);
       }
@@ -274,16 +314,21 @@ export class PipelineRuntime {
   private abortController: AbortController | null = null;
   private loops: Promise<void>[] = [];
   private inputChannel: Channel<Metric> | null = null;
+  private serviceInputs: { plugin: ServiceInput }[] = [];
 
   constructor(options: PipelineOptions) {
     this.options = options;
   }
 
   /**
-   * Build and start the pipeline. Follows PRD §8 startup sequence
-   * (simplified for Phase 1: no SQLite, no Hub, no Web UI).
+   * Build and start the pipeline. Follows PRD §8 startup sequence.
    *
    * Pipeline is built backwards: outputs → aggregators → processors → inputs.
+   *
+   * Startup ordering (PRD §8):
+   * - Connect outputs
+   * - Start service inputs (ServiceInput.start())
+   * - Begin gather loops for polling inputs (Ticker)
    */
   async start(): Promise<void> {
     this.abortController = new AbortController();
@@ -305,10 +350,10 @@ export class PipelineRuntime {
 
     // 3. Start output flush loops
     for (let i = 0; i < this.options.outputs.length; i++) {
-      const { plugin } = this.options.outputs[i]!;
+      const outputOpts = this.options.outputs[i]!;
       const ch = outputChannels[i]!;
       this.loops.push(
-        runOutputFlushLoop(ch, plugin, this.options.flushIntervalMs, signal),
+        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize),
       );
     }
 
@@ -339,7 +384,7 @@ export class PipelineRuntime {
       ),
     );
 
-    // 7. Init plugins and start input gather loops
+    // 7. Init plugins and start inputs
     for (const proc of this.options.processors) {
       if (proc.plugin.init) await proc.plugin.init();
     }
@@ -352,13 +397,30 @@ export class PipelineRuntime {
       this.inputChannel,
       globalTags,
     );
+
+    // Separate service inputs from polling inputs
+    this.serviceInputs = [];
+
     for (const input of this.options.inputs) {
       if (input.plugin.init) await input.plugin.init();
-      const interval = input.interval ?? this.options.gatherIntervalMs;
-      const timeout = input.timeout ?? this.options.gatherTimeoutMs ?? 0;
-      this.loops.push(
-        runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal),
-      );
+
+      if (isServiceInput(input.plugin)) {
+        // ServiceInput: call start(acc) — pushes metrics asynchronously (PRD §8 step 14)
+        try {
+          await input.plugin.start(inputAcc);
+          this.serviceInputs.push({ plugin: input.plugin });
+        } catch (err) {
+          console.error(`[pipeline] service input start error: ${(err as Error).message}`);
+          // Log and continue — one service input failure doesn't stop the pipeline
+        }
+      } else {
+        // Polling Input: create gather loop with Ticker (PRD §8 step 15)
+        const interval = input.interval ?? this.options.gatherIntervalMs;
+        const timeout = input.timeout ?? this.options.gatherTimeoutMs ?? 0;
+        this.loops.push(
+          runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal),
+        );
+      }
     }
   }
 
@@ -366,23 +428,34 @@ export class PipelineRuntime {
    * Graceful shutdown (PRD §8 shutdown sequence).
    *
    * 1. Signal all timer loops to stop (abort)
-   * 2. Close input channel (cascades: main loop drains → closes output channels)
-   * 3. Wait for all loops to complete
-   * 4. Call close() on all plugins
+   * 2. Stop service inputs (stop()) — before channel close so final metrics can be sent
+   * 3. Close input channel (cascades: main loop drains → closes output channels)
+   * 4. Wait for all loops to complete
+   * 5. Call close() on all plugins
    */
   async stop(): Promise<void> {
     if (!this.abortController) return;
 
-    // Signal all loops to stop
+    // 1. Signal all loops to stop
     this.abortController.abort();
 
-    // Close input channel — cascades shutdown through pipeline
+    // 2. Stop service inputs BEFORE closing channels (PRD §8 step 3)
+    // This allows service inputs to send any final metrics before the channel closes.
+    for (const { plugin } of this.serviceInputs) {
+      try {
+        await plugin.stop();
+      } catch (err) {
+        console.error(`[pipeline] service input stop error: ${(err as Error).message}`);
+      }
+    }
+
+    // 3. Close input channel — cascades shutdown through pipeline
     this.inputChannel?.close();
 
-    // Wait for all loops to complete
+    // 4. Wait for all loops to complete
     await Promise.allSettled(this.loops);
 
-    // Close all plugins
+    // 5. Close all plugins
     for (const { plugin } of this.options.inputs) {
       if (plugin.close) await plugin.close();
     }
@@ -397,6 +470,7 @@ export class PipelineRuntime {
     }
 
     this.loops = [];
+    this.serviceInputs = [];
     this.abortController = null;
   }
 }

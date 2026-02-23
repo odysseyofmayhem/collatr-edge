@@ -24,7 +24,7 @@
       "ServiceInput start() error: logged, pipeline continues with other inputs",
       "metric_batch_size: large batch split into chunks for output.write()"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "2.1",

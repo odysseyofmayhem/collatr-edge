@@ -42,3 +42,14 @@ export interface StatefulPlugin {
   getState(): unknown;
   setState(state: unknown): void;
 }
+
+/**
+ * Type guard: returns true if the given Input is a ServiceInput (has start/stop).
+ * Uses duck-typing: checks for `start` and `stop` methods.
+ */
+export function isServiceInput(plugin: Input): plugin is ServiceInput {
+  return (
+    typeof (plugin as ServiceInput).start === "function" &&
+    typeof (plugin as ServiceInput).stop === "function"
+  );
+}
