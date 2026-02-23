@@ -271,7 +271,7 @@
       "2 mock inputs fan-in to 1 channel → output sees metrics from both",
       "Broadcaster: 2 mock outputs each receive all metrics independently"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.8i",

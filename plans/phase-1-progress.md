@@ -147,8 +147,27 @@
   - Secret refs preserved as literal strings in config values — resolution happens at runtime via the secret store (Phase 5+)
   - Plugin sections extracted generically as `Record<string, PluginInstanceConfig[]>` — per-plugin schema validation happens when plugins are instantiated, not at parse time
 
+### Task 1.8 — Pipeline runtime
+- **What:** Implemented pipeline runtime with startup, shutdown, and full data flow in `src/pipeline/runtime.ts`
+- **Result:** 8 tests pass covering all 8 required test cases
+- **Implementation details:**
+  - `PipelineOptions` interface with inputs, processors, aggregators, outputs, intervals, timeouts, global tags
+  - `CollectingAccumulator` — in-memory accumulator for processor chain (collects metrics between processor stages)
+  - `BroadcastAccumulator` — writes metrics directly to output Broadcaster (used for aggregator push)
+  - `runGatherLoop()` — Ticker-driven input gather with configurable timeout via `Promise.race`
+  - `runMainLoop()` — reads from input channel, runs sequential processor chain, forks to aggregators + broadcasts to outputs. On input channel close: pushes final aggregator summaries, closes all output channels
+  - `runAggregatorPushLoop()` — periodic push/reset with abort-responsive `Promise.race([Bun.sleep, abortSignal])` pattern
+  - `runOutputFlushLoop()` — concurrent reader (channel → batch buffer) + flusher (periodic `output.write()`) with final flush on drain
+  - `PipelineRuntime` class with `start()` (build backwards: outputs → aggregators → processors → inputs) and `stop()` (abort → close input → cascade → drain → close all plugins)
+  - Pipeline builds backwards per PRD §8: output channels/broadcaster → output flush loops → aggregator push loops → input channel → main loop → init plugins → gather loops
+  - Graceful shutdown cascade: abort signal stops timer loops → close input channel → main loop drains remaining metrics → pushes final aggregator summaries → closes output channels → output flush loops drain and finish → close all plugins
+- **Decisions:**
+  - `shouldDropOriginals` checks if ANY aggregator has `dropOriginal: true` — consistent with Telegraf semantics where drop_original is a per-aggregator flag that affects whether originals pass through at all
+  - `runAggregatorPushLoop` uses `Promise.race([Bun.sleep, abortPromise])` instead of Ticker — simpler, abort-responsive without blocking on long periods
+  - Final aggregator push in `runMainLoop` cleanup does NOT call `reset()` — this is intentional since the pipeline is shutting down and we want the final summary to include all accumulated data
+
 ## Current Task
-Task 1.8 — Pipeline runtime
+Task 1.8i — Full pipeline integration test
 
 ## Blockers
 (none)

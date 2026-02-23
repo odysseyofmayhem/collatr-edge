@@ -1,0 +1,357 @@
+import { describe, it, expect, mock } from "bun:test";
+import { PipelineRuntime } from "@pipeline/runtime";
+import type { Accumulator } from "@core/accumulator";
+import type { Metric } from "@core/metric";
+import type {
+  Input,
+  Processor,
+  Aggregator,
+  Output,
+} from "@core/plugin-types";
+
+// ---------------------------------------------------------------------------
+// Mock plugins
+// ---------------------------------------------------------------------------
+
+class MockInput implements Input {
+  private metricsToEmit: { name: string; fields: Record<string, number> }[];
+  gatherCount = 0;
+  closed = false;
+
+  constructor(
+    metrics: { name: string; fields: Record<string, number> }[] = [
+      { name: "cpu", fields: { usage: 42 } },
+    ],
+  ) {
+    this.metricsToEmit = metrics;
+  }
+
+  async gather(acc: Accumulator): Promise<void> {
+    for (const m of this.metricsToEmit) {
+      acc.addFields(m.name, m.fields);
+    }
+    this.gatherCount++;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+class MockSlowInput implements Input {
+  closed = false;
+
+  async gather(_acc: Accumulator): Promise<void> {
+    await Bun.sleep(5_000);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+class MockProcessor implements Processor {
+  private transformFn: (metric: Metric, acc: Accumulator) => void;
+  closed = false;
+
+  constructor(transformFn: (metric: Metric, acc: Accumulator) => void) {
+    this.transformFn = transformFn;
+  }
+
+  async process(metric: Metric, acc: Accumulator): Promise<void> {
+    this.transformFn(metric, acc);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+class MockAggregator implements Aggregator {
+  added: Metric[] = [];
+  pushCount = 0;
+  resetCount = 0;
+  closed = false;
+
+  add(metric: Metric): void {
+    this.added.push(metric);
+  }
+
+  push(acc: Accumulator): void {
+    acc.addFields("summary", { count: this.added.length });
+    this.pushCount++;
+  }
+
+  reset(): void {
+    this.added = [];
+    this.resetCount++;
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+class MockOutput implements Output {
+  written: Metric[] = [];
+  connected = false;
+  closed = false;
+
+  async connect(): Promise<void> {
+    this.connected = true;
+  }
+
+  async write(batch: Metric[]): Promise<void> {
+    this.written.push(...batch);
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: run pipeline for a short duration then stop
+// ---------------------------------------------------------------------------
+
+async function runFor(
+  pipeline: PipelineRuntime,
+  durationMs: number,
+): Promise<void> {
+  await pipeline.start();
+  await Bun.sleep(durationMs);
+  await pipeline.stop();
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("PipelineRuntime", () => {
+  it("mock input → mock output: metrics flow correctly", async () => {
+    const input = new MockInput([{ name: "temperature", fields: { celsius: 23.5 } }]);
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    expect(output.connected).toBe(true);
+    expect(output.written.length).toBeGreaterThanOrEqual(1);
+    expect(output.written[0]!.name).toBe("temperature");
+    expect(output.written[0]!.getField("celsius")).toBe(23.5);
+  });
+
+  it("2 processors in chain: output sees both transformations applied", async () => {
+    const input = new MockInput([{ name: "raw", fields: { value: 10 } }]);
+
+    // Processor 1: doubles the value
+    const proc1 = new MockProcessor((metric, acc) => {
+      const val = metric.getField("value") as number;
+      metric.addField("value", val * 2);
+      acc.addMetric(metric);
+    });
+
+    // Processor 2: adds a label field
+    const proc2 = new MockProcessor((metric, acc) => {
+      metric.addField("label", "processed");
+      acc.addMetric(metric);
+    });
+
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [{ plugin: proc1 }, { plugin: proc2 }],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    expect(output.written.length).toBeGreaterThanOrEqual(1);
+    const m = output.written[0]!;
+    expect(m.getField("value")).toBe(20); // doubled by proc1
+    expect(m.getField("label")).toBe("processed"); // added by proc2
+  });
+
+  it("aggregator: originals pass through AND aggregator receives copies", async () => {
+    const input = new MockInput([{ name: "temp", fields: { c: 25 } }]);
+    const aggregator = new MockAggregator();
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [{ plugin: aggregator, dropOriginal: false, period: 10_000 }],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Aggregator received copies
+    expect(aggregator.added.length).toBeGreaterThanOrEqual(1);
+    expect(aggregator.added[0]!.name).toBe("temp");
+
+    // Output received originals (not just summaries)
+    const originals = output.written.filter((m) => m.name === "temp");
+    expect(originals.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("drop_original=true: originals do NOT reach output", async () => {
+    const input = new MockInput([{ name: "temp", fields: { c: 25 } }]);
+    const aggregator = new MockAggregator();
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [{ plugin: aggregator, dropOriginal: true, period: 5000 }],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Aggregator received copies
+    expect(aggregator.added.length).toBeGreaterThanOrEqual(1);
+
+    // Output should NOT have originals — only final push summary
+    const originals = output.written.filter((m) => m.name === "temp");
+    expect(originals.length).toBe(0);
+
+    // Output may have summary from final aggregator push on shutdown
+    const summaries = output.written.filter((m) => m.name === "summary");
+    expect(summaries.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("gather timeout: slow input with timeout → error logged, no crash", async () => {
+    const slowInput = new MockSlowInput();
+    const output = new MockOutput();
+
+    // Suppress console.error and track calls
+    const originalError = console.error;
+    const errorCalls: string[] = [];
+    console.error = mock((...args: unknown[]) => {
+      errorCalls.push(String(args[0]));
+    });
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: slowInput, timeout: 100 }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 200,
+      flushIntervalMs: 50,
+      gatherTimeoutMs: 100,
+    });
+
+    await runFor(pipeline, 500);
+
+    console.error = originalError;
+
+    // Should have logged timeout errors
+    const timeoutErrors = errorCalls.filter((msg) =>
+      msg.includes("Gather timeout"),
+    );
+    expect(timeoutErrors.length).toBeGreaterThanOrEqual(1);
+
+    // Pipeline should not crash — output was properly closed
+    expect(output.closed).toBe(true);
+  });
+
+  it("graceful shutdown: all close() methods called, pipeline drains", async () => {
+    const input = new MockInput();
+    const proc = new MockProcessor((metric, acc) => {
+      acc.addMetric(metric);
+    });
+    const aggregator = new MockAggregator();
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [{ plugin: proc }],
+      aggregators: [{ plugin: aggregator, dropOriginal: false, period: 10_000 }],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 200);
+
+    // All plugins had close() called
+    expect(input.closed).toBe(true);
+    expect(proc.closed).toBe(true);
+    expect(aggregator.closed).toBe(true);
+    expect(output.closed).toBe(true);
+
+    // Output was connected and received some metrics
+    expect(output.connected).toBe(true);
+    expect(output.written.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("2 mock inputs fan-in to 1 channel → output sees metrics from both", async () => {
+    const input1 = new MockInput([{ name: "sensor_a", fields: { value: 1 } }]);
+    const input2 = new MockInput([{ name: "sensor_b", fields: { value: 2 } }]);
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input1 }, { plugin: input2 }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    const namesReceived = new Set(output.written.map((m) => m.name));
+    expect(namesReceived.has("sensor_a")).toBe(true);
+    expect(namesReceived.has("sensor_b")).toBe(true);
+  });
+
+  it("broadcaster: 2 mock outputs each receive all metrics independently", async () => {
+    const input = new MockInput([{ name: "data", fields: { val: 99 } }]);
+    const output1 = new MockOutput();
+    const output2 = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output1 }, { plugin: output2 }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Both outputs connected and received metrics
+    expect(output1.connected).toBe(true);
+    expect(output2.connected).toBe(true);
+    expect(output1.written.length).toBeGreaterThanOrEqual(1);
+    expect(output2.written.length).toBeGreaterThanOrEqual(1);
+
+    // Both received the same metric name
+    expect(output1.written[0]!.name).toBe("data");
+    expect(output2.written[0]!.name).toBe("data");
+
+    // Copies are independent (different object references)
+    if (output1.written.length > 0 && output2.written.length > 0) {
+      expect(output1.written[0]).not.toBe(output2.written[0]);
+    }
+  });
+});
