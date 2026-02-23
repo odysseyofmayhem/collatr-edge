@@ -1,0 +1,281 @@
+[
+  {
+    "id": "2.0",
+    "category": "runtime",
+    "description": "Extend PipelineRuntime to support ServiceInput plugins (start/stop lifecycle)",
+    "prd_refs": ["prd/04-architecture-overview.md", "prd/06-plugin-system.md", "prd/08-pipeline-lifecycle.md"],
+    "steps": [
+      "Add `isServiceInput()` type guard to src/core/plugin-types.ts",
+      "Add `metric_batch_size` support to output flush loop (split large batches)",
+      "Modify PipelineRuntime.start() to detect ServiceInput vs Input",
+      "For ServiceInput: call start(acc) instead of creating gather loop",
+      "For ServiceInput: store reference for shutdown",
+      "Modify PipelineRuntime.stop() to call stop() on all ServiceInputs before channel close",
+      "Ensure mixed pipelines work: polling Input + ServiceInput in same pipeline",
+      "Write tests using mock ServiceInput that pushes metrics asynchronously"
+    ],
+    "verification": "All existing tests still pass. New ServiceInput lifecycle tests pass. Mixed input pipeline test passes.",
+    "tests": [
+      "isServiceInput() correctly identifies ServiceInput vs Input",
+      "ServiceInput start() called during pipeline startup",
+      "ServiceInput pushes metrics asynchronously — output receives them",
+      "ServiceInput stop() called during shutdown before channel close",
+      "Mixed pipeline: 1 polling input + 1 service input, output sees metrics from both",
+      "ServiceInput start() error: logged, pipeline continues with other inputs",
+      "metric_batch_size: large batch split into chunks for output.write()"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.1",
+    "category": "input",
+    "description": "Implement Modbus TCP input plugin with register reading, byte order, scaling, and batch reads",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/appendix-b-metric-interface.md"],
+    "steps": [
+      "Create src/plugins/inputs/modbus.ts",
+      "Implement Zod config schema matching PRD §6 ModbusConfigSchema exactly",
+      "Implement init(): create modbus-serial TCP client with timeout",
+      "Implement gather(): read all configured registers, emit via acc.addFields()",
+      "Implement FC01 (coils), FC02 (discrete inputs), FC03 (holding), FC04 (input registers)",
+      "Implement multi-register types: uint32, int32, float32 with byte order decoding",
+      "Implement scaling (raw * scale + offset) and bit extraction",
+      "Implement batch reads: group contiguous same-type registers, respect max_batch_size and max_gap",
+      "Implement shared connection mode: use setID() to switch slave_id",
+      "Implement Modbus exception handling per PRD §6 table (disable register on 01/02/03, retry on 04/05/06/08/0A/0B)",
+      "Implement reconnection on connection loss",
+      "Implement close(): disconnect client",
+      "Register plugin in plugin registry",
+      "Write comprehensive tests"
+    ],
+    "verification": "All Modbus tests pass. Existing Phase 1 tests still pass. Config validates via Zod.",
+    "tests": [
+      "Read single holding register (FC03) → correct numeric value",
+      "Read coil (FC01) → boolean value",
+      "Read input register (FC04) → correct value",
+      "Float32 with ABCD byte order → correct float value",
+      "Float32 with CDAB byte order → correct float value (word-swapped)",
+      "Float32 with BADC byte order → correct float value",
+      "Float32 with DCBA byte order → correct float value",
+      "Uint32 multi-register → correct value",
+      "Scaling: raw * scale + offset produces correct output",
+      "Bit extraction: correct bit extracted as boolean",
+      "Batch read: contiguous registers read in single request",
+      "Gap split: non-contiguous registers split into separate requests",
+      "Shared mode: 2 slave IDs on same connection both return correct data",
+      "Modbus exception 02 (Illegal Address) → register disabled, others continue",
+      "Modbus exception 04 (Slave Failure) → retry next interval, others continue",
+      "Connection timeout → error logged, gather completes without crash",
+      "Reconnection after connection drop",
+      "Config validation: missing controller → error, slave_id out of range → error"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.1i",
+    "category": "integration",
+    "description": "Integration test: Modbus input → pipeline → mock output",
+    "prd_refs": ["prd/04-architecture-overview.md"],
+    "steps": [
+      "Create test/integration/modbus-pipeline.test.ts",
+      "Set up mock Modbus TCP server (or stub modbus-serial)",
+      "Configure pipeline with Modbus input + mock output",
+      "Verify metrics flow through pipeline with correct names, values, and tags",
+      "Verify slave_id appears as tag",
+      "Verify global tags applied to Modbus metrics"
+    ],
+    "verification": "Integration test passes. Modbus metrics arrive at output with correct structure.",
+    "tests": [
+      "Modbus input → pipeline → output: metrics have correct register names and values",
+      "Global tags and slave_id tag present on output metrics",
+      "Multiple registers produce multiple fields per gather cycle"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.2",
+    "category": "input",
+    "description": "Implement OPC-UA input plugin — connection, subscription, data types, certificates, reconnection",
+    "prd_refs": ["prd/appendix-d-opc-ua-input-plugin-specification.md", "prd/06-plugin-system.md"],
+    "steps": [
+      "Create src/plugins/inputs/opcua.ts",
+      "Implement Zod config schema matching PRD Appendix D exactly",
+      "Implement start(): connect → session → subscription → monitored items",
+      "Implement security auto-negotiation (try policies in fallback order)",
+      "Implement client certificate generation (self-signed RSA 2048, persist to configured path)",
+      "Implement server certificate TOFU (store fingerprint, reject on change)",
+      "Implement data type mapping: 22+ OPC-UA types → FieldValue per D.3 table",
+      "Implement quality mapping: StatusCode → quality tag (good/uncertain/bad)",
+      "Implement timestamp source selection (source/server/gather)",
+      "Implement node groups: expand groups into flat node list with inherited defaults",
+      "Implement subscription parameters from config",
+      "Implement data change filter (deadband)",
+      "Implement reconnection with exponential backoff",
+      "Implement subscription transfer on reconnect (attempt TransferSubscriptions, fall back to recreate)",
+      "Implement namespace URI resolution (nsu= to ns= at connect time)",
+      "Implement browse mode: discover nodes, write TOML output file",
+      "Implement authentication: anonymous, username/password",
+      "Implement stop(): delete subscriptions, close session, close secure channel",
+      "Implement error handling per D.7 table",
+      "Register plugin in plugin registry",
+      "Write comprehensive tests using node-opcua test server"
+    ],
+    "verification": "All OPC-UA tests pass. ServiceInput lifecycle works. Certificate workflow verified.",
+    "tests": [
+      "Connect to mock OPC-UA server, read single node → correct metric value",
+      "Subscription: monitored item receives data change → metric emitted to accumulator",
+      "Data type Boolean → boolean FieldValue",
+      "Data type Int32 → number FieldValue",
+      "Data type Float → number FieldValue",
+      "Data type Double → number FieldValue",
+      "Data type String → string FieldValue",
+      "Data type DateTime → number (Unix epoch ms)",
+      "Quality Good → quality tag 'good', value emitted",
+      "Quality Bad → quality tag 'bad', value STILL emitted (not dropped)",
+      "Timestamp source=source uses OPC-UA source timestamp",
+      "Timestamp source=gather uses local timestamp",
+      "Node groups expanded: group defaults inherited, per-node overrides win",
+      "Certificate generation: no cert file → auto-generates and persists",
+      "TOFU: first connect → fingerprint stored; changed cert → connection rejected",
+      "Reconnection: disconnect → backoff → reconnect → subscriptions recreated",
+      "Browse mode: discovers nodes, writes TOML snippet to output file",
+      "Auth anonymous: connects without credentials",
+      "Auth username: connects with username/password",
+      "Bad NodeID → error logged, other nodes continue monitoring",
+      "Connection refused → retry with backoff, no crash",
+      "Auth failure → clear error, no retry (config error)",
+      "Deadband absolute: small value changes suppressed",
+      "Array type → multiple fields (name[0], name[1], name.length)",
+      "Config validation: missing endpoint → error, invalid security policy → error"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.2i",
+    "category": "integration",
+    "description": "Integration test: OPC-UA input → pipeline → mock output",
+    "prd_refs": ["prd/appendix-d-opc-ua-input-plugin-specification.md"],
+    "steps": [
+      "Create test/integration/opcua-pipeline.test.ts",
+      "Set up mock OPC-UA server using node-opcua server module",
+      "Configure pipeline with OPC-UA ServiceInput + mock output",
+      "Change values on server → verify metrics arrive at output",
+      "Verify data type mapping is correct end-to-end",
+      "Verify quality tags flow through pipeline",
+      "Verify global tags applied to OPC-UA metrics"
+    ],
+    "verification": "Integration test passes. OPC-UA subscription metrics flow through full pipeline.",
+    "tests": [
+      "OPC-UA subscription → pipeline → output: value changes produce metrics",
+      "Data types preserved through pipeline (number, string, boolean)",
+      "Quality tags present on output metrics",
+      "Global tags applied to OPC-UA metrics"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.3",
+    "category": "input",
+    "description": "Implement MQTT consumer input plugin — subscribe, parse, reconnect",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/19-mvp-plugin-inventory.md"],
+    "steps": [
+      "Choose MQTT library (mqtt.js or alternative) — verify Bun compatibility first",
+      "Create src/plugins/inputs/mqtt-consumer.ts",
+      "Implement Zod config schema",
+      "Implement start(): connect to broker, subscribe to topics",
+      "Implement message handler: parse payload → acc.addFields()",
+      "Implement JSON payload parsing (flat → fields, nested → dot-notation)",
+      "Implement plain string payload (single 'value' field)",
+      "Implement topic-to-tag mapping (topic_tag and topic_tags config)",
+      "Implement QoS support (0, 1, 2)",
+      "Implement TLS configuration",
+      "Implement auth: username/password",
+      "Implement reconnection with backoff",
+      "Implement stop(): unsubscribe, disconnect",
+      "Register plugin in plugin registry",
+      "Write tests using mock MQTT broker (aedes or similar)"
+    ],
+    "verification": "All MQTT tests pass. ServiceInput pattern verified. Reconnection works.",
+    "tests": [
+      "Connect to mock broker, subscribe, receive JSON message → metric with correct fields",
+      "JSON payload with multiple fields → single metric with all fields",
+      "Nested JSON → dot-notation flattened fields",
+      "Plain string payload → metric with single 'value' field",
+      "Topic tag extraction: topic 'factory/A/line/1' with topic_tags → correct tags",
+      "Wildcard subscription: subscribe to 'sensors/#' → receives from sub-topics",
+      "QoS 1: message delivery confirmed",
+      "Reconnection: broker disconnect → auto-reconnect → resubscribe",
+      "Connection failure → retry with backoff, no crash",
+      "Multiple topics: subscribe to 3 topics, metrics from all arrive",
+      "Measurement name override from config",
+      "Config validation: missing servers → error, missing topics → error"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.3i",
+    "category": "integration",
+    "description": "Integration test: MQTT consumer → pipeline → mock output",
+    "prd_refs": [],
+    "steps": [
+      "Create test/integration/mqtt-pipeline.test.ts",
+      "Set up mock MQTT broker",
+      "Configure pipeline with MQTT consumer + mock output",
+      "Publish messages to broker → verify metrics arrive at output",
+      "Verify topic tags flow through pipeline"
+    ],
+    "verification": "Integration test passes. MQTT messages become pipeline metrics.",
+    "tests": [
+      "MQTT message → pipeline → output: JSON fields preserved",
+      "Topic tags present on output metrics",
+      "Global tags applied to MQTT metrics"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.4",
+    "category": "input",
+    "description": "Implement internal metrics input — agent health and per-plugin stats",
+    "prd_refs": ["prd/15-observability.md", "prd/19-mvp-plugin-inventory.md"],
+    "steps": [
+      "Create src/plugins/inputs/internal.ts",
+      "Define a StatsCollector interface for pipeline runtime to expose counters",
+      "Implement polling Input that reads stats on each gather",
+      "Emit collatr.agent.* metrics: uptime, memory, cpu, gather_errors, write_errors",
+      "Emit collatr.agent.metrics_gathered, metrics_written, metrics_dropped counters",
+      "Emit per-input metrics: collatr.input.gather_time, collatr.input.metrics_count",
+      "Emit per-output metrics: collatr.output.write_time, collatr.output.buffer_size",
+      "Add StatsCollector to PipelineRuntime (expose counters for internal input)",
+      "Register plugin in plugin registry",
+      "Write tests"
+    ],
+    "verification": "Internal metrics produced with correct names and reasonable values. Pipeline stats accurate.",
+    "tests": [
+      "Internal input produces collatr.agent.uptime metric with positive value",
+      "collatr.agent.memory_usage is a positive number (bytes)",
+      "collatr.agent.metrics_gathered increases as inputs produce metrics",
+      "Per-input gather_time is non-negative (milliseconds)",
+      "Metrics have correct collatr.* prefix",
+      "Agent hostname/instance tag present",
+      "Internal metrics flow through pipeline like normal metrics"
+    ],
+    "passes": false
+  },
+  {
+    "id": "2.4i",
+    "category": "integration",
+    "description": "Integration test: internal metrics + other input → pipeline → output",
+    "prd_refs": [],
+    "steps": [
+      "Create test/integration/internal-pipeline.test.ts",
+      "Configure pipeline with internal input + mock polling input + mock output",
+      "Verify internal metrics and regular metrics coexist in output",
+      "Verify metrics_gathered counter reflects actual input metrics"
+    ],
+    "verification": "Internal metrics mixed with regular metrics in output. Counters accurate.",
+    "tests": [
+      "Internal metrics and regular metrics both arrive at output",
+      "collatr.agent.metrics_gathered reflects actual metrics produced by other input"
+    ],
+    "passes": false
+  }
+]
