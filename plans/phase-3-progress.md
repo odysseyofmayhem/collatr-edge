@@ -10,7 +10,7 @@
 | 3.1i | File output → pipeline integration | ✅ |
 | 3.2 | Local data store (SQLite, rotation, retention) | ✅ |
 | 3.2i | Local store → pipeline integration | ✅ |
-| 3.3 | Store-and-forward buffer | ⬜ |
+| 3.3 | Store-and-forward buffer | ✅ |
 | 3.3i | S&F buffer + output integration | ⬜ |
 
 ## Task 3.0: Stdout Output — COMPLETE
@@ -113,6 +113,38 @@
 - Global tags (`site`, `line`) merged into every stored metric alongside original tags
 
 **Test count:** 315 pass (4 new), 0 fail
+
+## Task 3.3: Store-and-Forward Buffer — COMPLETE
+
+**Files created:**
+- `src/buffer/store-forward.ts` — StoreForwardBuffer, BufferTransaction, config schema, metric encoding helpers
+- `test/unit/buffer/store-forward.test.ts` — 15 tests
+
+**Files modified:**
+- `tsconfig.json` — added `@buffer/*` path alias
+
+**What was built:**
+- `StoreForwardBuffer` class with SQLite persistence (WAL mode, synchronous=NORMAL, busy_timeout=5000)
+- Per-output buffer table naming: `buffer_{sanitised_alias}` (shared DB, isolated tables)
+- `add(metrics)`: batch INSERT in transaction, enforces overflow policy after insertion
+- `beginTransaction(batchSize)`: SELECT oldest N by row ID, returns `BufferTransaction`
+- `BufferTransaction` with full PRD §12 transaction model:
+  - `acceptAll()`: remove all transaction metrics (successful delivery)
+  - `keepAll()`: no-op (total failure, retry later)
+  - `accept(indices)`: remove specific metrics by batch position (partial success)
+  - `reject(indices)`: remove specific metrics by batch position (permanent failure)
+- Overflow policies: `drop_oldest` (default) and `disk_spill` — both enforce `metric_buffer_limit` at SQLite level in MVP; two-tier memory/disk distinction deferred to post-MVP
+- Recovery: `open()` counts existing rows, so unacknowledged metrics from previous session are immediately available
+- `encodeMetric()`/`decodeMetric()`: full metric → MessagePack blob round-trip (name, tags, fields, timestamp as string, type, priority)
+- Zod config schema: metric_buffer_limit (default 10000), metric_batch_size (default 1000), overflow_policy
+
+**Decisions:**
+- BigInt timestamp encoded as string in MessagePack payload for portable encoding
+- Alias sanitised to `[a-zA-Z0-9_]` for safe SQL identifier usage
+- Both overflow policies identical at SQLite level in MVP — the memory tier optimisation is post-MVP
+- `reject()` and `accept()` both delete from buffer; semantic difference is for logging/metrics, not buffer state
+
+**Test count:** 330 pass (15 new), 0 fail
 
 ## Notes
 

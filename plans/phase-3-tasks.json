@@ -181,7 +181,7 @@
       "Multiple add() calls → beginTransaction returns all in order",
       "Per-output table naming: different aliases get different tables"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "3.3i",

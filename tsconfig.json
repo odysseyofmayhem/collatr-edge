@@ -30,7 +30,8 @@
     "paths": {
       "@core/*": ["src/core/*"],
       "@plugins/*": ["src/plugins/*"],
-      "@pipeline/*": ["src/pipeline/*"]
+      "@pipeline/*": ["src/pipeline/*"],
+      "@buffer/*": ["src/buffer/*"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
