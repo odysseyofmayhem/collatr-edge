@@ -1,0 +1,298 @@
+[
+  {
+    "id": "1.0",
+    "category": "setup",
+    "description": "Initialise project with Bun, TypeScript strict mode, and test infrastructure",
+    "prd_refs": ["prd/spike-results-bun-runtime.md"],
+    "steps": [
+      "Run `bun init` in project root (if not already done)",
+      "Configure tsconfig.json with strict: true, ESM, paths",
+      "Create src/ and test/ directory structure per CLAUDE.md",
+      "Create a trivial test (test/unit/smoke.test.ts) that passes",
+      "Verify `bun test` runs and passes",
+      "Add smol-toml dependency (`bun add smol-toml`)",
+      "Add msgpackr dependency (`bun add msgpackr`)",
+      "Verify both imports work in a test file"
+    ],
+    "verification": "`bun test` passes with at least 1 test. `bun build --compile` produces a binary that runs.",
+    "passes": false
+  },
+  {
+    "id": "1.1",
+    "category": "core",
+    "description": "Implement Metric data model with types, hashId, and copy",
+    "prd_refs": ["prd/05-data-model.md", "prd/appendix-b-metric-interface.md"],
+    "steps": [
+      "Create src/core/metric.ts with Metric class",
+      "Implement FieldValue, MetricType, MetricPriority types",
+      "Implement tags as sorted Map (sort on construction/mutation)",
+      "Implement hashId() using FNV-64a of name + sorted tags",
+      "Implement copy() as hand-rolled deep copy",
+      "Implement accept(), reject(), drop() tracking methods",
+      "Create factory function createMetric()",
+      "Write unit tests in test/unit/core/metric.test.ts"
+    ],
+    "verification": "All tests pass: hashId determinism, copy independence, tag sorting, field type round-trips, factory defaults.",
+    "tests": [
+      "Metric created with all 4 field types (number, bigint, string, boolean)",
+      "hashId() same for same name+tags across calls",
+      "hashId() same regardless of tag insertion order",
+      "hashId() differs when name changes",
+      "hashId() differs when any tag key or value changes",
+      "copy() produces independent instance (mutate copy, original unchanged)",
+      "copy() preserves name, tags, fields, timestamp, type, priority",
+      "createMetric() defaults: timestamp set, type=untyped, priority=normal",
+      "Tags are sorted by key in iteration order"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.2",
+    "category": "core",
+    "description": "Implement Channel<T> with ring buffer and drop-oldest overflow",
+    "prd_refs": ["prd/04-architecture-overview.md"],
+    "steps": [
+      "Create src/core/channel.ts with Channel<T> class",
+      "Implement ring buffer with configurable capacity",
+      "Implement send() with drop-oldest when full",
+      "Implement receive() as AsyncGenerator<T>",
+      "Implement close(), length, capacity, closed properties",
+      "Write unit tests in test/unit/core/channel.test.ts"
+    ],
+    "verification": "All tests pass: basic send/receive, capacity overflow with drop-oldest, close semantics, async generator completion.",
+    "tests": [
+      "Send N items, receive N items in correct order (FIFO)",
+      "Send capacity+5 items, receive only last `capacity` items (oldest dropped)",
+      "close() → send() returns false",
+      "close() → receive() drains remaining items then completes (done=true)",
+      "receive() on empty open channel blocks until item sent",
+      "length property tracks current item count",
+      "capacity property returns configured capacity",
+      "closed property is false initially, true after close()",
+      "Concurrent producer/consumer: producer sends 1000, consumer receives 1000"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.3",
+    "category": "core",
+    "description": "Implement Broadcaster<T> with independent per-consumer channels",
+    "prd_refs": ["prd/04-architecture-overview.md"],
+    "steps": [
+      "Add Broadcaster<T> class to src/core/channel.ts",
+      "Implement addConsumer(), removeConsumer(), broadcast(), closeAll()",
+      "broadcast() takes a copy function and sends deep copies to each consumer",
+      "Each consumer channel handles overflow independently",
+      "Write unit tests in test/unit/core/broadcaster.test.ts"
+    ],
+    "verification": "All tests pass: multi-consumer broadcast, independent overflow, copy isolation, close propagation.",
+    "tests": [
+      "3 consumers each receive all broadcast items",
+      "Broadcast uses copy function (consumers get independent copies, not references)",
+      "Consumer A's channel full and dropping → Consumer B and C unaffected",
+      "removeConsumer() stops delivery to that consumer",
+      "closeAll() closes all consumer channels",
+      "Broadcast to zero consumers is a no-op (no error)"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.3i",
+    "category": "integration",
+    "description": "Integration test: Channel<Metric> + Broadcaster<Metric>",
+    "prd_refs": ["prd/04-architecture-overview.md", "prd/05-data-model.md"],
+    "steps": [
+      "Write test/integration/channel-metric.test.ts",
+      "Create Channel<Metric>, send real Metric objects, receive and verify data integrity",
+      "Create Broadcaster<Metric>, broadcast to 2 channels, verify independent copies via metric.copy()",
+      "Verify hashId() is consistent after channel transit"
+    ],
+    "verification": "Metrics flow through channels with full data integrity. Broadcaster copies are independent.",
+    "tests": [
+      "100 metrics through Channel<Metric> — all fields/tags/timestamps preserved",
+      "Broadcaster copies to 2 consumers — mutating one consumer's metric doesn't affect the other's",
+      "hashId() is identical before send and after receive"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.4",
+    "category": "core",
+    "description": "Implement Ticker with dual-clock design and clock jump detection",
+    "prd_refs": ["prd/13-scheduling.md"],
+    "steps": [
+      "Create src/core/ticker.ts with Ticker class",
+      "Implement tick() as AsyncGenerator<number> with interval parameter",
+      "Implement dual-clock: Bun.nanoseconds() for elapsed, Date.now() for alignment",
+      "Implement aligned mode (fire at interval boundaries)",
+      "Implement clock jump detection (>2x interval → re-anchor + warn)",
+      "Implement jitter (random per-tick delay)",
+      "Implement offset (fixed delay from boundary)",
+      "Write unit tests in test/unit/core/ticker.test.ts"
+    ],
+    "verification": "All tests pass: interval accuracy, alignment, sequence numbers, cancellation, jitter range, no drift accumulation.",
+    "tests": [
+      "100ms ticker fires ~10 times in 1100ms (tolerance: 8-12 ticks)",
+      "Sequence numbers increment from 0",
+      "Ticker can be cancelled via break in for-await-of",
+      "Jitter: with 50ms jitter on 200ms interval, ticks are within [200, 250] spacing",
+      "50 ticks at 50ms interval: total elapsed is 2500ms ±500ms (no drift accumulation)",
+      "alignToInterval helper: 10000ms interval, returns next boundary from epoch"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.5",
+    "category": "core",
+    "description": "Implement Accumulator with auto-timestamp and global tags",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/appendix-b-metric-interface.md"],
+    "steps": [
+      "Create src/core/accumulator.ts with Accumulator class",
+      "Constructor takes Channel<Metric> and optional global tags",
+      "Implement addFields() — creates Metric, sends to channel",
+      "Implement addMetric() — sends existing metric to channel",
+      "Implement addError() — logs and counts, never throws",
+      "Auto-timestamp: BigInt(Date.now()) * 1_000_000n when not provided",
+      "Global tag merging: global tags + per-metric tags, per-metric wins on conflict",
+      "Write unit tests in test/unit/core/accumulator.test.ts"
+    ],
+    "verification": "All tests pass: metric creation, auto-timestamp, global tag merge, error counting.",
+    "tests": [
+      "addFields() creates metric with correct name, fields, tags in channel",
+      "addFields() auto-assigns nanosecond timestamp when not provided",
+      "addFields() uses explicit timestamp when provided (does not overwrite)",
+      "addFields() merges global tags with local tags",
+      "addFields() local tag wins on conflict with global tag",
+      "addMetric() sends metric to channel unmodified",
+      "addError() increments error count",
+      "addError() does not throw",
+      "Multiple addFields() calls produce multiple metrics in channel"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.5i",
+    "category": "integration",
+    "description": "Integration test: Accumulator → Channel<Metric> → consumer",
+    "prd_refs": ["prd/06-plugin-system.md"],
+    "steps": [
+      "Write test/integration/accumulator-channel.test.ts",
+      "Accumulator writes metrics via addFields, consumer reads from channel",
+      "Verify full data flow including global tags and auto-timestamps"
+    ],
+    "verification": "Metrics created by Accumulator flow through Channel and arrive at consumer correctly.",
+    "tests": [
+      "Accumulator addFields → Channel → consumer receives correct metric",
+      "Global tags present on received metric",
+      "Auto-timestamp is reasonable (within last few seconds)"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.6",
+    "category": "core",
+    "description": "Define plugin interfaces and implement plugin registry",
+    "prd_refs": ["prd/06-plugin-system.md", "prd/appendix-b-metric-interface.md"],
+    "steps": [
+      "Create src/core/plugin-types.ts with all interfaces",
+      "Define: Input, ServiceInput, Processor, Aggregator, Output, StatefulPlugin",
+      "Create src/core/plugin-registry.ts",
+      "Implement registerPlugin(), getPlugin(), listPlugins()",
+      "Plugin metadata: name, type, description",
+      "Factory function to create instances",
+      "Write unit tests in test/unit/core/plugin-registry.test.ts"
+    ],
+    "verification": "All tests pass: registration, lookup, listing, factory instantiation.",
+    "tests": [
+      "Register a mock input plugin, retrieve by name",
+      "Register multiple plugins, listPlugins returns all",
+      "getPlugin() returns undefined for unregistered name",
+      "Factory creates new instance each call (not singleton)",
+      "Register same name twice → error or overwrite (decide and document)"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.7",
+    "category": "core",
+    "description": "Implement config parser with TOML, env vars, and duration parsing",
+    "prd_refs": ["prd/07-configuration.md"],
+    "steps": [
+      "Create src/core/config.ts",
+      "TOML parsing via smol-toml",
+      "Implement env var expansion: ${VAR}, ${VAR:-default}, ${VAR:?error}",
+      "Implement duration string parsing: '10s' → 10000, '5m' → 300000, etc.",
+      "Define Zod schema for global agent config",
+      "Plugin alias uniqueness validation",
+      "Secret reference detection (@{store:key}) — mark but don't resolve",
+      "Clear error messages for all failure modes",
+      "Write unit tests in test/unit/core/config.test.ts"
+    ],
+    "verification": "All tests pass: TOML parsing, env var expansion, duration parsing, validation errors, alias uniqueness.",
+    "tests": [
+      "Parse valid TOML config → correct structure",
+      "${HOME} resolves to actual env var value",
+      "${MISSING:-fallback} resolves to 'fallback'",
+      "${MISSING:?must set this} throws with 'must set this' in message",
+      "Duration: '10s'→10000, '5m'→300000, '100ms'→100, '1h'→3600000",
+      "Invalid duration string → clear error",
+      "Invalid TOML → error with line info",
+      "Duplicate plugin aliases → error naming both aliases",
+      "@{secrets:key} detected and preserved (not resolved)",
+      "Missing config file → helpful error message",
+      "Plugin sections extracted correctly (inputs.modbus, processors.rename, etc.)"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.8",
+    "category": "core",
+    "description": "Implement pipeline runtime with startup, shutdown, and data flow",
+    "prd_refs": ["prd/04-architecture-overview.md", "prd/08-pipeline-lifecycle.md"],
+    "steps": [
+      "Create src/pipeline/runtime.ts",
+      "Implement pipeline assembly from config: channels, plugins, wiring",
+      "Implement startup sequence (simplified: no SQLite, no Hub, no Web UI)",
+      "Implement gather loop: Ticker → Input.gather(acc) with timeout",
+      "Implement processor chain: sequential processing",
+      "Implement aggregator fork: copy to aggregator + auto-forward originals",
+      "Implement output flush loop: batch from channel → Output.write()",
+      "Implement graceful shutdown: SIGINT/SIGTERM → drain → close",
+      "Write unit tests with mock plugins in test/unit/pipeline/runtime.test.ts"
+    ],
+    "verification": "All tests pass: end-to-end flow, processor chaining, aggregator fork, gather timeout, graceful shutdown.",
+    "tests": [
+      "Mock input → mock output: metrics flow correctly",
+      "2 processors in chain: output sees both transformations applied",
+      "Aggregator: originals pass through AND aggregator receives copies",
+      "drop_original=true: originals do NOT reach output",
+      "Gather timeout: slow input (5s) with 1s timeout → error logged, no crash",
+      "Graceful shutdown: SIGTERM → all close() methods called, pipeline drains",
+      "2 mock inputs fan-in to 1 channel → output sees metrics from both",
+      "Broadcaster: 2 mock outputs each receive all metrics independently"
+    ],
+    "passes": false
+  },
+  {
+    "id": "1.8i",
+    "category": "integration",
+    "description": "Full pipeline integration test: config → runtime → data flow → shutdown",
+    "prd_refs": ["prd/04-architecture-overview.md", "prd/08-pipeline-lifecycle.md", "prd/07-configuration.md"],
+    "steps": [
+      "Write test/integration/pipeline-e2e.test.ts",
+      "Create a TOML config with a mock input, rename processor, and mock output",
+      "Parse config, build pipeline, start it, let it run for a few ticks",
+      "Verify metrics flow from input through processor to output with correct transforms",
+      "Send SIGTERM equivalent, verify graceful shutdown",
+      "Verify all metrics that entered the pipeline reached the output"
+    ],
+    "verification": "Full pipeline works end-to-end from config file to data delivery to graceful shutdown.",
+    "tests": [
+      "Config-driven pipeline: TOML → parse → build → start → verify output → shutdown",
+      "Rename processor actually renames fields in output metrics",
+      "Metric count: input produced N metrics, output received N metrics (no loss)",
+      "Shutdown: all plugins get close() called, exit code 0"
+    ],
+    "passes": false
+  }
+]
