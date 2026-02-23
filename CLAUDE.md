@@ -298,7 +298,33 @@ When all modules pass:
 4. Update README.md if public API changed
 5. Commit with message: `phase-N: complete — <summary>`
 
-### 4. Pre-Next-Phase Fix Pass
+### 4. Code Review (Sub-Agent)
+
+**Every phase gets a code review before it's considered done.** This is not optional. The Phase 1 reviews caught a wrong algorithm, a silent config override, missing error handling, and a lifecycle ordering bug — all in code that passed its tests.
+
+**How to request the review:**
+
+If you are a human using Claude Code interactively, ask Dex (OpenClaw) to run the review. If you are Dex, spawn a sub-agent. The review must be done by a **separate context** — not the agent that wrote the code. Fresh eyes catch what the author's eyes skip.
+
+**Review prompt for the sub-agent:**
+
+> You are reviewing Phase N of CollatrEdge. Read `CLAUDE.md` for project rules. Read the PRD sections listed in `plans/phase-N-<name>.md`. Then review every source file and test file changed or created in this phase.
+>
+> For each file, check:
+> 1. **PRD compliance** — does the implementation match the spec? Field-by-field interface check.
+> 2. **Rules 1–13 compliance** — any violations? (especially Rules 8–13)
+> 3. **Error handling** — what happens when things fail? Are Promises handled? Are return values checked?
+> 4. **Test coverage of hard paths** — are the complex branches tested, or just the happy path?
+> 5. **Lifecycle ordering** — does startup/shutdown match PRD §8?
+> 6. **Config wiring** — are configurable values actually wired from config, or hardcoded?
+>
+> Output format: `plans/phase-N-review-final.md` with 🔴 Must Fix, 🟡 Should Fix, 🟢 Nice to Have findings. Include a PRD compliance table per module and a Phase N+1 readiness assessment.
+
+**Review output:** `plans/phase-N-review-final.md`
+
+The review is **not a gate** — it doesn't block all progress. But its 🔴 findings must be fixed before the next phase starts (see step 5).
+
+### 5. Pre-Next-Phase Fix Pass
 
 Before starting Phase N+1, check `plans/phase-N-review-final.md` for:
 - **🔴 Must Fix** — resolve these before ANY new work
