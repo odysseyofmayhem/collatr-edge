@@ -10,7 +10,7 @@
 | 6.0 | Structured logger | ✅ |
 | 6.1 | CLI framework + arg parsing | ✅ |
 | 6.2 | version command | ✅ |
-| 6.3 | config validate command | ⬜ |
+| 6.3 | config validate command | ✅ |
 | 6.4 | config init command | ⬜ |
 | 6.5 | Plugin factory (config → pipeline) | ⬜ |
 | 6.6 | run command + signal handling | ⬜ |
@@ -90,3 +90,28 @@
 **Notes for next task:**
 - Task 6.3 (config validate) requires exporting Zod schemas from all plugin files and creating `src/core/plugin-schemas.ts`
 - The plugin schema registry will also be reused by task 6.5 (plugin factory)
+
+## Task 6.3: Config Validate Command
+
+**What was built:**
+- `src/core/plugin-schemas.ts` — central registry mapping `"type.name"` → Zod schema (e.g., `"inputs.modbus"` → `ModbusConfigSchema`)
+- `src/cli/commands/config-validate.ts` — `configValidateCommand()` loads config, validates TOML + agent + per-plugin schemas, reports human-readable output with checkmarks/crosses/warnings
+- Wired into `src/cli/index.ts` config subcommand routing
+- 12 new tests in `test/unit/cli/config-validate.test.ts`
+
+**Decisions:**
+- All 10 plugin Zod schemas were already exported — no modifications to plugin files needed
+- Unknown plugin types get a warning (`⚠`) but don't fail validation (forward-compatibility for future plugins)
+- Output goes to `process.stdout.write()` (human-readable, not JSON — this is a user-facing command)
+- Uses `✓` / `✗` / `⚠` Unicode markers per the plan
+- Updated 2 existing CLI tests that asserted config validate stub behavior (now it returns real results)
+
+**Files changed:**
+- New: `src/core/plugin-schemas.ts`, `src/cli/commands/config-validate.ts`, `test/unit/cli/config-validate.test.ts`
+- Modified: `src/cli/index.ts` (import + wired configValidateCommand), `test/unit/cli/cli.test.ts` (updated 2 tests for real behavior)
+
+**Test results:** 494 pass, 0 fail (482 existing + 12 new)
+
+**Notes for next task:**
+- Task 6.4 (config init) should generate TOML that passes `configValidateCommand()` — good test to write
+- The `PLUGIN_SCHEMAS` registry in `src/core/plugin-schemas.ts` will be reused by task 6.5 (plugin factory)

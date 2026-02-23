@@ -182,10 +182,10 @@ describe("CLI framework", () => {
   });
 
   it("config validate → routes to config validate handler", async () => {
+    // Uses default config path which doesn't exist → exit 1 with file not found
     const code = await main(["config", "validate"]);
-    // Currently stubbed — returns 1 with "not yet implemented"
     expect(code).toBe(1);
-    expect(stderr()).toContain("config validate");
+    expect(stdout()).toContain("Config file not found");
   });
 
   it("config (no subcommand) → error with usage", async () => {
@@ -221,8 +221,8 @@ describe("CLI framework", () => {
 
   it("--config before command is parsed correctly", async () => {
     const code = await main(["--config", "/custom/path.toml", "config", "validate"]);
-    // Stub returns 1, but the parsing worked (no crash)
+    // File doesn't exist → exit 1, but config path was parsed correctly
     expect(code).toBe(1);
-    expect(stderr()).toContain("config validate");
+    expect(stdout()).toContain("Config file not found: /custom/path.toml");
   });
 });

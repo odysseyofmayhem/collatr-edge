@@ -2,6 +2,7 @@
 // PRD refs: §18 Deployment & Distribution (CLI command list)
 
 import { getLogger } from "../core/logger";
+import { configValidateCommand } from "./commands/config-validate";
 import { versionCommand } from "./commands/version";
 
 // ---------------------------------------------------------------------------
@@ -89,9 +90,7 @@ async function configCommand(
       process.stderr.write("Error: config init not yet implemented\n");
       return 1;
     case "validate":
-      // Implemented in task 6.3
-      process.stderr.write("Error: config validate not yet implemented\n");
-      return 1;
+      return await configValidateCommand(options.configPath);
     default:
       process.stderr.write(
         subcommand

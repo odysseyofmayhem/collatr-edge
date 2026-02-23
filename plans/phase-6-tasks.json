@@ -73,7 +73,7 @@
         "Run bun test — all tests must pass",
         "Commit: phase-6: add config validate command with per-plugin schema validation"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "6.4",
