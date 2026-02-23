@@ -129,8 +129,26 @@
   - Duplicate name registration throws an error (prevents accidental overwrite). This is the safer default — if you want to replace a plugin, you need to be explicit about it.
   - Factory returns a new instance each call (not singleton) — matches PRD §6 "Each config block creates a new instance via factory."
 
+### Task 1.7 — Config parser
+- **What:** Implemented config parser in `src/core/config.ts` with TOML parsing, env var expansion, duration parsing, Zod schema, alias uniqueness, and secret ref detection
+- **Result:** 15 tests pass (11 required + 4 additional branch coverage)
+- **Implementation details:**
+  - `expandEnvVars(text)`: Regex-based expansion on raw text before TOML parsing. Supports `${VAR}` (error if unset), `${VAR:-default}` (fallback if unset/empty), `${VAR:?msg}` (error with message if unset/empty)
+  - `parseDuration(str)`: Parses `<number><unit>` to milliseconds. Units: ms, s, m, h
+  - `parseConfig(tomlText)`: Full pipeline — env expand → TOML parse → Zod validate → extract sections → alias check → secret ref scan
+  - `AgentSchema`: Zod schema for `[agent]` section with all PRD §7 fields and defaults
+  - `findSecretRefs(obj)`: Recursive scan for `@{store:key}` patterns — marks but doesn't resolve
+  - `validateAliasUniqueness()`: Checks all plugin instances across all sections, names both conflicting locations
+  - `loadConfigFile(path)`: Async file load with clear "not found" error
+  - `PluginInstanceConfig`: Generic interface for plugin configs (per-plugin Zod validation deferred to plugin loading)
+- **Decisions:**
+  - Added `zod@4.3.6` as dependency — explicitly required by PRD §6 for config schemas, verified it compiles with `bun build --compile`
+  - Env var expansion uses colon semantics (`:?` and `:-` trigger on unset OR empty) matching standard bash behavior
+  - Secret refs preserved as literal strings in config values — resolution happens at runtime via the secret store (Phase 5+)
+  - Plugin sections extracted generically as `Record<string, PluginInstanceConfig[]>` — per-plugin schema validation happens when plugins are instantiated, not at parse time
+
 ## Current Task
-Task 1.7 — Config parser
+Task 1.8 — Pipeline runtime
 
 ## Blockers
 (none)

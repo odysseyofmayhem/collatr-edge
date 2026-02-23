@@ -242,7 +242,7 @@
       "Missing config file → helpful error message",
       "Plugin sections extracted correctly (inputs.modbus, processors.rename, etc.)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.8",
