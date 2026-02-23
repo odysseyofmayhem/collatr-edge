@@ -44,7 +44,7 @@
       "createMetric() defaults: timestamp set, type=untyped, priority=normal",
       "Tags are sorted by key in iteration order"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "1.2",
