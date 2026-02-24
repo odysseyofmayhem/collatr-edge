@@ -316,6 +316,109 @@ path = "/tmp/test-metrics.json"
   });
 
   // =========================================================================
+  // Network policy in validation output (Task 8.1)
+  // =========================================================================
+
+  it("validation output includes network policy section", async () => {
+    const path = writeConfig(
+      "policy.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "local_network"
+
+[network_policy.egress]
+allowed_hosts = ["192.168.1.50:8086"]
+
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("[network_policy]");
+    expect(out).toContain("LOCAL NETWORK");
+    expect(out).toContain("mode: local_network");
+    expect(out).toContain("DNS blocked");
+    expect(out).toContain("Hub blocked");
+    expect(out).toContain("1 allowed hosts");
+  });
+
+  it("config without [network_policy] shows connected mode in validation", async () => {
+    const path = writeConfig(
+      "no-policy.toml",
+      `
+[agent]
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("CONNECTED");
+    expect(out).toContain("mode: connected");
+  });
+
+  it("hub + standalone policy → warning in validate output", async () => {
+    const path = writeConfig(
+      "hub-standalone.toml",
+      `
+[agent]
+[agent.hub]
+enabled = true
+group_id = "plant"
+edge_node_id = "node1"
+broker = "mqtts://hub.collatr.com:8883"
+
+[network_policy]
+mode = "standalone"
+
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0); // syntactically valid config
+    expect(out).toContain("WARNING:");
+    expect(out).toContain("Hub credentials configured");
+    expect(out).toContain("prevents Hub connectivity");
+  });
+
+  it("invalid network_policy mode → exit 1 with error", async () => {
+    const path = writeConfig(
+      "bad-policy.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "bogus"
+
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(1);
+    expect(out).toContain("\u2713 TOML syntax valid");
+    expect(out).toContain("\u2713 [agent] section valid");
+    expect(out).toContain("\u2717");
+    expect(out).toContain("Invalid [network_policy]");
+  });
+
+  // =========================================================================
   // Mixed valid and invalid plugins
   // =========================================================================
 

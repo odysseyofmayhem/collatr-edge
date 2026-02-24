@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { buildPipeline } from "@pipeline/plugin-factory";
 import type { AgentConfig } from "@core/config";
+import { resolveNetworkPolicy } from "@core/network-policy";
 import { SimpleStatsCollector } from "@core/stats";
 import { InternalInput } from "@plugins/inputs/internal";
 import { ModbusInput } from "@plugins/inputs/modbus";
@@ -34,7 +35,9 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     processors: {},
     aggregators: {},
     outputs: {},
+    networkPolicy: resolveNetworkPolicy(),
     secretRefs: [],
+    warnings: [],
     ...overrides,
   };
 }

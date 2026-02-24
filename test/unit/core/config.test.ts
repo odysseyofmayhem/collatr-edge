@@ -320,4 +320,151 @@ describe("Config parser", () => {
       expect(() => parseConfig(toml)).toThrow(/Duplicate plugin alias "shared_name"/);
     });
   });
+
+  // =========================================================================
+  // Network policy integration (Task 8.1)
+  // =========================================================================
+
+  describe("network policy parsing", () => {
+    it("config with [network_policy] section parses correctly", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[network_policy]
+  mode = "local_network"
+
+[network_policy.egress]
+  allow_dns = false
+  allow_mqtt_hub = false
+  allowed_hosts = ["192.168.1.50:8086", "192.168.1.10:1883"]
+
+[network_policy.ingress]
+  allow_local_webui = true
+  allow_local_api = true
+  allowed_cidrs = ["192.168.1.0/24"]
+`;
+      const config = parseConfig(toml);
+
+      expect(config.networkPolicy.mode).toBe("local_network");
+      expect(config.networkPolicy.egress.allowDns).toBe(false);
+      expect(config.networkPolicy.egress.allowMqttHub).toBe(false);
+      expect(config.networkPolicy.egress.allowedHosts).toEqual([
+        "192.168.1.50:8086",
+        "192.168.1.10:1883",
+      ]);
+      expect(config.networkPolicy.egress.unrestricted).toBe(false);
+      expect(config.networkPolicy.ingress.allowLocalWebui).toBe(true);
+      expect(config.networkPolicy.ingress.allowLocalApi).toBe(true);
+      expect(config.networkPolicy.ingress.allowedCidrs).toEqual(["192.168.1.0/24"]);
+    });
+
+    it("config without [network_policy] defaults to connected mode", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+`;
+      const config = parseConfig(toml);
+
+      expect(config.networkPolicy.mode).toBe("connected");
+      expect(config.networkPolicy.egress.unrestricted).toBe(true);
+      expect(config.networkPolicy.egress.allowDns).toBe(true);
+      expect(config.networkPolicy.egress.allowMqttHub).toBe(true);
+    });
+
+    it("config with mode + egress overrides resolves correctly", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[network_policy]
+  mode = "local_network"
+
+[network_policy.egress]
+  allow_dns = true
+`;
+      const config = parseConfig(toml);
+
+      expect(config.networkPolicy.mode).toBe("local_network");
+      // User override: DNS allowed despite local_network default
+      expect(config.networkPolicy.egress.allowDns).toBe(true);
+      // Mode default: hub still blocked
+      expect(config.networkPolicy.egress.allowMqttHub).toBe(false);
+    });
+
+    it("invalid mode string produces Zod validation error", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[network_policy]
+  mode = "airgapped"
+`;
+      expect(() => parseConfig(toml)).toThrow(/Invalid \[network_policy\] config/);
+    });
+
+    it("hub enabled + policy blocks hub → produces warning (not hard error)", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[agent.hub]
+  enabled = true
+  group_id = "plant"
+  edge_node_id = "node1"
+  broker = "mqtts://hub.collatr.com:8883"
+
+[network_policy]
+  mode = "local_network"
+`;
+      const config = parseConfig(toml);
+
+      // Should NOT throw — it's a warning, not an error
+      expect(config.warnings.length).toBeGreaterThanOrEqual(1);
+      expect(config.warnings[0]).toContain("Hub credentials configured");
+      expect(config.warnings[0]).toContain("local_network");
+      expect(config.warnings[0]).toContain("prevents Hub connectivity");
+    });
+
+    it("hub disabled + policy blocks hub → no warning", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[agent.hub]
+  enabled = false
+  group_id = "plant"
+  edge_node_id = "node1"
+  broker = "mqtts://hub.collatr.com:8883"
+
+[network_policy]
+  mode = "standalone"
+`;
+      const config = parseConfig(toml);
+      expect(config.warnings).toEqual([]);
+    });
+
+    it("hub enabled + connected mode → no warning", () => {
+      const toml = `
+[agent]
+  interval = "10s"
+
+[agent.hub]
+  enabled = true
+  group_id = "plant"
+  edge_node_id = "node1"
+  broker = "mqtts://hub.collatr.com:8883"
+
+[network_policy]
+  mode = "connected"
+`;
+      const config = parseConfig(toml);
+      expect(config.warnings).toEqual([]);
+    });
+
+    it("empty config has no warnings", () => {
+      const config = parseConfig("");
+      expect(config.warnings).toEqual([]);
+    });
+  });
 });

@@ -14,6 +14,7 @@ import {
 } from "../../../src/core/logger";
 import type { AgentConfig } from "../../../src/core/config";
 import type { PipelineOptions } from "../../../src/pipeline/runtime";
+import { resolveNetworkPolicy } from "../../../src/core/network-policy";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -35,7 +36,9 @@ const MOCK_CONFIG: AgentConfig = {
   processors: {},
   aggregators: {},
   outputs: {},
+  networkPolicy: resolveNetworkPolicy(),
   secretRefs: [],
+  warnings: [],
 };
 
 const MOCK_PIPELINE_OPTIONS: PipelineOptions = {

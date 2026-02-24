@@ -3,6 +3,11 @@
 
 import { parse as parseTOML } from "smol-toml";
 import { z } from "zod/v4";
+import {
+  NetworkPolicy,
+  NetworkPolicySchema,
+  resolveNetworkPolicy,
+} from "./network-policy";
 
 // ---------------------------------------------------------------------------
 // Environment variable expansion (processed on raw text BEFORE TOML parsing)
@@ -155,7 +160,9 @@ export interface AgentConfig {
   processors: Record<string, PluginInstanceConfig[]>;
   aggregators: Record<string, PluginInstanceConfig[]>;
   outputs: Record<string, PluginInstanceConfig[]>;
+  networkPolicy: NetworkPolicy;
   secretRefs: string[];
+  warnings: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -186,20 +193,48 @@ export function parseConfig(tomlText: string): AgentConfig {
     throw new Error(`Invalid [agent] config:\n${issues}`);
   }
 
-  // 4. Extract global_tags
+  // 4. Parse [network_policy] section (PRD §10)
+  const rawNetworkPolicy = raw.network_policy as Record<string, unknown> | undefined;
+  let networkPolicy: NetworkPolicy;
+  if (rawNetworkPolicy !== undefined) {
+    const npResult = NetworkPolicySchema.safeParse(rawNetworkPolicy);
+    if (!npResult.success) {
+      const issues = npResult.error.issues
+        .map((i) => `  ${i.path.join(".")}: ${i.message}`)
+        .join("\n");
+      throw new Error(`Invalid [network_policy] config:\n${issues}`);
+    }
+    networkPolicy = resolveNetworkPolicy(npResult.data);
+  } else {
+    // Default to connected mode when [network_policy] is absent (backward compatible)
+    networkPolicy = resolveNetworkPolicy();
+  }
+
+  // 5. Extract global_tags
   const globalTags = (raw.global_tags ?? {}) as Record<string, string>;
 
-  // 5. Extract plugin sections
+  // 6. Extract plugin sections
   const inputs = extractPluginSection(raw, "inputs");
   const processors = extractPluginSection(raw, "processors");
   const aggregators = extractPluginSection(raw, "aggregators");
   const outputs = extractPluginSection(raw, "outputs");
 
-  // 6. Validate alias uniqueness across ALL plugin instances
+  // 7. Validate alias uniqueness across ALL plugin instances
   validateAliasUniqueness(inputs, processors, aggregators, outputs);
 
-  // 7. Detect secret references (mark, don't resolve)
+  // 8. Detect secret references (mark, don't resolve)
   const secretRefs = findSecretRefs(raw);
+
+  // 9. Collect warnings (non-fatal config issues)
+  // PRD §10: "If Hub credentials are present but mode != 'connected', log a warning"
+  const warnings: string[] = [];
+  const hubConfig = agentResult.data.hub;
+  if (hubConfig?.enabled && !networkPolicy.egress.allowMqttHub) {
+    warnings.push(
+      `Hub credentials configured but network_policy ("${networkPolicy.mode}") prevents Hub connectivity. ` +
+      `Either change mode to "connected", set egress.allow_mqtt_hub = true, or disable the Hub.`,
+    );
+  }
 
   return {
     agent: agentResult.data,
@@ -208,7 +243,9 @@ export function parseConfig(tomlText: string): AgentConfig {
     processors,
     aggregators,
     outputs,
+    networkPolicy,
     secretRefs,
+    warnings,
   };
 }
 

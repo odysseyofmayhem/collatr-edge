@@ -42,6 +42,10 @@ export async function configValidateCommand(
     } else if (msg.startsWith("Invalid [agent]")) {
       process.stdout.write("\u2713 TOML syntax valid\n");
       process.stdout.write(`\u2717 ${msg}\n`);
+    } else if (msg.startsWith("Invalid [network_policy]")) {
+      process.stdout.write("\u2713 TOML syntax valid\n");
+      process.stdout.write("\u2713 [agent] section valid\n");
+      process.stdout.write(`\u2717 ${msg}\n`);
     } else {
       process.stdout.write(`\u2717 ${msg}\n`);
     }
@@ -52,7 +56,19 @@ export async function configValidateCommand(
   process.stdout.write("\u2713 [agent] section valid\n");
   process.stdout.write("\u2713 [global_tags] valid\n");
 
-  // 2. Validate each plugin instance against its Zod schema
+  // 2. Network policy
+  const np = config.networkPolicy;
+  process.stdout.write(`\u2713 [network_policy] ${np.summary()}\n`);
+  process.stdout.write(`  mode: ${np.mode}\n`);
+  process.stdout.write(`  egress: DNS ${np.egress.allowDns ? "allowed" : "blocked"}, Hub ${np.egress.allowMqttHub ? "allowed" : "blocked"}, ${np.egress.unrestricted ? "unrestricted" : `${np.egress.allowedHosts.length} allowed hosts`}\n`);
+  process.stdout.write(`  ingress: WebUI ${np.ingress.allowLocalWebui ? "allowed" : "blocked"}, API ${np.ingress.allowLocalApi ? "allowed" : "blocked"}, CIDRs ${np.ingress.allowedCidrs.join(", ") || "(none)"}\n`);
+
+  // 3. Report config warnings (hub/policy conflicts, etc.)
+  for (const warning of config.warnings) {
+    process.stdout.write(`WARNING: ${warning}\n`);
+  }
+
+  // 4. Validate each plugin instance against its Zod schema
   let hasErrors = false;
 
   const sections: Array<{
@@ -109,7 +125,7 @@ export async function configValidateCommand(
     }
   }
 
-  // 3. Report secret references as warnings
+  // 5. Report secret references as warnings
   if (config.secretRefs.length > 0) {
     process.stdout.write(
       `\u26A0 Secret references found (not resolved during validation):\n`,
@@ -119,7 +135,7 @@ export async function configValidateCommand(
     }
   }
 
-  // 4. Final verdict
+  // 6. Final verdict
   if (hasErrors) {
     process.stdout.write("\u2717 Configuration has errors\n");
     return 1;
