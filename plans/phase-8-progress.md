@@ -33,6 +33,20 @@
 
 **Post-fix test count:** 785 pass, 0 failures (6 new tests)
 
+### Fix Pass 2 (Independent Review)
+
+| Finding | Description | Status | Commit |
+|---------|-------------|--------|--------|
+| Y-I1 | `allow_local_subnet` added to Zod schema + wired in resolver | ✅ Fixed | `3426d7b` |
+| Y-I2 | TODO comment for non-MQTT output validation | ✅ Fixed | `3426d7b` |
+| Y-I3 | Test for connected + redundant permissive override | ✅ Fixed | `3426d7b` |
+| G-I1 | IPv6 end-to-end checkEgress test | ✅ Fixed | `3426d7b` |
+| G-I2 | Default ports in parseMqttServerUrl (1883/8883) | ✅ Fixed | `3426d7b` |
+| G-I3 | Test for MQTT output with servers=[] | ✅ Fixed | `3426d7b` |
+| G-I4 | Phase 9 concern (structured warnings) | Noted | — |
+
+**Post-fix-2 test count:** 790 pass, 0 failures (5 new tests)
+
 ## Notes
 
 Phase 7 CONDITIONAL GO applied — fix pass in `a377d9d` resolved all must-fix items.
