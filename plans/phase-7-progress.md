@@ -15,8 +15,8 @@
 | 7.2 | Sparkplug B codec | ✅ Done | 24 | `53e713b` |
 | 7.3 | Hub link session manager | ✅ Done | 18 | `baeaae4` |
 | 7.4 | MQTT output plugin | ✅ Done | 12 | `3574e5f` |
-| 7.5 | Pipeline integration | ✅ Done | 5 | `pending` |
-| 7.6 | Heartbeat / NDATA | ⬜ Not started | | |
+| 7.5 | Pipeline integration | ✅ Done | 5 | `a55429f` |
+| 7.6 | Heartbeat / NDATA | ✅ Done | 4 | `pending` |
 | 7.7 | Integration tests + cleanup | ⬜ Not started | | |
 
 ## Notes

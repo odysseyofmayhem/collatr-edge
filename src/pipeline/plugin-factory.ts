@@ -316,6 +316,19 @@ export function buildPipeline(
       heartbeatIntervalMs: parseDuration(hubConfig.heartbeat_interval),
       swVersion: "0.1.0", // TODO: read from package.json or build info
     });
+
+    // Wire stats collector for heartbeat NDATA (PRD §9 / §15)
+    hubLink.setStatsCollector(() => {
+      const uptimeS = Math.floor((Date.now() - statsCollector.startTimeMs) / 1000);
+      return [
+        { name: "Agent Metrics/uptime_seconds", type: "Int32" as const, value: uptimeS },
+        { name: "Agent Metrics/metrics_gathered", type: "Int64" as const, value: statsCollector.metricsGathered },
+        { name: "Agent Metrics/metrics_written", type: "Int64" as const, value: statsCollector.metricsWritten },
+        { name: "Agent Metrics/metrics_dropped", type: "Int64" as const, value: statsCollector.metricsDropped },
+        { name: "Agent Metrics/gather_errors", type: "Int32" as const, value: statsCollector.gatherErrors },
+        { name: "Agent Metrics/write_errors", type: "Int32" as const, value: statsCollector.writeErrors },
+      ];
+    });
   }
 
   // -- Outputs --

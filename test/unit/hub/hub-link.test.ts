@@ -560,6 +560,95 @@ describe("HubLink", () => {
   });
 
   // =========================================================================
+  // Heartbeat / NDATA timer
+  // =========================================================================
+
+  describe("heartbeat timer", () => {
+    it("publishes NDATA at configured interval when stats collector is set", async () => {
+      const hubConfig = makeConfig({ heartbeatIntervalMs: 100 });
+      const hub = new HubLink(hubConfig, mockClient);
+
+      let callCount = 0;
+      hub.setStatsCollector(() => {
+        callCount++;
+        return [
+          { name: "Agent Metrics/uptime_seconds", type: "Int32" as const, value: callCount * 10 },
+          { name: "Agent Metrics/metrics_gathered", type: "Int64" as const, value: callCount * 100 },
+        ];
+      });
+
+      await hub.start();
+
+      // Wait for at least 2 heartbeat ticks
+      await Bun.sleep(350);
+
+      const ndatas = mockClient.findAllPublished("NDATA");
+      expect(ndatas.length).toBeGreaterThanOrEqual(2);
+
+      // Verify NDATA contains the stats metrics
+      const decoded = sparkplug.decodePayload(new Uint8Array(ndatas[0]!.payload));
+      const uptime = decoded.metrics!.find((m) => m.name === "Agent Metrics/uptime_seconds");
+      expect(uptime).toBeDefined();
+      expect(Number(uptime!.value)).toBeGreaterThan(0);
+
+      await hub.stop();
+    });
+
+    it("does NOT publish NDATA when no stats collector is set", async () => {
+      const hubConfig = makeConfig({ heartbeatIntervalMs: 50 });
+      const hub = new HubLink(hubConfig, mockClient);
+
+      // No setStatsCollector() call
+      await hub.start();
+      await Bun.sleep(200);
+
+      const ndatas = mockClient.findAllPublished("NDATA");
+      expect(ndatas.length).toBe(0);
+
+      await hub.stop();
+    });
+
+    it("stops heartbeat timer on stop()", async () => {
+      const hubConfig = makeConfig({ heartbeatIntervalMs: 50 });
+      const hub = new HubLink(hubConfig, mockClient);
+
+      hub.setStatsCollector(() => [
+        { name: "test", type: "Int32" as const, value: 1 },
+      ]);
+
+      await hub.start();
+      await Bun.sleep(150);
+
+      const countBeforeStop = mockClient.findAllPublished("NDATA").length;
+      expect(countBeforeStop).toBeGreaterThanOrEqual(1);
+
+      await hub.stop();
+
+      // Wait to verify no more NDATA after stop
+      await Bun.sleep(200);
+      const countAfterStop = mockClient.findAllPublished("NDATA").length;
+      expect(countAfterStop).toBe(countBeforeStop);
+    });
+
+    it("does NOT start heartbeat when heartbeatIntervalMs = 0", async () => {
+      const hubConfig = makeConfig({ heartbeatIntervalMs: 0 });
+      const hub = new HubLink(hubConfig, mockClient);
+
+      hub.setStatsCollector(() => [
+        { name: "test", type: "Int32" as const, value: 1 },
+      ]);
+
+      await hub.start();
+      await Bun.sleep(200);
+
+      const ndatas = mockClient.findAllPublished("NDATA");
+      expect(ndatas.length).toBe(0);
+
+      await hub.stop();
+    });
+  });
+
+  // =========================================================================
   // publishDeviceDeath
   // =========================================================================
 
