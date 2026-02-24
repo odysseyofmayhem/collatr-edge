@@ -73,7 +73,7 @@ export class RealMqttClient implements MqttClientInterface {
     if (this.willTopic && this.willPayload) {
       mqttOptions.will = {
         topic: this.willTopic,
-        payload: this.willPayload as unknown as string,
+        payload: this.willPayload as Buffer,
         qos: this.willQos,
         retain: this.willRetain,
       };

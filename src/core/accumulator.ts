@@ -63,6 +63,10 @@ export class ChannelAccumulator implements Accumulator {
   }
 
   addMetric(metric: Metric): void {
+    // Inject _device_id for Sparkplug B routing (PRD §9) — same as addFields()
+    if (this._deviceId && !metric.hasTag("_device_id")) {
+      metric.addTag("_device_id", this._deviceId);
+    }
     void this.channel.send(metric).then((ok) => {
       if (!ok) this._droppedCount++;
     });

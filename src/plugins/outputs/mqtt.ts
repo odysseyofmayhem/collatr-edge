@@ -129,7 +129,7 @@ export class MqttOutput implements Output {
   private async writeSparkplug(batch: Metric[]): Promise<void> {
     if (!this.hubLink) return;
 
-    // Group metrics by _device_id tag
+    // Group metrics by _device_id tag (operate on copies to avoid mutating shared objects)
     const grouped = new Map<string, Metric[]>();
     for (const metric of batch) {
       const deviceId = metric.getTag(DEVICE_ID_TAG) ?? "unknown";
@@ -138,9 +138,10 @@ export class MqttOutput implements Output {
         group = [];
         grouped.set(deviceId, group);
       }
-      // Strip the _device_id tag before sending (it's internal routing)
-      metric.removeTag(DEVICE_ID_TAG);
-      group.push(metric);
+      // Copy + strip _device_id tag (internal routing — must not mutate shared metric)
+      const cleaned = metric.copy();
+      cleaned.removeTag(DEVICE_ID_TAG);
+      group.push(cleaned);
     }
 
     // Publish each device's metrics

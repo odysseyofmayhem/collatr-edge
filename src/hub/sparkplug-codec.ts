@@ -7,6 +7,7 @@
 // ──────────────────────────────────────────────────────────────────────
 
 import spPayload from "sparkplug-payload";
+import Long from "long";
 import type { Metric, FieldValue } from "../core/metric.ts";
 
 const sparkplug = spPayload.get("spBv1.0")!;
@@ -43,9 +44,17 @@ export function fieldValueToSparkplugType(value: FieldValue): SparkplugDataType 
 }
 
 /** Convert a FieldValue to a value suitable for sparkplug-payload encoding */
-function fieldValueToSparkplugValue(value: FieldValue): number | boolean | string {
+function fieldValueToSparkplugValue(value: FieldValue, spType: SparkplugDataType): number | boolean | string | Long {
   if (typeof value === "bigint") {
+    // Use Long for Int64 to preserve full 64-bit precision (Finding 5 fix)
+    if (spType === "Int64") {
+      return Long.fromString(value.toString());
+    }
     return Number(value);
+  }
+  // Integer numbers mapped to Int64 also need Long representation
+  if (typeof value === "number" && spType === "Int64") {
+    return Long.fromNumber(value);
   }
   return value;
 }
@@ -98,6 +107,7 @@ export function encodeNBirth(options: {
   hwPlatform: string;
   hostname: string;
   pluginsLoaded: string[];
+  configVersion?: string;
   agentMetrics: { name: string; type: SparkplugDataType; value: unknown }[];
 }): Buffer {
   const metrics: Array<{
@@ -122,6 +132,12 @@ export function encodeNBirth(options: {
     name: "Node Control/Rebirth",
     type: "Boolean",
     value: false,
+    timestamp: now,
+  });
+  metrics.push({
+    name: "Node Control/Config Version",
+    type: "String",
+    value: options.configVersion ?? "none",
     timestamp: now,
   });
 
@@ -163,6 +179,7 @@ export function encodeNBirth(options: {
 
   const encoded = sparkplug.encodePayload({
     timestamp: now,
+    seq: 0, // NBIRTH always resets seq to 0 (Finding 10)
     metrics: metrics as Parameters<typeof sparkplug.encodePayload>[0]["metrics"],
   });
 
@@ -185,6 +202,7 @@ export function encodeNDeath(bdSeq: number): Buffer {
 }
 
 export function encodeDBirth(options: {
+  seq: number;
   deviceId: string;
   metrics: Metric[];
   aliases: Map<string, number>;
@@ -212,7 +230,7 @@ export function encodeDBirth(options: {
       const spMetric: (typeof spMetrics)[0] = {
         name: fullName,
         type: spType,
-        value: fieldValueToSparkplugValue(fieldValue),
+        value: fieldValueToSparkplugValue(fieldValue, spType),
         alias,
         timestamp: now,
       };
@@ -237,21 +255,24 @@ export function encodeDBirth(options: {
 
   const encoded = sparkplug.encodePayload({
     timestamp: now,
+    seq: options.seq,
     metrics: spMetrics as Parameters<typeof sparkplug.encodePayload>[0]["metrics"],
   });
 
   return Buffer.from(encoded);
 }
 
-export function encodeDDeath(): Buffer {
+export function encodeDDeath(seq: number): Buffer {
   const encoded = sparkplug.encodePayload({
     timestamp: Date.now(),
+    seq,
     metrics: [],
   });
   return Buffer.from(encoded);
 }
 
 export function encodeDData(options: {
+  seq: number;
   metrics: Metric[];
   aliases: Map<string, number>;
 }): Buffer {
@@ -263,14 +284,16 @@ export function encodeDData(options: {
   }> = [];
 
   for (const metric of options.metrics) {
-    const ts = Number(metric.timestamp / 1_000_000n); // ns → ms
+    const rawTs = Number(metric.timestamp / 1_000_000n); // ns → ms
+    const ts = rawTs > 0 ? rawTs : Date.now(); // Fallback for zero timestamp (Finding 14)
     for (const [fieldName, fieldValue] of metric.fields) {
       const fullName = metric.name === fieldName ? fieldName : `${metric.name}/${fieldName}`;
       const alias = options.aliases.get(fullName) ?? 0;
+      const spType = fieldValueToSparkplugType(fieldValue);
       spMetrics.push({
         alias,
-        type: fieldValueToSparkplugType(fieldValue),
-        value: fieldValueToSparkplugValue(fieldValue),
+        type: spType,
+        value: fieldValueToSparkplugValue(fieldValue, spType),
         timestamp: ts,
       });
     }
@@ -278,6 +301,7 @@ export function encodeDData(options: {
 
   const encoded = sparkplug.encodePayload({
     timestamp: Date.now(),
+    seq: options.seq,
     metrics: spMetrics as Parameters<typeof sparkplug.encodePayload>[0]["metrics"],
   });
 
@@ -292,7 +316,9 @@ export function encodeNData(options: {
   const spMetrics = options.metrics.map((m) => ({
     name: m.name,
     type: m.type as SparkplugDataType,
-    value: typeof m.value === "bigint" ? Number(m.value) : m.value,
+    value: typeof m.value === "bigint"
+      ? (m.type === "Int64" ? Long.fromString(m.value.toString()) : Number(m.value))
+      : (typeof m.value === "number" && m.type === "Int64" ? Long.fromNumber(m.value) : m.value),
     timestamp: m.timestamp ? Number(m.timestamp / 1_000_000n) : now,
   }));
 

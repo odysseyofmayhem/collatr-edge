@@ -157,11 +157,20 @@ describe("encodeNBirth", () => {
     expect(bdSeq).toBeDefined();
     expect(Number(bdSeq!.value)).toBe(3);
 
+    // seq=0 in NBIRTH payload (Finding 10)
+    expect(Number(decoded.seq)).toBe(0);
+
     // Node Control/Rebirth present
     const rebirth = metrics.find((m) => m.name === "Node Control/Rebirth");
     expect(rebirth).toBeDefined();
     expect(rebirth!.type).toBe("Boolean");
     expect(rebirth!.value).toBe(false);
+
+    // Node Control/Config Version present (Finding 6)
+    const configVersion = metrics.find((m) => m.name === "Node Control/Config Version");
+    expect(configVersion).toBeDefined();
+    expect(configVersion!.type).toBe("String");
+    expect(configVersion!.value).toBe("none");
 
     // Properties
     const swVersion = metrics.find((m) => m.name === "Properties/sw_version");
@@ -237,6 +246,7 @@ describe("encodeDBirth", () => {
     ]);
 
     const buf = encodeDBirth({
+      seq: 1,
       deviceId: "wrapper_plc",
       metrics,
       aliases,
@@ -247,6 +257,8 @@ describe("encodeDBirth", () => {
 
     const decoded = sparkplug.decodePayload(new Uint8Array(buf));
     expect(decoded.metrics).toBeDefined();
+    // seq is present in DBIRTH payload
+    expect(Number(decoded.seq)).toBe(1);
 
     const spMetrics = decoded.metrics!;
     expect(spMetrics.length).toBe(3);
@@ -281,10 +293,11 @@ describe("encodeDBirth", () => {
 // ---------------------------------------------------------------------------
 
 describe("encodeDDeath", () => {
-  it("encodes DDEATH as empty payload", () => {
-    const buf = encodeDDeath();
+  it("encodes DDEATH with seq and empty metrics", () => {
+    const buf = encodeDDeath(5);
     const decoded = sparkplug.decodePayload(new Uint8Array(buf));
     expect(decoded.metrics?.length ?? 0).toBe(0);
+    expect(Number(decoded.seq)).toBe(5);
   });
 });
 
@@ -308,9 +321,11 @@ describe("encodeDData", () => {
       ["plc_data/rpm", 201],
     ]);
 
-    const buf = encodeDData({ metrics, aliases });
+    const buf = encodeDData({ seq: 3, metrics, aliases });
     const decoded = sparkplug.decodePayload(new Uint8Array(buf));
 
+    // seq is present in DDATA payload
+    expect(Number(decoded.seq)).toBe(3);
     expect(decoded.metrics).toHaveLength(2);
 
     const m0 = decoded.metrics![0]!;
@@ -336,11 +351,32 @@ describe("encodeDData", () => {
     ];
     const aliases = new Map([["temp/value", 300]]);
 
-    const buf = encodeDData({ metrics, aliases });
+    const buf = encodeDData({ seq: 0, metrics, aliases });
     const decoded = sparkplug.decodePayload(new Uint8Array(buf));
 
     const metricTs = Number(decoded.metrics![0]!.timestamp!.toString());
     expect(metricTs).toBe(tsMs);
+  });
+
+  it("uses current time as fallback for zero timestamp (Finding 14)", () => {
+    const before = Date.now();
+    const metrics = [
+      createMetric({
+        name: "temp",
+        fields: { value: 22.5 },
+        timestamp: 0n, // zero timestamp
+      }),
+    ];
+    const aliases = new Map([["temp/value", 400]]);
+
+    const buf = encodeDData({ seq: 0, metrics, aliases });
+    const after = Date.now();
+    const decoded = sparkplug.decodePayload(new Uint8Array(buf));
+
+    const metricTs = Number(decoded.metrics![0]!.timestamp!.toString());
+    // Should be a real timestamp (Date.now() fallback), not 0
+    expect(metricTs).toBeGreaterThanOrEqual(before);
+    expect(metricTs).toBeLessThanOrEqual(after);
   });
 });
 

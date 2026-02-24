@@ -16,7 +16,7 @@ import type { HubLink } from "../hub/hub-link";
 // ---------------------------------------------------------------------------
 
 export interface PipelineOptions {
-  inputs: { plugin: Input; interval?: number; timeout?: number; filter?: MetricFilter; alias?: string; logLevel?: string }[];
+  inputs: { plugin: Input; interval?: number; timeout?: number; filter?: MetricFilter; alias?: string; pluginType?: string; logLevel?: string }[];
   processors: { plugin: Processor; filter?: MetricFilter; alias?: string; logLevel?: string }[];
   aggregators: { plugin: Aggregator; period?: number; dropOriginal?: boolean; alias?: string; logLevel?: string }[];
   outputs: { plugin: Output; metricBatchSize?: number; filter?: MetricFilter; alias?: string; logLevel?: string }[];
@@ -430,7 +430,7 @@ export class PipelineRuntime {
         if (input.alias) {
           this.options.hubLink.registerDevice({
             deviceId: input.alias,
-            pluginType: "input", // Generic — actual type not tracked at this level
+            pluginType: input.pluginType ?? "input",
             pluginAlias: input.alias,
             initialMetrics: [],
           });

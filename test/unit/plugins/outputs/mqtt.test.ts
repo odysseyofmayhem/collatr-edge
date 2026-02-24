@@ -7,13 +7,8 @@ import {
   MqttOutputConfigSchema,
   type MqttOutputConfig,
 } from "@plugins/outputs/mqtt";
-import type {
-  MqttClientInterface,
-  MqttClientOptions,
-  MqttMessageEvent,
-  MqttPublishOptions,
-} from "@core/mqtt-types";
 import { createMetric } from "@core/metric";
+import { MockMqttClient } from "../../../helpers/mock-mqtt-client.ts";
 
 // ---------------------------------------------------------------------------
 // Mock Hub link
@@ -24,39 +19,6 @@ class MockHubLink {
 
   async publishDeviceData(deviceId: string, metrics: unknown[]): Promise<void> {
     this.publishCalls.push({ deviceId, metrics });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Mock MQTT client
-// ---------------------------------------------------------------------------
-
-class MockMqttClient implements MqttClientInterface {
-  private _isConnected = false;
-  connectCalls: Array<{ servers: string[]; options: MqttClientOptions }> = [];
-  publishCalls: Array<{ topic: string; payload: Buffer; options?: MqttPublishOptions }> = [];
-  disconnected = false;
-
-  get isConnected(): boolean { return this._isConnected; }
-
-  setWill(): void {}
-  connect(servers: string[], options: MqttClientOptions): void {
-    this.connectCalls.push({ servers, options });
-    this._isConnected = true;
-  }
-  async subscribe(): Promise<void> {}
-  async unsubscribe(): Promise<void> {}
-  async publish(topic: string, payload: Buffer, options?: MqttPublishOptions): Promise<void> {
-    this.publishCalls.push({ topic, payload, options });
-  }
-  onMessage(): void {}
-  onConnect(): void {}
-  onError(): void {}
-  onClose(): void {}
-  onReconnect(): void {}
-  async disconnect(): Promise<void> {
-    this._isConnected = false;
-    this.disconnected = true;
   }
 }
 
@@ -145,7 +107,7 @@ describe("MQTT Output Plugin", () => {
       await output.close();
     });
 
-    it("strips _device_id tag before publishing", async () => {
+    it("strips _device_id tag on copy without mutating original", async () => {
       const config = MqttOutputConfigSchema.parse({ sparkplug: true });
       const output = new MqttOutput(config, mockHubLink as never);
 
@@ -159,9 +121,15 @@ describe("MQTT Output Plugin", () => {
 
       await output.write([metric]);
 
-      // The metric should no longer have _device_id tag
-      expect(metric.hasTag("_device_id")).toBe(false);
+      // Original metric must NOT be mutated (other outputs may share it)
+      expect(metric.hasTag("_device_id")).toBe(true);
       expect(metric.hasTag("location")).toBe(true);
+
+      // The metrics published to hub link should not have _device_id
+      const published = mockHubLink.publishCalls[0]!;
+      const publishedMetric = published.metrics[0] as ReturnType<typeof createMetric>;
+      expect(publishedMetric.hasTag("_device_id")).toBe(false);
+      expect(publishedMetric.hasTag("location")).toBe(true);
 
       await output.close();
     });

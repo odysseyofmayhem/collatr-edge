@@ -6,6 +6,7 @@
 // device tracking, and NCMD subscription.
 // ──────────────────────────────────────────────────────────────────────
 
+import * as os from "os";
 import type { MqttClientInterface } from "../core/mqtt-types.ts";
 import type { Metric } from "../core/metric.ts";
 import { getLogger } from "../core/logger.ts";
@@ -105,19 +106,24 @@ export class HubLink {
     const ndeathPayload = encodeNDeath(this.bdSeq);
     this.client.setWill(ndeathTopic, ndeathPayload, 1, false);
 
-    // 2. Connect
-    this.client.onConnect(() => {
-      this._connected = true;
-      log.info("hub link connected", { component: "hub_link" });
-    });
-
-    this.client.onError((error: Error) => {
-      log.error("hub link error", { component: "hub_link", error: error.message });
-    });
-
+    // 2. Connect and await connection establishment (RED-4 fix)
     this.client.onClose(() => {
       this._connected = false;
       log.info("hub link disconnected", { component: "hub_link" });
+    });
+
+    // Register onConnect before calling connect() — the handler fires once
+    // the MQTT CONNACK is received (real client) or synchronously (mock client).
+    const connected = new Promise<void>((resolve, reject) => {
+      this.client.onConnect(() => {
+        this._connected = true;
+        log.info("hub link connected", { component: "hub_link" });
+        resolve();
+      });
+      this.client.onError((error: Error) => {
+        log.error("hub link connect error", { component: "hub_link", error: error.message });
+        reject(new Error(`Hub link connect failed: ${error.message}`));
+      });
     });
 
     this.client.connect([this.config.broker], {
@@ -127,21 +133,33 @@ export class HubLink {
       clean: true,
     });
 
-    // 3. Publish NBIRTH
-    await this.publishNBirth();
+    await connected;
 
-    // 4. Subscribe to NCMD
-    const ncmdTopic = buildTopic(this.config.groupId, "NCMD", this.config.edgeNodeId);
-    await this.client.subscribe([ncmdTopic], 1);
+    // 3. Publish NBIRTH + subscribe to NCMD (connection established at this point)
+    try {
+      await this.publishNBirth();
 
-    // 5. Wire NCMD handler
-    this.client.onMessage((event) => {
-      if (event.topic === ncmdTopic) {
-        this.handleNCmd(event.payload);
-      }
+      const ncmdTopic = buildTopic(this.config.groupId, "NCMD", this.config.edgeNodeId);
+      await this.client.subscribe([ncmdTopic], 1);
+
+      // Wire NCMD handler
+      this.client.onMessage((event) => {
+        if (event.topic === ncmdTopic) {
+          this.handleNCmd(event.payload);
+        }
+      });
+    } catch (err) {
+      // Partial startup cleanup (Finding 13)
+      await this.client.disconnect().catch(() => {});
+      throw err;
+    }
+
+    // Restore persistent error handler (replaces the connect-reject handler)
+    this.client.onError((error: Error) => {
+      log.error("hub link error", { component: "hub_link", error: error.message });
     });
 
-    // 6. Start heartbeat timer
+    // 4. Start heartbeat timer
     if (this.config.heartbeatIntervalMs > 0) {
       this.heartbeatTimer = setInterval(() => {
         this.publishHeartbeat().catch((err) => {
@@ -171,6 +189,7 @@ export class HubLink {
 
     const topic = buildTopic(this.config.groupId, "DBIRTH", this.config.edgeNodeId, deviceId);
     const payload = encodeDBirth({
+      seq: this.seq,
       deviceId,
       metrics,
       aliases: deviceAliases,
@@ -207,7 +226,7 @@ export class HubLink {
     }
 
     const topic = buildTopic(this.config.groupId, "DDATA", this.config.edgeNodeId, deviceId);
-    const payload = encodeDData({ metrics, aliases: this.aliases.get(deviceId)! });
+    const payload = encodeDData({ seq: this.seq, metrics, aliases: this.aliases.get(deviceId)! });
 
     await this.client.publish(topic, payload, { qos: 0 });
     this.seq = this.nextSeq();
@@ -216,7 +235,7 @@ export class HubLink {
   /** Publish DDEATH for a device */
   async publishDeviceDeath(deviceId: string): Promise<void> {
     const topic = buildTopic(this.config.groupId, "DDEATH", this.config.edgeNodeId, deviceId);
-    const payload = encodeDDeath();
+    const payload = encodeDDeath(this.seq);
 
     await this.client.publish(topic, payload, { qos: 0 });
     this.seq = this.nextSeq();
@@ -265,8 +284,9 @@ export class HubLink {
       this.heartbeatTimer = null;
     }
 
-    // Publish DDEATH for all devices
-    for (const deviceId of this.deviceBirthPublished) {
+    // Publish DDEATH for all devices (snapshot to avoid Set modification during iteration)
+    const devicesToClose = [...this.deviceBirthPublished];
+    for (const deviceId of devicesToClose) {
       try {
         await this.publishDeviceDeath(deviceId);
       } catch (err) {
@@ -296,7 +316,7 @@ export class HubLink {
       bdSeq: this.bdSeq,
       swVersion: this.config.swVersion,
       hwPlatform: `${process.platform}-${process.arch}`,
-      hostname: (await import("os")).hostname(),
+      hostname: os.hostname(),
       pluginsLoaded: [...this.devices.values()].map((d) => d.pluginType),
       agentMetrics: [
         { name: "uptime_seconds", type: "Int32", value: 0 },

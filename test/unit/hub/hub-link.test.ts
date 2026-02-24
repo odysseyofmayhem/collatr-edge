@@ -4,85 +4,10 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import spPayload from "sparkplug-payload";
 import { HubLink, type HubLinkConfig, type DeviceInfo } from "../../../src/hub/hub-link.ts";
-import type {
-  MqttClientInterface,
-  MqttClientOptions,
-  MqttMessageEvent,
-  MqttPublishOptions,
-} from "@core/mqtt-types";
 import { createMetric } from "@core/metric";
+import { MockMqttClient } from "../../helpers/mock-mqtt-client.ts";
 
 const sparkplug = spPayload.get("spBv1.0")!;
-
-// ---------------------------------------------------------------------------
-// Mock MQTT client for Hub link tests
-// ---------------------------------------------------------------------------
-
-class MockMqttClient implements MqttClientInterface {
-  private _isConnected = false;
-  private messageHandler: ((event: MqttMessageEvent) => void) | null = null;
-  private connectHandler: (() => void) | null = null;
-  private errorHandler: ((error: Error) => void) | null = null;
-  private closeHandler: (() => void) | null = null;
-  private reconnectHandler: (() => void) | null = null;
-
-  connectCalls: Array<{ servers: string[]; options: MqttClientOptions }> = [];
-  subscribeCalls: Array<{ topics: string[]; qos: number }> = [];
-  publishCalls: Array<{ topic: string; payload: Buffer; options?: MqttPublishOptions }> = [];
-  disconnected = false;
-  willConfig: { topic: string; payload: Buffer; qos: 0 | 1; retain: boolean } | null = null;
-
-  get isConnected(): boolean { return this._isConnected; }
-
-  setWill(topic: string, payload: Buffer, qos: 0 | 1 = 0, retain = false): void {
-    this.willConfig = { topic, payload, qos, retain };
-  }
-
-  connect(servers: string[], options: MqttClientOptions): void {
-    this.connectCalls.push({ servers, options });
-    this._isConnected = true;
-  }
-
-  async subscribe(topics: string[], qos: number): Promise<void> {
-    this.subscribeCalls.push({ topics, qos });
-  }
-
-  async unsubscribe(_topics: string[]): Promise<void> {}
-
-  async publish(topic: string, payload: Buffer, options?: MqttPublishOptions): Promise<void> {
-    this.publishCalls.push({ topic, payload, options });
-  }
-
-  onMessage(handler: (event: MqttMessageEvent) => void): void {
-    this.messageHandler = handler;
-  }
-  onConnect(handler: () => void): void { this.connectHandler = handler; }
-  onError(handler: (error: Error) => void): void { this.errorHandler = handler; }
-  onClose(handler: () => void): void { this.closeHandler = handler; }
-  onReconnect(handler: () => void): void { this.reconnectHandler = handler; }
-
-  async disconnect(): Promise<void> {
-    this._isConnected = false;
-    this.disconnected = true;
-  }
-
-  // Test helpers
-  emitMessage(topic: string, payload: Buffer): void {
-    if (this.messageHandler) {
-      this.messageHandler({ topic, payload, qos: 0, retain: false });
-    }
-  }
-
-  /** Find published message by topic substring */
-  findPublished(topicSubstring: string): { topic: string; payload: Buffer; options?: MqttPublishOptions } | undefined {
-    return this.publishCalls.find((p) => p.topic.includes(topicSubstring));
-  }
-
-  /** Find all published messages by topic substring */
-  findAllPublished(topicSubstring: string): Array<{ topic: string; payload: Buffer; options?: MqttPublishOptions }> {
-    return this.publishCalls.filter((p) => p.topic.includes(topicSubstring));
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -403,6 +328,38 @@ describe("HubLink", () => {
 
       const reDBirth = afterPublishes.find((p) => p.topic.includes("DBIRTH"));
       expect(reDBirth).toBeDefined();
+
+      await hub.stop();
+    });
+
+    it("ignores messages on non-NCMD topics (Finding 12)", async () => {
+      const hub = new HubLink(config, mockClient);
+      await hub.start();
+
+      hub.registerDevice(makeDevice());
+      const metrics = [createMetric({ name: "data", fields: { val: 1 } })];
+      await hub.publishDeviceBirth("wrapper_plc", metrics);
+
+      const publishCountBefore = mockClient.publishCalls.length;
+
+      // Send a rebirth command on a DCMD topic (wrong topic — should be ignored)
+      const cmdPayload = sparkplug.encodePayload({
+        timestamp: Date.now(),
+        metrics: [{
+          name: "Node Control/Rebirth",
+          type: "Boolean" as const,
+          value: true,
+          timestamp: Date.now(),
+        }],
+      });
+
+      mockClient.emitMessage("spBv1.0/plant_floor/DCMD/edge-line-3/wrapper_plc", Buffer.from(cmdPayload));
+      await Bun.sleep(50);
+
+      // No rebirth should have occurred — publish count unchanged
+      const afterPublishes = mockClient.publishCalls.slice(publishCountBefore);
+      const reNBirth = afterPublishes.find((p) => p.topic.includes("NBIRTH"));
+      expect(reNBirth).toBeUndefined();
 
       await hub.stop();
     });

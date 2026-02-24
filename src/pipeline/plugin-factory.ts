@@ -242,6 +242,7 @@ export function buildPipeline(
         timeout: overrides.timeout,
         filter,
         alias: overrides.alias,
+        pluginType: pluginName,
         logLevel: overrides.logLevel,
       });
     }
