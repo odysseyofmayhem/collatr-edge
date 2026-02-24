@@ -1,78 +1,54 @@
 Read CLAUDE.md for project rules and conventions.
-Read plans/phase-6-cli.md for the Phase 6 implementation plan.
-Read plans/phase-6-tasks.json for the structured task list.
-Read plans/phase-6-progress.md for current progress.
+Read plans/phase-6-independent-review.md for the independent review findings.
+Read plans/phase-6-progress.md for what was built.
 Check `git log --oneline -10` to see recent commits.
 
-You are implementing Phase 6: CLI for CollatrEdge.
+You are implementing fixes from the Phase 6 independent review, then preparing for Phase 7.
 
 ## CONTEXT
 
-Phases 1-5 are complete. You have:
-- Core: Metric, Channel<T>, Broadcaster<T>, Ticker, Accumulator, Plugin Registry, Config Parser, Pipeline Runtime (with processor chain + aggregator fork)
-- Inputs: Modbus TCP, OPC-UA, MQTT consumer, internal metrics
-- Outputs: stdout, file, local data store (SQLite), store-and-forward buffer
-- Processors: rename, filter
-- Aggregators: basicstats
-- Metric filtering framework (namepass/namedrop/tagpass/tagdrop/fieldpass/fielddrop)
-- 445 passing tests across 41 files (including 19 E2E tests)
-- Full pipeline proven end-to-end: real plugins, power loss recovery, 60s soak test, buffer overflow, error resilience
+Phase 6 (CLI) is feature-complete but the independent review found 2 RED issues that must be fixed before Phase 7 can start:
 
-Phase 6 turns this into a usable CLI application. It wires the pipeline to real config files, adds structured logging, and provides the four core commands: `run`, `config init`, `config validate`, `version`.
+**RED-01: 4 E2E error-resilience tests broken by logger migration**
+- `captureErrors()` in `test/e2e/helpers.ts` spies on `console.error`, but Phase 6 replaced all `console.error` in src/ with `getLogger().error()` → `process.stderr.write()`.
+- The errors ARE being emitted (visible as JSON lines in stderr) but the capture function can't see them.
+- Fix: Update `captureErrors()` to spy on `process.stderr.write` and parse the JSON output to extract error messages. Or provide dual capture.
+- Affected tests: 5.4.1, 5.4.2, 5.4.3, 5.4.4 in `test/e2e/error-resilience.test.ts`
+
+**RED-02: Test 5.2.3 (daily rotation) fails near UTC midnight**
+- `makeMetricsForDay` uses `Date.now()` as base, then spreads 50 metrics 1 minute apart.
+- When run near midnight UTC, metrics spill across day boundaries (5 daily files instead of 3).
+- Fix: Snap to midday of each target day so the 50-minute spread cannot cross a boundary:
+```typescript
+const todayMidnight = now - (now % MS_PER_DAY);
+const day1Ms = todayMidnight - 10 * MS_PER_DAY + 12 * 3_600_000; // 10 days ago, noon
+const day2Ms = todayMidnight - 1 * MS_PER_DAY + 12 * 3_600_000;  // yesterday, noon
+const day3Ms = todayMidnight + 12 * 3_600_000;                     // today, noon
+```
+
+There are also SHOULD-fix items from the review (add SIGTERM test, fix parseGlobalOptions edge case, document processor filter field semantics). Address these if time permits after the two REDs.
 
 ## WORKFLOW
 
-1. Read the task list and find the FIRST task where "passes" is false.
-2. Read the PRD sections listed in that task's "prd_refs" array.
-3. Read the detailed plan in plans/phase-6-cli.md for the corresponding section (6.0, 6.1, etc.) — it has implementation notes and edge case guidance.
-4. Implement the code following the steps in the task.
-5. Run `bun test` — ALL tests must pass (not just your new ones).
-6. If tests fail: understand the root cause. Fix the CODE, not the tests. If a test expectation is genuinely wrong (you can explain why), fix it — but document the reasoning in the progress file.
-7. If you cannot fix a failure after 3 genuine attempts: STOP. Document the failure in plans/phase-6-progress.md with full error output and what you tried. Do NOT mark the task as passing.
-8. When all tests pass: update the task's "passes" field to true in plans/phase-6-tasks.json.
-9. Update plans/phase-6-progress.md with: what you built, decisions made, any notes for next task.
-10. Git commit with message format: `phase-6: <what you built>`
-11. ONLY WORK ON ONE TASK PER SESSION.
+1. Read `plans/phase-6-independent-review.md` — understand all findings.
+2. Fix RED-01 first (captureErrors helper), run `bun test` — all E2E tests must pass.
+3. Commit: `phase-6: fix E2E error-resilience tests — update captureErrors() for logger migration`
+4. Fix RED-02 (test 5.2.3 timestamps), run `bun test` — 5.2.3 must pass.
+5. Commit: `phase-5: fix test 5.2.3 — use midday timestamps to prevent UTC day boundary spill`
+6. Address SHOULD-fix items if practical (SIGTERM test, parseGlobalOptions, processor filter comment).
+7. Run full `bun test` — **ALL tests must pass, zero failures.**
+8. Push all commits.
+9. Output: FIXES_COMPLETE
 
 ## RULES
 
-- Read the relevant PRD sections BEFORE writing code. The spec defines correct behaviour.
+- Read the relevant review findings BEFORE writing code.
+- Run the FULL test suite (`bun test`) before committing, not just the affected tests.
 - Never use `any` type except in test fixtures where typing adds no value.
 - Never swallow errors with empty catch blocks.
-- Run the FULL test suite before committing, not just your new tests.
 - Use `bun:test` (describe/it/expect). Not Jest, not Vitest.
 - Use ESM imports. No require().
-- Temp directories: use `mkdtempSync` + cleanup in `afterEach`. Don't leave test artifacts.
-
-## KEY NOTES
-
-- **Plugin constructors may need refactoring** to accept config objects. Check what each constructor currently takes and adapt carefully. Existing tests must still pass.
-- **Zod schemas must be exported from each plugin file.** Some already are, others need a 1-line `export`. Do this in task 6.3 as prep for the schema registry and plugin factory.
-- **Logger replaces console.error/console.log in src/.** After implementing the logger (6.0), grep src/ for remaining console calls and replace them. Test files can keep console calls.
-- **CLI commands return exit codes, not call process.exit().** Only src/index.ts calls process.exit(). This makes testing possible.
-- **Config template in 6.4 is a string literal** — bundled in the binary. Not a separate file.
-- **Signal handling in 6.6:** Don't test with real signals in unit tests. Mock the pipeline and test the wiring. Phase 5 E2E tests already prove the pipeline works.
-- **The plugin factory (6.5) is the most complex task.** Take your time. Read the existing plugin constructors carefully before designing the factory interface.
-
-## IMPORTANT: Plugin Constructor Patterns
-
-Existing plugins accept config in different ways. You'll need to understand and potentially refactor these:
-
-- `InternalInput` — check constructor
-- `ModbusInput` — check constructor (likely takes a config object already via Zod parse)
-- `OpcuaInput` — check constructor
-- `MqttConsumerInput` — check constructor
-- `RenameProcessor` — check constructor
-- `FilterProcessor` — check constructor
-- `BasicstatsAggregator` — check constructor
-- `LocalStoreOutput` — check constructor
-- `FileOutput` — check constructor
-- `StdoutOutput` — check constructor
-
-Read each plugin file's constructor before implementing the factory. Document any refactoring needed in the progress file.
 
 ## COMPLETION
 
-When your single task is done and committed, output: TASK_COMPLETE
-
-If ALL tasks in phase-6-tasks.json have "passes": true, output: PHASE_COMPLETE
+When all fixes are done, tests pass, and commits are pushed, output: FIXES_COMPLETE

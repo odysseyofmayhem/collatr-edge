@@ -108,7 +108,7 @@ Each iteration:
 7. Updates `passes: true` in the task JSON
 8. Updates the progress file with what was built and decisions made
 9. Commits with format: `phase-N: <what> (task N.X)`
-10. Outputs `TASK_COMPLETE` (or `PHASE_COMPLETE` if all tasks done)
+10. Outputs `TASK_COMPLETE` (or triggers internal review if all tasks done — see below)
 
 **The loop auto-pushes to git after each iteration** so Dex can monitor progress.
 
@@ -117,6 +117,7 @@ Each iteration:
 - **All tests must pass** — no partial implementations, no "fix it later"
 - **Progress file must be updated** — breadcrumbs for the next iteration and for reviewers
 - **3-attempt failure rule** — if a test can't be fixed after 3 genuine attempts, STOP and document. Don't hack around it.
+- **Internal review is part of the loop** — when all tasks pass, the PROMPT must instruct the agent to spawn a code review sub-agent before declaring PHASE_COMPLETE. This is not optional and must not be left to manual prompting.
 
 **Task granularity:** Each task typically produces one source file + one test file + one commit. Integration tests are separate tasks from implementation (e.g., task 2.1 = implement Modbus, task 2.1i = Modbus integration tests).
 
@@ -268,6 +269,35 @@ Named after the Anthropic pattern ("I'm in danger!"), `ralph.sh` is a bash scrip
 
 **Why headless works:** Each iteration gets a fresh context, so there's no accumulated confusion. The task JSON provides state across iterations — the agent reads which tasks are done and picks up where the last iteration left off. The progress file provides breadcrumbs for context the JSON can't capture.
 
+### PROMPT_build.md Template Requirements
+
+Every `PROMPT_build.md` **must** include these sections. Missing any of these has caused real problems:
+
+1. **Context** — What phases are complete, what exists, what this phase builds on.
+2. **Task workflow** — Find first failing task → read PRD → implement → test → commit → update progress. One task per session.
+3. **Rules reminder** — Key rules for this phase (not all 13, just the ones most likely to be violated).
+4. **Phase-specific notes** — Gotchas, known issues, constructor patterns, etc.
+5. **Completion signals:**
+   - `TASK_COMPLETE` — after each task passes and is committed.
+   - After all tasks pass: **trigger internal code review** (spawn sub-agent, write `phase-N-review.md`), then implement fixes, then output `PHASE_COMPLETE`.
+
+**Critical: The review step must be in the PROMPT, not left to manual prompting.** Phase 6 missed this — the PROMPT said "if all tasks pass, output PHASE_COMPLETE" without requiring a review first. The review only happened because it was manually triggered. Future PROMPTs must include explicit instructions:
+
+```
+## COMPLETION
+
+When your single task is done and committed, output: TASK_COMPLETE
+
+When ALL tasks in the task JSON have "passes": true:
+1. Do NOT output PHASE_COMPLETE yet.
+2. Spawn a sub-agent code review (see CLAUDE.md "Phase Work Pattern" step 4).
+3. Write the review to plans/phase-N-review.md
+4. Address all 🔴 Must Fix findings. Re-run bun test after each fix.
+5. Commit fixes: `phase-N: address code review findings`
+6. Push all commits.
+7. THEN output: PHASE_COMPLETE
+```
+
 ---
 
 ## CLAUDE.md: The Living Rulebook
@@ -301,6 +331,7 @@ Named after the Anthropic pattern ("I'm in danger!"), `ralph.sh` is a bash scrip
 3. **Fix verification step** added after finding that review fixes were sometimes incomplete or introduced new issues.
 4. **Independent review naming** changed from `phase-N-review-final.md` to `phase-N-independent-review.md` for clarity — the "final" was confusing because it suggested it was the last review, not that it was from an independent reviewer.
 5. **Phase plan quality improved** over time — early plans were thinner, later plans (Phase 5, 6) include specific implementation notes, edge case guidance, and "what this does NOT do" sections.
+6. **Internal review must be in the PROMPT** — Phase 6's PROMPT_build.md said "output PHASE_COMPLETE" without requiring a code review first. The review only happened because it was manually triggered. The PROMPT now explicitly includes the review-and-fix cycle before PHASE_COMPLETE.
 
 ### What to watch for
 
