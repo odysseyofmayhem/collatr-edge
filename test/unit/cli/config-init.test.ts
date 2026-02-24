@@ -18,6 +18,7 @@ import {
   generateConfigTemplate,
 } from "../../../src/cli/commands/config-init";
 import { configValidateCommand } from "../../../src/cli/commands/config-validate";
+import { parseConfig } from "../../../src/core/config";
 
 describe("config init command", () => {
   let stdoutSpy: ReturnType<typeof spyOn>;
@@ -343,5 +344,60 @@ describe("config init command", () => {
 
     expect(code).toBe(1);
     expect(stderr()).toContain("Invalid mode");
+  });
+
+  // =========================================================================
+  // Mode template parseability and network policy (Task 8.4)
+  // =========================================================================
+
+  describe("mode template parseability and policy", () => {
+    it("all 3 mode templates generate valid configs that parse without error", () => {
+      for (const mode of ["connected", "local_network", "standalone"] as const) {
+        const template = generateConfigTemplate(mode);
+        // parseConfig should not throw for any mode template
+        const config = parseConfig(template);
+        expect(config.networkPolicy.mode).toBe(mode);
+        // All templates should have at least inputs.internal active
+        expect(config.inputs.internal).toBeDefined();
+        expect(config.inputs.internal!.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("standalone template does not include active (uncommented) MQTT outputs", () => {
+      const template = generateConfigTemplate("standalone");
+
+      // No uncommented [[outputs.mqtt]] lines in the template
+      const lines = template.split("\n");
+      const activeMqttOutputLines = lines.filter(
+        (line) =>
+          line.trim().startsWith("[[outputs.mqtt]]") ||
+          line.trim() === "[outputs.mqtt]",
+      );
+      expect(activeMqttOutputLines).toHaveLength(0);
+
+      // Verify at the parse level — no MQTT outputs in parsed config
+      const config = parseConfig(template);
+      expect(config.outputs.mqtt).toBeUndefined();
+    });
+
+    it("connected template passes validation without policy warnings", async () => {
+      const outPath = join(tmpDir, "connected-no-warnings.toml");
+      const initCode = await configInitCommand([
+        "--output", outPath, "--mode", "connected",
+      ]);
+      expect(initCode).toBe(0);
+
+      stdoutOutput.length = 0;
+
+      const validateCode = await configValidateCommand(outPath);
+      expect(validateCode).toBe(0);
+
+      const out = stdout();
+      // Should not have any policy-related WARNING lines
+      // (Secret reference warnings use a different format: "⚠ Secret references found")
+      expect(out).not.toContain("WARNING:");
+      expect(out).toContain("CONNECTED");
+      expect(out).toContain("\u2713 Configuration valid");
+    });
   });
 });
