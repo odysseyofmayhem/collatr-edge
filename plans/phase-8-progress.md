@@ -1,6 +1,6 @@
 # Phase 8 Progress: Network Policy & Standalone Operation
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Baseline
 - **Starting commit:** `a377d9d` (Phase 7 fix pass)
@@ -16,7 +16,7 @@
 | 8.1 | Config parser integration | ✅ Done | 746 pass (12 new) | `a6e68d7` |
 | 8.2 | Output plugin enforcement | ✅ Done | 764 pass (18 new) | `13045a2` |
 | 8.3 | Config validate enhancement | ✅ Done | 769 pass (5 new) | `e6e4f04` |
-| 8.4 | Integration tests + config init | ⬜ Not started | — | — |
+| 8.4 | Integration tests + config init | ✅ Done | 779 pass (10 new) | `2e51d85` |
 
 ## Notes
 

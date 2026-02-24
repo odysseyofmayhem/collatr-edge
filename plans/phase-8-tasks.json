@@ -146,7 +146,7 @@
         "Update plans/phase-8-progress.md with final test count and commit hash",
         "Commit: phase-8: integration tests for network policy enforcement"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
