@@ -563,6 +563,31 @@ topic = "test/metrics"
     expect(out).toContain("standalone");
   });
 
+  it("sparkplug MQTT output without hub enabled → warning", async () => {
+    const path = writeConfig(
+      "sparkplug-no-hub.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "connected"
+
+[[inputs.internal]]
+
+[[outputs.mqtt]]
+sparkplug = true
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("WARNING:");
+    expect(out).toContain("sparkplug=true");
+    expect(out).toContain("hub");
+  });
+
   // =========================================================================
   // Mixed valid and invalid plugins
   // =========================================================================

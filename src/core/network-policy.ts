@@ -23,6 +23,7 @@ export type PolicyCheckResult =
 export interface ResolvedEgressRules {
   allowDns: boolean;
   allowMqttHub: boolean;
+  allowLocalSubnet: boolean; // TODO: post-MVP — enforce when subnet detection is available
   allowedHosts: string[];
   unrestricted: boolean;
 }
@@ -67,6 +68,7 @@ export const MODE_PRESETS: Record<NetworkPolicyMode, ModePreset> = {
     egress: {
       allowDns: true,
       allowMqttHub: true,
+      allowLocalSubnet: true,
       allowedHosts: [],
       unrestricted: true,
     },
@@ -80,6 +82,7 @@ export const MODE_PRESETS: Record<NetworkPolicyMode, ModePreset> = {
     egress: {
       allowDns: false,
       allowMqttHub: false,
+      allowLocalSubnet: true,
       allowedHosts: [],
       unrestricted: false,
     },
@@ -93,6 +96,7 @@ export const MODE_PRESETS: Record<NetworkPolicyMode, ModePreset> = {
     egress: {
       allowDns: false,
       allowMqttHub: false,
+      allowLocalSubnet: false,
       allowedHosts: [],
       unrestricted: false,
     },
@@ -155,8 +159,13 @@ export function parseHostPort(entry: string): ParsedHostPort {
 const IPV4_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 function isIpAddress(host: string): boolean {
-  // IPv4
-  if (IPV4_RE.test(host)) return true;
+  // IPv4 — regex matches the shape, then validate octet ranges
+  if (IPV4_RE.test(host)) {
+    return host.split(".").every((octet) => {
+      const n = parseInt(octet, 10);
+      return n >= 0 && n <= 255;
+    });
+  }
   // IPv6 (contains colons)
   if (host.includes(":")) return true;
   return false;
@@ -174,6 +183,7 @@ export function resolveNetworkPolicy(raw?: NetworkPolicyInput | null): NetworkPo
   const egress: ResolvedEgressRules = {
     allowDns: raw?.egress?.allow_dns ?? preset.egress.allowDns,
     allowMqttHub: raw?.egress?.allow_mqtt_hub ?? preset.egress.allowMqttHub,
+    allowLocalSubnet: preset.egress.allowLocalSubnet, // TODO: post-MVP — no config override yet
     allowedHosts: raw?.egress?.allowed_hosts ?? [...preset.egress.allowedHosts],
     // unrestricted: connected mode is unrestricted UNLESS user provides explicit egress overrides
     // that restrict things. But per PRD, unrestricted means no host restrictions.
@@ -220,8 +230,8 @@ export class NetworkPolicy {
    * Check order:
    * 1. Unrestricted (connected mode, no overrides) → always allowed
    * 2. DNS check: hostname (not IP) denied when allowDns=false
-   * 3. Hub check: MQTT target denied when allowMqttHub=false AND not in allowedHosts
-   * 4. Allowed hosts check: match against allowedHosts list
+   * 3. Allowed hosts check: match or deny against allowedHosts list (when non-empty)
+   * 4. Hub check: MQTT target denied when allowMqttHub=false (empty allowedHosts only)
    * 5. Mode-based denial for empty allowedHosts
    */
   checkEgress(target: EgressTarget): PolicyCheckResult {
@@ -243,9 +253,14 @@ export class NetworkPolicy {
       if (matchesAllowedHosts(target, this.egress.allowedHosts)) {
         return { allowed: true };
       }
+      // Target didn't match any entry — deny with specific "not in allowed_hosts" message
+      return {
+        allowed: false,
+        reason: `Host "${target.host}${target.port ? ":" + target.port : ""}" not in allowed_hosts for "${this.mode}" mode.`,
+      };
     }
 
-    // 4. Hub check: MQTT target denied when allowMqttHub=false and not already allowed by allowedHosts
+    // 4. Hub check: MQTT target denied when allowMqttHub=false and allowedHosts is empty
     if (
       (target.protocol === "mqtt" || target.protocol === "mqtts") &&
       !this.egress.allowMqttHub
@@ -256,15 +271,7 @@ export class NetworkPolicy {
       };
     }
 
-    // 5. If allowedHosts is non-empty but target didn't match
-    if (this.egress.allowedHosts.length > 0) {
-      return {
-        allowed: false,
-        reason: `Host "${target.host}${target.port ? ":" + target.port : ""}" not in allowed_hosts for "${this.mode}" mode.`,
-      };
-    }
-
-    // 6. Empty allowedHosts — mode-based denial
+    // 5. Empty allowedHosts — mode-based denial
     if (this.mode === "standalone") {
       return {
         allowed: false,
@@ -291,18 +298,18 @@ export class NetworkPolicy {
     switch (this.mode) {
       case "connected":
         if (this.egress.unrestricted) {
-          return "🌐 CONNECTED — unrestricted egress, full Hub connectivity";
+          return "[CONNECTED] unrestricted egress, full Hub connectivity";
         }
-        return `🌐 CONNECTED — restricted: ${this.egress.allowedHosts.length} allowed hosts, DNS ${this.egress.allowDns ? "on" : "off"}, Hub ${this.egress.allowMqttHub ? "on" : "off"}`;
+        return `[CONNECTED] restricted: ${this.egress.allowedHosts.length} allowed hosts, DNS ${this.egress.allowDns ? "on" : "off"}, Hub ${this.egress.allowMqttHub ? "on" : "off"}`;
 
       case "local_network": {
         const hostCount = this.egress.allowedHosts.length;
         const hostDesc = hostCount > 0 ? `${hostCount} allowed hosts` : "no allowed hosts";
-        return `🏠 LOCAL NETWORK — egress: ${hostDesc}, DNS ${this.egress.allowDns ? "on" : "off"}, Hub ${this.egress.allowMqttHub ? "on" : "off"}`;
+        return `[LOCAL NETWORK] egress: ${hostDesc}, DNS ${this.egress.allowDns ? "on" : "off"}, Hub ${this.egress.allowMqttHub ? "on" : "off"}`;
       }
 
       case "standalone":
-        return "🔒 STANDALONE — no external data transmission";
+        return "[STANDALONE] no external data transmission";
     }
   }
 }

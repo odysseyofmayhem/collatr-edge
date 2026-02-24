@@ -101,6 +101,21 @@ const LOCAL_NETWORK_MQTT_DISALLOWED_TOML = `
   topic = "test/metrics"
 `;
 
+/** Standalone mode + local_store only → should start/stop cleanly (no network) */
+const STANDALONE_LOCAL_STORE_TOML = `
+[agent]
+  interval = "100ms"
+  flush_interval = "100ms"
+
+[network_policy]
+  mode = "standalone"
+
+[[inputs.internal]]
+
+[[outputs.local_store]]
+  path = ":memory:"
+`;
+
 /** Hub enabled + local_network → buildPipeline throws (hub broker is hostname) */
 const HUB_LOCAL_NETWORK_TOML = `
 [agent]
@@ -262,7 +277,21 @@ describe("network policy enforcement (integration)", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 7. network policy summary logged at startup
+  // 7. standalone + local_store only → starts cleanly (no network = not blocked)
+  // -------------------------------------------------------------------------
+
+  it("standalone + local_store only → starts and stops cleanly", async () => {
+    const config = parseConfig(STANDALONE_LOCAL_STORE_TOML);
+    const opts = buildPipeline(config);
+    const runtime = new PipelineRuntime(opts);
+
+    await runtime.start();
+    await runtime.stop();
+    // No error = success — local_store is never blocked by network policy
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. network policy summary logged at startup
   // -------------------------------------------------------------------------
 
   it("logs network policy summary at startup", async () => {
@@ -277,6 +306,6 @@ describe("network policy enforcement (integration)", () => {
     // Runtime logs: getLogger().info("network policy", { mode, summary })
     expect(logOutput).toContain("network policy");
     expect(logOutput).toContain("local_network");
-    expect(logOutput).toContain("LOCAL NETWORK");
+    expect(logOutput).toContain("[LOCAL NETWORK]");
   });
 });

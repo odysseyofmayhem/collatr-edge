@@ -165,17 +165,27 @@ function detectOutputPolicyConflicts(config: AgentConfig): string[] {
   const warnings: string[] = [];
   const policy = config.networkPolicy;
 
-  // Skip if unrestricted — nothing can be blocked
-  if (policy.egress.unrestricted) return warnings;
-
-  // Check MQTT output instances in plain mode (sparkplug mode is covered by hub warning)
+  // Check MQTT output instances for structural issues (independent of policy mode)
   const mqttInstances = config.outputs.mqtt ?? [];
   for (let i = 0; i < mqttInstances.length; i++) {
     const instance = mqttInstances[i]!;
     const isSparkplug = instance.sparkplug as boolean | undefined;
 
-    // Sparkplug mode — hub conflict handled by config.warnings already
-    if (isSparkplug) continue;
+    // Sparkplug mode — check hub is actually enabled (structural, not policy-dependent)
+    if (isSparkplug) {
+      const hubEnabled = config.agent.hub?.enabled === true;
+      if (!hubEnabled) {
+        warnings.push(
+          `MQTT output[${i}] has sparkplug=true but [agent.hub] is not enabled. ` +
+          `The pipeline will fail to start with this configuration.`,
+        );
+      }
+      // Hub + policy conflict is already handled by config.warnings
+      continue;
+    }
+
+    // Policy-based checks only apply when not unrestricted
+    if (policy.egress.unrestricted) continue;
 
     const servers = instance.servers as string[] | undefined;
     if (!servers || servers.length === 0) continue;

@@ -408,5 +408,12 @@ describe("MQTT Output Plugin", () => {
       expect(target.port).toBeUndefined();
       expect(target.protocol).toBe("mqtt");
     });
+
+    it("handles unparseable URL — returns raw string as host", () => {
+      const target = parseMqttServerUrl("not-a-url", "test_desc");
+      expect(target.host).toBe("not-a-url");
+      expect(target.protocol).toBe("mqtt");
+      expect(target.description).toBe("test_desc");
+    });
   });
 });

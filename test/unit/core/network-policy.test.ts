@@ -92,10 +92,11 @@ describe("NetworkPolicySchema", () => {
 // ---------------------------------------------------------------------------
 
 describe("MODE_PRESETS", () => {
-  it("connected mode: unrestricted egress, DNS on, Hub on", () => {
+  it("connected mode: unrestricted egress, DNS on, Hub on, local subnet on", () => {
     const p = MODE_PRESETS.connected;
     expect(p.egress.allowDns).toBe(true);
     expect(p.egress.allowMqttHub).toBe(true);
+    expect(p.egress.allowLocalSubnet).toBe(true);
     expect(p.egress.unrestricted).toBe(true);
     expect(p.egress.allowedHosts).toEqual([]);
   });
@@ -107,10 +108,11 @@ describe("MODE_PRESETS", () => {
     expect(p.ingress.allowedCidrs).toEqual(["0.0.0.0/0"]);
   });
 
-  it("local_network mode: no DNS, no Hub, not unrestricted", () => {
+  it("local_network mode: no DNS, no Hub, local subnet on, not unrestricted", () => {
     const p = MODE_PRESETS.local_network;
     expect(p.egress.allowDns).toBe(false);
     expect(p.egress.allowMqttHub).toBe(false);
+    expect(p.egress.allowLocalSubnet).toBe(true);
     expect(p.egress.unrestricted).toBe(false);
     expect(p.egress.allowedHosts).toEqual([]);
   });
@@ -126,10 +128,11 @@ describe("MODE_PRESETS", () => {
     ]);
   });
 
-  it("standalone mode: everything blocked for egress", () => {
+  it("standalone mode: everything blocked for egress, local subnet off", () => {
     const p = MODE_PRESETS.standalone;
     expect(p.egress.allowDns).toBe(false);
     expect(p.egress.allowMqttHub).toBe(false);
+    expect(p.egress.allowLocalSubnet).toBe(false);
     expect(p.egress.unrestricted).toBe(false);
     expect(p.egress.allowedHosts).toEqual([]);
   });
@@ -432,11 +435,24 @@ describe("checkEgress — local_network mode", () => {
     expect(result.allowed).toBe(true);
   });
 
-  it("denies hub MQTT when allowMqttHub is false and host not in allowedHosts", () => {
+  it("denies MQTT target not in allowedHosts with specific 'not in allowed_hosts' reason", () => {
     const policy = resolveNetworkPolicy({
       mode: "local_network",
       egress: { allowed_hosts: ["192.168.1.50:1883"] },
     });
+    const result = policy.checkEgress(
+      makeTarget({ host: "10.0.0.1", port: 8883, protocol: "mqtts" }),
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      // Y2 fix: when allowedHosts is non-empty, denial should say "not in allowed_hosts"
+      // rather than the misleading "Hub/MQTT connectivity disabled"
+      expect(result.reason).toContain("not in allowed_hosts");
+    }
+  });
+
+  it("denies MQTT when allowMqttHub is false and allowedHosts is empty", () => {
+    const policy = resolveNetworkPolicy({ mode: "local_network" });
     const result = policy.checkEgress(
       makeTarget({ host: "10.0.0.1", port: 8883, protocol: "mqtts" }),
     );
@@ -524,6 +540,33 @@ describe("checkEgress — edge cases", () => {
     expect(result.allowed).toBe(true);
   });
 
+  it("target with port: undefined does not match entry with specific port (deny-by-default)", () => {
+    const policy = resolveNetworkPolicy({
+      mode: "local_network",
+      egress: { allowed_hosts: ["192.168.1.50:8086"] },
+    });
+    const result = policy.checkEgress(
+      makeTarget({ host: "192.168.1.50", port: undefined }),
+    );
+    // Target without a port does not match "192.168.1.50:8086" — safer to deny
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      expect(result.reason).toContain("not in allowed_hosts");
+    }
+  });
+
+  it("invalid IPv4-like address (999.999.999.999) is treated as hostname, not IP", () => {
+    const policy = resolveNetworkPolicy({ mode: "local_network" });
+    const result = policy.checkEgress(
+      makeTarget({ host: "999.999.999.999", port: 1883 }),
+    );
+    expect(result.allowed).toBe(false);
+    if (!result.allowed) {
+      // Invalid octets → treated as hostname → DNS check triggers
+      expect(result.reason).toContain("DNS");
+    }
+  });
+
   it("multiple allowed_hosts entries — matches any", () => {
     const policy = resolveNetworkPolicy({
       mode: "local_network",
@@ -555,7 +598,7 @@ describe("summary()", () => {
   it("returns CONNECTED summary for connected mode", () => {
     const policy = resolveNetworkPolicy({ mode: "connected" });
     const s = policy.summary();
-    expect(s).toContain("CONNECTED");
+    expect(s).toContain("[CONNECTED]");
     expect(s).toContain("unrestricted");
   });
 
@@ -565,7 +608,7 @@ describe("summary()", () => {
       egress: { allowed_hosts: ["192.168.1.50:8086", "192.168.1.10:1883"] },
     });
     const s = policy.summary();
-    expect(s).toContain("LOCAL NETWORK");
+    expect(s).toContain("[LOCAL NETWORK]");
     expect(s).toContain("2 allowed hosts");
     expect(s).toContain("DNS off");
     expect(s).toContain("Hub off");
@@ -574,7 +617,7 @@ describe("summary()", () => {
   it("returns STANDALONE summary for standalone mode", () => {
     const policy = resolveNetworkPolicy({ mode: "standalone" });
     const s = policy.summary();
-    expect(s).toContain("STANDALONE");
+    expect(s).toContain("[STANDALONE]");
     expect(s).toContain("no external data transmission");
   });
 
@@ -593,7 +636,7 @@ describe("summary()", () => {
       egress: { allowed_hosts: ["10.0.0.1:443"] },
     });
     const s = policy.summary();
-    expect(s).toContain("CONNECTED");
+    expect(s).toContain("[CONNECTED]");
     expect(s).toContain("restricted");
     expect(s).toContain("1 allowed hosts");
   });
