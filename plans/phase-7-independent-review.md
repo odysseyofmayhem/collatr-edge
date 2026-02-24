@@ -9,7 +9,7 @@
 
 ## Summary
 
-Phase 7 delivers a well-structured Sparkplug B Hub Link implementation with clean codec/session separation, proper DI for testing, and comprehensive lifecycle management. The internal review was thorough — it caught critical issues (missing `seq`, CONNACK race, Set iteration mutation) and the fix pass resolved them correctly. However, this independent review found **8 new issues** that the internal review missed, including 2 must-fix protocol correctness problems and a significant data leakage concern with `_device_id` tags persisting into local store and other outputs.
+Phase 7 delivers a well-structured Sparkplug B Hub Link implementation with clean codec/session separation, proper DI for testing, and comprehensive lifecycle management. The internal review was thorough — it caught critical issues (missing `seq`, CONNACK race, Set iteration mutation) and the fix pass resolved them correctly. However, this independent review found **9 new issues** that the internal review missed, including 2 must-fix protocol correctness problems, a significant data leakage concern with `_device_id` tags persisting into local store and other outputs, and a readability trap that could cause bugs in future refactors.
 
 ---
 
@@ -284,7 +284,37 @@ Metrics without `_device_id` (e.g., from inputs without aliases, or metrics that
 
 ### 🟢 Nice to Have
 
-#### F-9: `encodeDBirth()` attaches device properties only to the first metric
+#### F-9: `pluginType: pluginName` assignment is a readability trap
+
+**File:** `src/pipeline/plugin-factory.ts:245`
+**Severity:** 🟢 Nice to Have
+
+```typescript
+for (const [pluginName, instances] of Object.entries(config.inputs)) {
+  // ...
+  inputs.push({
+    // ...
+    pluginType: pluginName,  // ← "modbus", "opcua", etc.
+  });
+}
+```
+
+The wiring is correct: `pluginName` in the factory loop (e.g. `"modbus"`) IS the plugin type, and it flows correctly through `PipelineOptions` → `registerDevice()` → `DeviceInfo.pluginType` → `encodeDBirth()` → DBIRTH `plugin_type` property. No bug here.
+
+However, a reader seeing `pluginType: pluginName` will naturally ask "is that the name of this specific instance, or the type?" — `pluginName` could be confused with the user-defined alias. The loop variable should be renamed to `pluginType` (or at minimum commented) to be self-documenting. This is the kind of ambiguity that causes a real bug in the next refactor when someone "fixes" it by passing the alias instead.
+
+**Fix:** Rename the loop variable or add a clarifying comment:
+```typescript
+for (const [pluginType, instances] of Object.entries(config.inputs)) {
+```
+Or:
+```typescript
+pluginType: pluginName, // TOML key = protocol type, e.g. "modbus", not instance alias
+```
+
+---
+
+#### F-10: `encodeDBirth()` attaches device properties only to the first metric
 
 **File:** `src/hub/sparkplug-codec.ts:182-192`
 **Severity:** 🟢 Nice to Have
@@ -424,8 +454,9 @@ No schema changes needed for `seq`. Post-MVP: consider a `hub_audit` table for r
 - **F-5** (handler overwrite in RealMqttClient): Low risk since the duplicate handler is harmless. Fix when touching mqtt-client.ts next.
 - **F-6** (rebirth DBIRTH gap): Fix by tracking last-known metrics per device. The auto-DBIRTH on next data publish provides a workaround, but there's a brief protocol gap.
 - **F-8** (silent drop of "unknown" device metrics): Add a warning log at minimum.
+- **F-9** (`pluginType: pluginName` readability): Rename loop variable or add comment. Prevents future refactor bugs.
 
-**Phase 8 can proceed** after F-1 and F-4 are fixed. These are both single-line fixes with no architectural impact. The remaining findings are either documented limitations (F-2), design decisions to formalize (F-3), or low-probability edge cases (F-5, F-6, F-8).
+**Phase 8 can proceed** after F-1 and F-4 are fixed. These are both single-line fixes with no architectural impact. The remaining findings are either documented limitations (F-2), design decisions to formalize (F-3), low-probability edge cases (F-5, F-6, F-8), or code hygiene (F-9, F-10).
 
 ---
 
