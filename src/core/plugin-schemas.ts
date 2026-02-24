@@ -21,6 +21,7 @@ import { BasicstatsConfigSchema } from "../plugins/aggregators/basicstats";
 import { LocalStoreConfigSchema } from "../plugins/outputs/local-store";
 import { FileOutputConfigSchema } from "../plugins/outputs/file";
 import { StdoutConfigSchema } from "../plugins/outputs/stdout";
+import { MqttOutputConfigSchema } from "../plugins/outputs/mqtt";
 
 /**
  * Central registry mapping "type.name" → Zod schema.
@@ -37,4 +38,5 @@ export const PLUGIN_SCHEMAS: Record<string, z.ZodType> = {
   "outputs.local_store": LocalStoreConfigSchema,
   "outputs.file": FileOutputConfigSchema,
   "outputs.stdout": StdoutConfigSchema,
+  "outputs.mqtt": MqttOutputConfigSchema,
 };

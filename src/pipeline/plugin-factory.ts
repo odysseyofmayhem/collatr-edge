@@ -34,6 +34,8 @@ import { FileOutput } from "../plugins/outputs/file";
 import { FileOutputConfigSchema } from "../plugins/outputs/file";
 import { StdoutOutput } from "../plugins/outputs/stdout";
 import { StdoutConfigSchema } from "../plugins/outputs/stdout";
+import { MqttOutput } from "../plugins/outputs/mqtt";
+import { MqttOutputConfigSchema } from "../plugins/outputs/mqtt";
 
 // ---------------------------------------------------------------------------
 // Filter fields extracted from raw plugin config
@@ -192,6 +194,7 @@ const OUTPUT_FACTORIES: Record<string, OutputFactory> = {
   local_store: (config) => new LocalStoreOutput(LocalStoreConfigSchema.parse(config)),
   file: (config) => new FileOutput(FileOutputConfigSchema.parse(config)),
   stdout: (config) => new StdoutOutput(StdoutConfigSchema.parse(config)),
+  mqtt: (config) => new MqttOutput(MqttOutputConfigSchema.parse(config)),
 };
 
 // ---------------------------------------------------------------------------
