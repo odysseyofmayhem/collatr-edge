@@ -21,6 +21,19 @@ export interface Accumulator {
   addError(error: Error): void;
 }
 
+/**
+ * Channel-backed accumulator implementation.
+ *
+ * When a deviceId is set (from input alias), a `_device_id` tag is injected
+ * into every metric. This tag serves dual purpose:
+ * 1. Sparkplug B routing: MqttOutput groups metrics by `_device_id` for
+ *    per-device DDATA publish.
+ * 2. Provenance metadata: local-store, file output, and other consumers
+ *    can query/group by originating device.
+ *
+ * Convention: tags prefixed with `_` are system-injected. Users can strip
+ * them via `tagdrop = ["_device_id"]` on outputs where they are unwanted.
+ */
 export class ChannelAccumulator implements Accumulator {
   private channel: Channel<Metric>;
   private globalTags: Record<string, string>;
@@ -63,11 +76,15 @@ export class ChannelAccumulator implements Accumulator {
   }
 
   addMetric(metric: Metric): void {
-    // Inject _device_id for Sparkplug B routing (PRD §9) — same as addFields()
+    // Inject _device_id for Sparkplug B routing (PRD §9) — same as addFields().
+    // Must copy before mutating: the caller may hold a reference used elsewhere
+    // (other processors, aggregators, debug logging). (Independent review F-1)
+    let m = metric;
     if (this._deviceId && !metric.hasTag("_device_id")) {
-      metric.addTag("_device_id", this._deviceId);
+      m = metric.copy();
+      m.addTag("_device_id", this._deviceId);
     }
-    void this.channel.send(metric).then((ok) => {
+    void this.channel.send(m).then((ok) => {
       if (!ok) this._droppedCount++;
     });
   }

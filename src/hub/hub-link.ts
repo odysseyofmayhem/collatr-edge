@@ -69,6 +69,7 @@ export class HubLink {
   private devices = new Map<string, DeviceInfo>();
   private aliases = new Map<string, Map<string, number>>(); // deviceId → (metricName → alias)
   private deviceBirthPublished = new Set<string>();
+  private lastKnownMetrics = new Map<string, Metric[]>(); // F-6: for rebirth re-publish
   private _connected = false;
   private _started = false;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -180,7 +181,15 @@ export class HubLink {
   /** Publish DBIRTH for a device */
   async publishDeviceBirth(deviceId: string, metrics: Metric[]): Promise<void> {
     const device = this.devices.get(deviceId);
-    if (!device) return;
+    if (!device) {
+      getLogger().warn("publishDeviceBirth called for unregistered device, metrics dropped", {
+        component: "hub_link", device_id: deviceId,
+      });
+      return;
+    }
+
+    // Track last-known metrics for rebirth re-publish (F-6)
+    this.lastKnownMetrics.set(deviceId, metrics);
 
     // Compute/update aliases from current metrics
     const metricNames = this.extractMetricNames(metrics);
@@ -253,7 +262,16 @@ export class HubLink {
     this.seq = this.nextSeq();
   }
 
-  /** Perform full rebirth (NBIRTH + all DBIRTHs) */
+  /**
+   * Perform full rebirth (NBIRTH + all DBIRTHs).
+   *
+   * Known limitation (F-2): MQTT Will message retains the original bdSeq from
+   * start(). The MQTT protocol does not support updating the Will after CONNECT.
+   * A proper fix requires disconnect → reconnect with updated Will → re-publish.
+   * For MVP, the Hub will still receive NDEATH on ungraceful disconnect — it
+   * just can't precisely correlate post-rebirth deaths with the latest NBIRTH.
+   * TODO: Post-MVP — disconnect/reconnect cycle on rebirth (Eclipse Tahu pattern).
+   */
   async rebirth(): Promise<void> {
     const log = getLogger();
     log.info("rebirth triggered", { component: "hub_link" });
@@ -266,10 +284,12 @@ export class HubLink {
     // Re-publish NBIRTH
     await this.publishNBirth();
 
-    // Re-publish DBIRTH for all registered devices
-    for (const [deviceId, device] of this.devices) {
-      if (device.initialMetrics.length > 0) {
-        await this.publishDeviceBirth(deviceId, device.initialMetrics);
+    // Re-publish DBIRTH for all devices that previously had a birth published,
+    // using their last-known metrics (F-6: initialMetrics may be empty)
+    for (const [deviceId] of this.devices) {
+      const metrics = this.lastKnownMetrics.get(deviceId);
+      if (metrics && metrics.length > 0) {
+        await this.publishDeviceBirth(deviceId, metrics);
       }
     }
   }
@@ -326,7 +346,7 @@ export class HubLink {
     });
 
     await this.client.publish(topic, payload, { qos: 0 });
-    this.seq = 0;
+    this.seq = 1; // NBIRTH consumed seq=0; next message starts at 1 (F-4)
   }
 
   private handleNCmd(payload: Buffer): void {

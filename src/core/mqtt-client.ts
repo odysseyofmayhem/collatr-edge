@@ -138,6 +138,8 @@ export class RealMqttClient implements MqttClientInterface {
       this._deferredConnect = handler;
       return;
     }
+    // Remove existing listeners to prevent duplicates when re-registering (F-5)
+    this.client.removeAllListeners("connect");
     this.client.on("connect", () => {
       this._isConnected = true;
       handler();
@@ -149,6 +151,7 @@ export class RealMqttClient implements MqttClientInterface {
       this._deferredError = handler;
       return;
     }
+    this.client.removeAllListeners("error");
     this.client.on("error", handler);
   }
 
@@ -157,6 +160,7 @@ export class RealMqttClient implements MqttClientInterface {
       this._deferredClose = handler;
       return;
     }
+    this.client.removeAllListeners("close");
     this.client.on("close", () => {
       this._isConnected = false;
       handler();
@@ -168,6 +172,7 @@ export class RealMqttClient implements MqttClientInterface {
       this._deferredReconnect = handler;
       return;
     }
+    this.client.removeAllListeners("reconnect");
     this.client.on("reconnect", handler);
   }
 

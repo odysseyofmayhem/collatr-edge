@@ -105,6 +105,79 @@ describe("ChannelAccumulator", () => {
     await receiver.return(undefined);
   });
 
+  it("addMetric() with deviceId copies metric before adding _device_id (F-1)", async () => {
+    const ch = new Channel<Metric>({ capacity: 10 });
+    const acc = new ChannelAccumulator(ch, {}, "plc_01");
+
+    const original = createMetric({
+      name: "temperature",
+      fields: { value: 22.5 },
+      tags: { zone: "north" },
+    });
+
+    acc.addMetric(original);
+
+    const receiver = ch.receive();
+    const { value: received } = await receiver.next();
+
+    // The received metric should have _device_id
+    expect(received!.hasTag("_device_id")).toBe(true);
+    expect(received!.getTag("_device_id")).toBe("plc_01");
+    expect(received!.getTag("zone")).toBe("north");
+
+    // The original metric must NOT be mutated (F-1 fix)
+    expect(original.hasTag("_device_id")).toBe(false);
+    expect(original.hasTag("zone")).toBe(true);
+
+    // The received metric is a copy, not the same reference
+    expect(received).not.toBe(original);
+
+    await receiver.return(undefined);
+  });
+
+  it("addMetric() without deviceId passes metric through by reference", async () => {
+    const ch = new Channel<Metric>({ capacity: 10 });
+    const acc = new ChannelAccumulator(ch); // no deviceId
+
+    const original = createMetric({
+      name: "temperature",
+      fields: { value: 22.5 },
+    });
+
+    acc.addMetric(original);
+
+    const receiver = ch.receive();
+    const { value: received } = await receiver.next();
+
+    // Without deviceId, no copy needed — same reference
+    expect(received).toBe(original);
+    expect(received!.hasTag("_device_id")).toBe(false);
+
+    await receiver.return(undefined);
+  });
+
+  it("addMetric() skips copy when _device_id already present", async () => {
+    const ch = new Channel<Metric>({ capacity: 10 });
+    const acc = new ChannelAccumulator(ch, {}, "plc_01");
+
+    const original = createMetric({
+      name: "temperature",
+      fields: { value: 22.5 },
+      tags: { _device_id: "plc_01" },
+    });
+
+    acc.addMetric(original);
+
+    const receiver = ch.receive();
+    const { value: received } = await receiver.next();
+
+    // Already has _device_id — no copy needed, same reference
+    expect(received).toBe(original);
+    expect(received!.getTag("_device_id")).toBe("plc_01");
+
+    await receiver.return(undefined);
+  });
+
   it("addError() increments error count", () => {
     const ch = new Channel<Metric>({ capacity: 10 });
     const acc = new ChannelAccumulator(ch);

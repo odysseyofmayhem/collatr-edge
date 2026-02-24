@@ -219,10 +219,10 @@ export function buildPipeline(
 
   // -- Inputs --
   const inputs: PipelineOptions["inputs"] = [];
-  for (const [pluginName, instances] of Object.entries(config.inputs)) {
-    const factory = INPUT_FACTORIES[pluginName];
+  for (const [pluginType, instances] of Object.entries(config.inputs)) {
+    const factory = INPUT_FACTORIES[pluginType];
     if (!factory) {
-      throw new Error(`Unknown input plugin: "${pluginName}"`);
+      throw new Error(`Unknown input plugin: "${pluginType}"`);
     }
     for (const rawInstance of instances) {
       // 1. Extract filter fields
@@ -242,7 +242,7 @@ export function buildPipeline(
         timeout: overrides.timeout,
         filter,
         alias: overrides.alias,
-        pluginType: pluginName,
+        pluginType, // TOML key = protocol type, e.g. "modbus", not instance alias
         logLevel: overrides.logLevel,
       });
     }

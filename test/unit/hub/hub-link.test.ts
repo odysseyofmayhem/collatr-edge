@@ -406,6 +406,27 @@ describe("HubLink", () => {
   // =========================================================================
 
   describe("sequence numbering", () => {
+    it("first DBIRTH after NBIRTH has seq=1, not seq=0 (F-4)", async () => {
+      const hub = new HubLink(config, mockClient);
+      await hub.start();
+      hub.registerDevice(makeDevice());
+
+      const metrics = [createMetric({ name: "data", fields: { val: 1 } })];
+      await hub.publishDeviceBirth("wrapper_plc", metrics);
+
+      // NBIRTH should have seq=0
+      const nbirth = mockClient.findPublished("NBIRTH")!;
+      const decodedNBirth = sparkplug.decodePayload(new Uint8Array(nbirth.payload));
+      expect(Number(decodedNBirth.seq)).toBe(0);
+
+      // First DBIRTH should have seq=1 (not seq=0)
+      const dbirth = mockClient.findPublished("DBIRTH")!;
+      const decodedDBirth = sparkplug.decodePayload(new Uint8Array(dbirth.payload));
+      expect(Number(decodedDBirth.seq)).toBe(1);
+
+      await hub.stop();
+    });
+
     it("seq wraps at 255 → 0", async () => {
       const hub = new HubLink(config, mockClient);
       await hub.start();
@@ -489,6 +510,33 @@ describe("HubLink", () => {
       const decoded2 = sparkplug.decodePayload(new Uint8Array(nbirths[1]!.payload));
       const bdSeq2 = Number(decoded2.metrics!.find((m) => m.name === "bdSeq")!.value);
       expect(bdSeq2).toBe(1);
+
+      await hub.stop();
+    });
+
+    it("re-publishes DBIRTH on rebirth for devices with empty initialMetrics (F-6)", async () => {
+      const hub = new HubLink(config, mockClient);
+      await hub.start();
+
+      // Register device with EMPTY initialMetrics (as runtime.ts does)
+      hub.registerDevice(makeDevice({
+        deviceId: "dev_a",
+        pluginAlias: "dev_a",
+        initialMetrics: [], // empty — mirrors runtime.ts behavior
+      }));
+
+      // Publish first data — triggers auto-DBIRTH which records lastKnownMetrics
+      const metrics = [createMetric({ name: "data", fields: { val: 42 } })];
+      await hub.publishDeviceData("dev_a", metrics);
+
+      const dbirthsBefore = mockClient.findAllPublished("DBIRTH").length;
+      expect(dbirthsBefore).toBe(1);
+
+      // Rebirth should re-publish DBIRTH using lastKnownMetrics, not empty initialMetrics
+      await hub.rebirth();
+
+      const dbirthsAfter = mockClient.findAllPublished("DBIRTH").length;
+      expect(dbirthsAfter).toBe(dbirthsBefore + 1); // Re-published despite empty initialMetrics
 
       await hub.stop();
     });
