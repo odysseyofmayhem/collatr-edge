@@ -228,7 +228,7 @@ export function parseMqttServerUrl(server: string, description: string): EgressT
   const port = url.port ? parseInt(url.port, 10) : (protocol === "mqtts" ? 8883 : 1883);
 
   return {
-    host: url.hostname,
+    host: url.hostname.replace(/^\[|\]$/g, ""),
     port,
     protocol,
     description,

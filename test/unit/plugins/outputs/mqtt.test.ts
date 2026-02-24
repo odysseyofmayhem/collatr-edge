@@ -431,5 +431,19 @@ describe("MQTT Output Plugin", () => {
       expect(target.protocol).toBe("mqtt");
       expect(target.description).toBe("test_desc");
     });
+
+    it("parses mqtt://[::1]:1883 (IPv6 bracket notation)", () => {
+      const result = parseMqttServerUrl("mqtt://[::1]:1883", "test");
+      expect(result.host).toBe("::1");
+      expect(result.port).toBe(1883);
+      expect(result.protocol).toBe("mqtt");
+    });
+
+    it("parses mqtts://[2001:db8::1]:8883 (IPv6 with explicit port)", () => {
+      const result = parseMqttServerUrl("mqtts://[2001:db8::1]:8883", "test");
+      expect(result.host).toBe("2001:db8::1");
+      expect(result.port).toBe(8883);
+      expect(result.protocol).toBe("mqtts");
+    });
   });
 });
