@@ -419,6 +419,151 @@ mode = "bogus"
   });
 
   // =========================================================================
+  // Output / network policy conflict warnings (Task 8.3)
+  // =========================================================================
+
+  it("mqtt output with remote server + local_network → warning about blocked server", async () => {
+    const path = writeConfig(
+      "mqtt-blocked.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "local_network"
+
+[[inputs.internal]]
+
+[[outputs.mqtt]]
+servers = ["tcp://mqtt-broker.example.com:1883"]
+topic = "test/metrics"
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    // Config is syntactically valid — but the validate command should warn
+    expect(code).toBe(0);
+    expect(out).toContain("WARNING:");
+    expect(out).toContain("mqtt-broker.example.com");
+    expect(out).toContain("blocked by network_policy");
+    expect(out).toContain("local_network");
+    expect(out).toContain("The pipeline will fail to start with this configuration.");
+  });
+
+  it("local_store only + standalone → clean validation, no warnings", async () => {
+    const path = writeConfig(
+      "standalone-local.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "standalone"
+
+[[inputs.internal]]
+
+[[outputs.local_store]]
+path = "/tmp/collatr-test-data"
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).not.toContain("WARNING:");
+    expect(out).toContain("STANDALONE");
+    expect(out).toContain("\u2713 Configuration valid");
+  });
+
+  it("connected mode + hub + mqtt → clean validation, no warnings", async () => {
+    const path = writeConfig(
+      "connected-hub-mqtt.toml",
+      `
+[agent]
+[agent.hub]
+enabled = true
+group_id = "plant"
+edge_node_id = "node1"
+broker = "mqtts://hub.collatr.com:8883"
+
+[network_policy]
+mode = "connected"
+
+[[inputs.internal]]
+
+[[outputs.mqtt]]
+sparkplug = true
+
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).not.toContain("WARNING:");
+    expect(out).toContain("CONNECTED");
+    expect(out).toContain("\u2713 Configuration valid");
+  });
+
+  it("mqtt output with IP:port in allowedHosts → no warning", async () => {
+    const path = writeConfig(
+      "mqtt-allowed.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "local_network"
+
+[network_policy.egress]
+allowed_hosts = ["192.168.1.10:1883"]
+
+[[inputs.internal]]
+
+[[outputs.mqtt]]
+servers = ["tcp://192.168.1.10:1883"]
+topic = "test/metrics"
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).not.toContain("WARNING:");
+    expect(out).toContain("\u2713 Configuration valid");
+  });
+
+  it("mqtt output with standalone policy → warning about blocked server", async () => {
+    const path = writeConfig(
+      "mqtt-standalone.toml",
+      `
+[agent]
+
+[network_policy]
+mode = "standalone"
+
+[[inputs.internal]]
+
+[[outputs.mqtt]]
+servers = ["tcp://192.168.1.10:1883"]
+topic = "test/metrics"
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("WARNING:");
+    expect(out).toContain("192.168.1.10:1883");
+    expect(out).toContain("blocked by network_policy");
+    expect(out).toContain("standalone");
+  });
+
+  // =========================================================================
   // Mixed valid and invalid plugins
   // =========================================================================
 

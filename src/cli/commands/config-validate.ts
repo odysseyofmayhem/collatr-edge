@@ -5,6 +5,7 @@ import { loadConfigFile, parseConfig } from "../../core/config";
 import type { AgentConfig, PluginInstanceConfig } from "../../core/config";
 import { PLUGIN_SCHEMAS } from "../../core/plugin-schemas";
 import { OVERRIDE_KEYS, FILTER_KEYS } from "../../pipeline/plugin-factory";
+import { parseMqttServerUrl } from "../../plugins/outputs/mqtt";
 import { z } from "zod/v4";
 
 /** Strip per-plugin override and filter fields from raw config before schema validation. */
@@ -65,6 +66,12 @@ export async function configValidateCommand(
 
   // 3. Report config warnings (hub/policy conflicts, etc.)
   for (const warning of config.warnings) {
+    process.stdout.write(`WARNING: ${warning}\n`);
+  }
+
+  // 3a. Detect output/policy conflicts (MQTT servers blocked by policy)
+  const outputConflicts = detectOutputPolicyConflicts(config);
+  for (const warning of outputConflicts) {
     process.stdout.write(`WARNING: ${warning}\n`);
   }
 
@@ -143,4 +150,48 @@ export async function configValidateCommand(
 
   process.stdout.write("\u2713 Configuration valid\n");
   return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Output / network policy conflict detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan configured outputs against the resolved network policy.
+ * Returns warning strings for any output that would be blocked at startup.
+ * Does NOT instantiate plugins — only inspects raw config fields.
+ */
+function detectOutputPolicyConflicts(config: AgentConfig): string[] {
+  const warnings: string[] = [];
+  const policy = config.networkPolicy;
+
+  // Skip if unrestricted — nothing can be blocked
+  if (policy.egress.unrestricted) return warnings;
+
+  // Check MQTT output instances in plain mode (sparkplug mode is covered by hub warning)
+  const mqttInstances = config.outputs.mqtt ?? [];
+  for (let i = 0; i < mqttInstances.length; i++) {
+    const instance = mqttInstances[i]!;
+    const isSparkplug = instance.sparkplug as boolean | undefined;
+
+    // Sparkplug mode — hub conflict handled by config.warnings already
+    if (isSparkplug) continue;
+
+    const servers = instance.servers as string[] | undefined;
+    if (!servers || servers.length === 0) continue;
+
+    for (const server of servers) {
+      const target = parseMqttServerUrl(server, `outputs.mqtt[${i}]`);
+      const result = policy.checkEgress(target);
+      if (!result.allowed) {
+        const portStr = target.port ? `:${target.port}` : "";
+        warnings.push(
+          `MQTT output server ${target.host}${portStr} blocked by network_policy ("${policy.mode}" mode). ` +
+          `The pipeline will fail to start with this configuration.`,
+        );
+      }
+    }
+  }
+
+  return warnings;
 }
