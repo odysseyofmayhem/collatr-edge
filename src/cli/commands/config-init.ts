@@ -58,11 +58,13 @@ function generateHubSection(mode: NetworkMode): string {
 # Hub Connection (Sparkplug B) — edit values for your environment
 # ---------------------------------------------------------------------------
 [agent.hub]
+  enabled = true
   group_id = "plant_floor"
   edge_node_id = "edge-01"
   broker = "mqtts://hub.collatr.com:8883"
   tls_cert = "@{secrets:hub_cert}"
   tls_key = "@{secrets:hub_key}"
+  heartbeat_interval = "30s"
 `;
   }
 
@@ -74,11 +76,13 @@ function generateHubSection(mode: NetworkMode): string {
   return `
 ${note}
 # [agent.hub]
+#   enabled = true
 #   group_id = "plant_floor"
 #   edge_node_id = "edge-01"
 #   broker = "mqtts://hub.collatr.com:8883"
 #   tls_cert = "@{secrets:hub_cert}"
 #   tls_key = "@{secrets:hub_key}"
+#   heartbeat_interval = "30s"
 `;
 }
 
@@ -264,6 +268,19 @@ ${generateHubSection(mode)}${generateNetworkPolicySection(mode)}
 # [[outputs.file]]
 #   path = "/var/log/collatr-edge/metrics.jsonl"
 #   data_format = "json"
+
+# --- MQTT output (Sparkplug B) ---
+# Routes metrics to Hub via Sparkplug B protocol (requires [agent.hub]):
+# [[outputs.mqtt]]
+#   sparkplug = true
+#
+# --- MQTT output (plain) ---
+# Publishes metrics as JSON to an MQTT broker.
+# The topic supports substitution: collatr/<metric-name> via topic template.
+# [[outputs.mqtt]]
+#   servers = ["tcp://broker:1883"]
+#   data_format = "json"
+#   qos = 1
 
 # --- Stdout output ---
 # Uncomment to print metrics to stdout (useful for testing):

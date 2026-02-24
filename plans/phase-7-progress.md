@@ -16,8 +16,8 @@
 | 7.3 | Hub link session manager | ✅ Done | 18 | `baeaae4` |
 | 7.4 | MQTT output plugin | ✅ Done | 12 | `3574e5f` |
 | 7.5 | Pipeline integration | ✅ Done | 5 | `a55429f` |
-| 7.6 | Heartbeat / NDATA | ✅ Done | 4 | `pending` |
-| 7.7 | Integration tests + cleanup | ⬜ Not started | | |
+| 7.6 | Heartbeat / NDATA | ✅ Done | 4 | `eeb37af` |
+| 7.7 | Integration tests + cleanup | ✅ Done | 10 | `pending` |
 
 ## Notes
 
