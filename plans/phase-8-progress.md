@@ -14,7 +14,7 @@
 |------|-------------|--------|-------|--------|
 | 8.0 | NetworkPolicy type + resolver | ✅ Done | 734 pass (69 new) | `5c7dc1c` |
 | 8.1 | Config parser integration | ✅ Done | 746 pass (12 new) | `a6e68d7` |
-| 8.2 | Output plugin enforcement | ⬜ Not started | — | — |
+| 8.2 | Output plugin enforcement | ✅ Done | 764 pass (18 new) | `13045a2` |
 | 8.3 | Config validate enhancement | ⬜ Not started | — | — |
 | 8.4 | Integration tests + config init | ⬜ Not started | — | — |
 
