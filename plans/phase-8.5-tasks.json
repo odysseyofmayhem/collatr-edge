@@ -77,25 +77,6 @@
         "Commit: phase-8.5: add plugin alias and type to runtime lifecycle logs"
       ],
       "passes": false
-    },
-    {
-      "id": "8.5.5",
-      "description": "integrity_check_on_startup as agent-level config — PRD §8 step 6",
-      "prd_refs": ["08-pipeline-lifecycle.md", "07-configuration.md"],
-      "steps": [
-        "Read PRD §8 step 6 for the spec on integrity_check_on_startup",
-        "Read src/core/config.ts AgentSchema — add integrity_check_on_startup: z.boolean().default(false)",
-        "Read src/pipeline/runtime.ts PipelineOptions — add integrityCheckOnStartup?: boolean",
-        "In src/pipeline/plugin-factory.ts buildPipeline(): read config.agent.integrity_check_on_startup and set on PipelineOptions",
-        "In local-store.ts: prefer agent-level setting over per-output setting. If PipelineOptions.integrityCheckOnStartup is true, use it. Per-output integrity_check still works as an override.",
-        "The simplest approach: pass the agent-level flag through the output factory. For local-store specifically, add an optional constructor parameter or a config field. Actually, the local-store already has integrity_check in its own config schema. The agent-level flag should be an alternative way to enable it. Simplest: in plugin-factory.ts, when creating local-store output, if agent.integrity_check_on_startup is true, merge it into the plugin config before Zod parsing: pluginConfig.integrity_check = pluginConfig.integrity_check ?? config.agent.integrity_check_on_startup",
-        "Update config-init.ts template: add commented-out integrity_check_on_startup under [agent] section",
-        "Add test in config.test.ts: agent.integrity_check_on_startup parses correctly",
-        "Add test in plugin-factory.test.ts: agent-level integrity check passes to local-store output config",
-        "Run bun test — ALL tests pass",
-        "Commit: phase-8.5: agent-level integrity_check_on_startup config (PRD §8 step 6)"
-      ],
-      "passes": false
     }
   ]
 }

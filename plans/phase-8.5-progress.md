@@ -17,10 +17,10 @@
 | 8.5.2 | parseMqttServerUrl IPv6 tests | ⬜ Not started | — | — |
 | 8.5.3 | Structured ConfigWarning type | ⬜ Not started | — | — |
 | 8.5.4 | Plugin metadata in runtime logs | ⬜ Not started | — | — |
-| 8.5.5 | integrity_check_on_startup agent-level | ⬜ Not started | — | — |
+
+## Deferred
+- 8.5.5 (integrity_check_on_startup agent-level) removed — config refactor, not blocking Phase 9. Moved to post-MVP backlog.
 
 ## Notes
 
-Phase 8 gate review: GO for Phase 9. Phase 8.5 addresses quick wins and
-low-hanging fruit before building the Web UI. Post-MVP backlog documented
-in `plans/post-mvp-backlog.md`.
+Phase 8 gate review: GO for Phase 9. Phase 8.5 addresses Tier 1 + Tier 2 quick wins before building the Web UI. All deferred items comprehensively logged in `plans/post-mvp-backlog.md`.

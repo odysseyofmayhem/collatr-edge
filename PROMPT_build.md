@@ -42,7 +42,6 @@ These are small, surgical changes. Most tasks are < 15 minutes. The plan documen
 - Tasks 8.5.0–8.5.2 are trivial (2–5 min each). Don't overthink them.
 - Task 8.5.3 (structured warnings) touches config.ts + config-validate.ts + their tests. Be careful to update ALL test files that check warnings.
 - Task 8.5.4 (runtime logs) — only ADD log context fields. Don't restructure existing log lines. Existing tests that check log output must still pass.
-- Task 8.5.5 (integrity check) — the simplest approach is to merge the agent-level flag into the local-store plugin config before Zod parsing. Don't create new plumbing if you can avoid it.
 
 ## AFTER PHASE 8.5
 

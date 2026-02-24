@@ -112,27 +112,13 @@ Currently `AgentConfig.warnings` is `string[]`. Phase 9 Web UI will want to disp
 
 ---
 
-### 8.5.4: Per-plugin child loggers (30 min)
+### 8.5.4: Per-plugin metadata in runtime lifecycle logs (15 min)
 
-**Files:** `src/pipeline/runtime.ts`, `src/core/logger.ts`
+**Files:** `src/pipeline/runtime.ts`
 
-`logLevel` and `alias` are already extracted from config and stored in `PipelineOptions` for every plugin type. But plugins all call `getLogger()` which returns the global logger. Phase 9 adds a log viewer with per-plugin filtering — if loggers aren't wired, the viewer has nothing useful to filter by beyond `component`.
-
-The `Logger` class already supports `child()` with context fields and per-child level overrides. The wiring just needs to happen.
+`logLevel` and `alias` are already extracted from config and stored in `PipelineOptions` for every plugin type. The full per-plugin child logger injection (changing every plugin constructor) is deferred as an architecture decision. But the runtime can log plugin lifecycle events with alias and type metadata right now, giving Phase 9's log viewer useful per-plugin filtering.
 
 **Fix:**
-1. In `runtime.ts`, when calling plugin lifecycle methods, create child loggers and make them available:
-   - For inputs: `const log = getLogger().child({ plugin: input.alias ?? pluginType, plugin_type: pluginType }, input.logLevel)`
-   - For outputs: `const log = getLogger().child({ plugin: output.alias ?? 'output', plugin_type: pluginName })`
-   - For processors/aggregators: same pattern
-2. The problem: plugins call `getLogger()` internally, not using a passed-in logger. To fix this properly without changing every plugin's constructor signature, use a **per-plugin context approach**:
-   - Before calling `plugin.gather(acc)`, set a context: `setPluginContext(alias)` 
-   - Actually, this gets complex. **Simpler approach:** just ensure the `component` field in log lines from plugins includes the alias. Most plugins already log with `{ plugin: "modbus" }` etc.
-   - **Simplest useful approach for Phase 8.5:** In `runtime.ts`, log plugin lifecycle events (start, stop, error, gather timing) with the alias. The existing `component` field in plugin-internal logs already identifies the plugin type. This gives Phase 9 enough to filter by.
-
-Actually — let me re-scope this. The full per-plugin logger wiring requires touching every plugin's constructor or introducing an async context pattern. That's not a 30-minute job done safely.
-
-**Rescoped fix (15 min):**
 1. In `runtime.ts` gather loop, log gather timing with plugin alias:
    ```typescript
    getLogger().debug("gather complete", { 
@@ -146,38 +132,21 @@ Actually — let me re-scope this. The full per-plugin logger wiring requires to
 3. In `runtime.ts` startup, log each plugin with its alias and type
 4. This gives Phase 9's log viewer useful per-plugin metadata without architectural changes
 
+**Note:** Full per-plugin child logger injection (passing Logger instances to plugin constructors or using async context) is deferred to post-MVP. See `post-mvp-backlog.md` item #14.
+
 ---
 
-### 8.5.5: integrity_check_on_startup → agent-level config (20 min)
+## Deferred from Phase 8.5
 
-**Files:** `src/core/config.ts`, `src/plugins/outputs/local-store.ts`, `src/buffer/store-forward.ts`
-
-PRD §8 step 6 defines `integrity_check_on_startup` as a global agent-level setting. Currently it's per-output on `local-store`. This should be an `[agent]` config field that applies to all SQLite databases.
-
-**Fix:**
-1. Add to `AgentSchema` in config.ts:
-   ```typescript
-   integrity_check_on_startup: z.boolean().default(false),
-   ```
-2. Wire through `PipelineOptions`:
-   ```typescript
-   integrityCheckOnStartup?: boolean;
-   ```
-3. In `plugin-factory.ts` `buildPipeline()`: read from `config.agent.integrity_check_on_startup`, pass to `PipelineOptions`
-4. In `runtime.ts` or wherever local-store and S&F buffer are initialised: pass the flag
-5. Keep the per-output `integrity_check` field as an override (backward compat), but prefer the agent-level setting
-6. Update `config-init.ts` template to include the agent-level field (commented out)
-7. Update config.test.ts with a test for the new field
-8. Update config-validate.ts to report the setting
+**integrity_check_on_startup agent-level config** (was 8.5.5): Requires config schema refactor and plumbing through PipelineOptions → plugin-factory → local-store. Not blocking Phase 9. The per-output `integrity_check` field on local-store still works. Moved to `post-mvp-backlog.md`.
 
 ---
 
 ## Order of Operations
 
 Tasks are independent — can be done in any order. Suggested:
-1. 8.5.0 (ticker log) — trivial
-2. 8.5.1 (swVersion) — trivial
-3. 8.5.2 (IPv6 test) — trivial
-4. 8.5.3 (structured warnings) — touches config + validate + tests
-5. 8.5.4 (plugin logging) — touches runtime
-6. 8.5.5 (integrity check) — touches config + schema + factory + runtime
+1. 8.5.0 (ticker log) — trivial, 2 min
+2. 8.5.1 (swVersion) — trivial, 3 min
+3. 8.5.2 (IPv6 test) — trivial, 5 min
+4. 8.5.3 (structured warnings) — touches config + validate + tests, 15 min
+5. 8.5.4 (plugin logging) — touches runtime, 15 min
