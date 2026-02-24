@@ -76,7 +76,7 @@
         "Run bun test — ALL tests pass",
         "Commit: phase-8.5: add plugin alias and type to runtime lifecycle logs"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }

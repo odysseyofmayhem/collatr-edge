@@ -1,6 +1,6 @@
 # Phase 8.5 Progress: Pre-Web-UI Hardening
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Baseline
 - **Starting commit:** `27cc6fc` (Phase 8 fix pass 2)
@@ -16,7 +16,7 @@
 | 8.5.1 | swVersion from package.json | ✅ Done | 790 pass, 0 fail | `52b9f1f` |
 | 8.5.2 | parseMqttServerUrl IPv6 tests | ✅ Done | 792 pass, 0 fail | `9d1e53b` |
 | 8.5.3 | Structured ConfigWarning type | ✅ Done | 792 pass, 0 fail | `0218aa4` |
-| 8.5.4 | Plugin metadata in runtime logs | ⬜ Not started | — | — |
+| 8.5.4 | Plugin metadata in runtime logs | ✅ Done | 792 pass, 0 fail | `8baff4f` |
 
 ## Deferred
 - 8.5.5 (integrity_check_on_startup agent-level) removed — config refactor, not blocking Phase 9. Moved to post-MVP backlog.
