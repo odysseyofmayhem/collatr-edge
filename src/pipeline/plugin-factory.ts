@@ -36,6 +36,7 @@ import { StdoutOutput } from "../plugins/outputs/stdout";
 import { StdoutConfigSchema } from "../plugins/outputs/stdout";
 import { MqttOutput } from "../plugins/outputs/mqtt";
 import { MqttOutputConfigSchema } from "../plugins/outputs/mqtt";
+import { HubLink, type HubLinkConfig } from "../hub/hub-link";
 
 // ---------------------------------------------------------------------------
 // Filter fields extracted from raw plugin config
@@ -302,6 +303,21 @@ export function buildPipeline(
     }
   }
 
+  // -- Hub link (PRD §9: created when [agent.hub] enabled, before outputs) --
+  let hubLink: HubLink | undefined;
+  const hubConfig = config.agent.hub;
+  if (hubConfig?.enabled) {
+    hubLink = new HubLink({
+      groupId: hubConfig.group_id,
+      edgeNodeId: hubConfig.edge_node_id,
+      broker: hubConfig.broker,
+      tlsCert: hubConfig.tls_cert,
+      tlsKey: hubConfig.tls_key,
+      heartbeatIntervalMs: parseDuration(hubConfig.heartbeat_interval),
+      swVersion: "0.1.0", // TODO: read from package.json or build info
+    });
+  }
+
   // -- Outputs --
   const outputs: PipelineOptions["outputs"] = [];
   for (const [pluginName, instances] of Object.entries(config.outputs)) {
@@ -313,7 +329,16 @@ export function buildPipeline(
       const { filterConfig, pluginConfig: afterFilter } = extractFilterConfig(rawInstance);
       const { overrides, pluginConfig } = extractOverrides(afterFilter);
       if (overrides.enabled === false) continue;
-      const plugin = factory(pluginConfig);
+
+      // Special case: mqtt output with sparkplug mode needs the hub link
+      let plugin: Output;
+      if (pluginName === "mqtt") {
+        const parsedConfig = MqttOutputConfigSchema.parse(pluginConfig);
+        plugin = new MqttOutput(parsedConfig, parsedConfig.sparkplug ? hubLink : undefined);
+      } else {
+        plugin = factory(pluginConfig);
+      }
+
       const filter = buildFilter(filterConfig);
       outputs.push({
         plugin,
@@ -337,5 +362,6 @@ export function buildPipeline(
     globalTags: Object.keys(config.global_tags).length > 0
       ? config.global_tags
       : undefined,
+    hubLink,
   };
 }

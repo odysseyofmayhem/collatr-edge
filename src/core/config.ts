@@ -123,11 +123,13 @@ const AgentSchema = z.object({
     sync_mode: z.enum(["normal", "full"]).default("normal"),
   }).optional(),
   hub: z.object({
+    enabled: z.boolean().default(false),
     group_id: z.string(),
     edge_node_id: z.string(),
     broker: z.string(),
     tls_cert: z.string().optional(),
     tls_key: z.string().optional(),
+    heartbeat_interval: durationString.default("30s"),
   }).optional(),
 });
 

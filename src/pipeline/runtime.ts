@@ -9,6 +9,7 @@ import type { Input, Processor, Aggregator, Output, ServiceInput } from "../core
 import { isServiceInput } from "../core/plugin-types";
 import { getLogger } from "../core/logger";
 import { MetricFilter } from "../core/metric-filter";
+import type { HubLink } from "../hub/hub-link";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
@@ -25,6 +26,8 @@ export interface PipelineOptions {
   /** Maps to config's round_interval. Controls Ticker aligned mode. */
   roundInterval?: boolean;
   globalTags?: Record<string, string>;
+  /** Hub link instance for Sparkplug B. Created when [agent.hub] enabled. */
+  hubLink?: HubLink;
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +423,22 @@ export class PipelineRuntime {
       await plugin.connect();
     }
 
+    // 2b. Start hub link (after outputs connect, before inputs start — PRD §8/§9)
+    if (this.options.hubLink) {
+      // Register devices from input aliases
+      for (const input of this.options.inputs) {
+        if (input.alias) {
+          this.options.hubLink.registerDevice({
+            deviceId: input.alias,
+            pluginType: "input", // Generic — actual type not tracked at this level
+            pluginAlias: input.alias,
+            initialMetrics: [],
+          });
+        }
+      }
+      await this.options.hubLink.start();
+    }
+
     // 3. Start aggregator push loops (timer-driven — PRD §8 step 13)
     const globalTags = this.options.globalTags;
     for (const agg of this.options.aggregators) {
@@ -456,16 +475,19 @@ export class PipelineRuntime {
     }
 
     const aligned = this.options.roundInterval ?? true;
-    const baseInputAcc = new ChannelAccumulator(
-      this.inputChannel,
-      globalTags,
-    );
 
     // Separate service inputs from polling inputs
     this.serviceInputs = [];
 
     for (const input of this.options.inputs) {
       if (input.plugin.init) await input.plugin.init();
+
+      // Per-input accumulator with optional _device_id for Sparkplug B routing
+      const baseInputAcc = new ChannelAccumulator(
+        this.inputChannel,
+        globalTags,
+        input.alias, // If set, injects _device_id tag on all metrics from this input
+      );
 
       // Per-input MetricFilter: wrap the accumulator so only matching metrics
       // enter the pipeline (PRD §7: filtering on every plugin)
@@ -532,6 +554,15 @@ export class PipelineRuntime {
 
     // 4. Wait for all loops to complete
     await Promise.allSettled(this.loops);
+
+    // 4b. Stop hub link (after pipeline drains, before plugin close)
+    if (this.options.hubLink) {
+      try {
+        await this.options.hubLink.stop();
+      } catch (err) {
+        getLogger().error("hub link stop error", { component: "pipeline", error: (err as Error).message });
+      }
+    }
 
     // 5. Close all plugins
     for (const { plugin } of this.options.inputs) {

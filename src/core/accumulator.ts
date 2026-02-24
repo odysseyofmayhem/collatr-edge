@@ -26,10 +26,12 @@ export class ChannelAccumulator implements Accumulator {
   private globalTags: Record<string, string>;
   private _errorCount = 0;
   private _droppedCount = 0;
+  private _deviceId: string | undefined;
 
-  constructor(channel: Channel<Metric>, globalTags?: Record<string, string>) {
+  constructor(channel: Channel<Metric>, globalTags?: Record<string, string>, deviceId?: string) {
     this.channel = channel;
     this.globalTags = globalTags ?? {};
+    this._deviceId = deviceId;
   }
 
   addFields(
@@ -40,6 +42,10 @@ export class ChannelAccumulator implements Accumulator {
   ): void {
     // Merge global tags with per-metric tags. Per-metric wins on conflict.
     const mergedTags = { ...this.globalTags, ...(tags ?? {}) };
+    // Inject _device_id for Sparkplug B routing (PRD §9)
+    if (this._deviceId) {
+      mergedTags._device_id = this._deviceId;
+    }
 
     const metric = createMetric({
       name: measurement,
