@@ -13,7 +13,7 @@
 | Task | Description | Status | Tests | Commit |
 |------|-------------|--------|-------|--------|
 | 8.5.0 | Ticker clock jump warning log | ✅ Done | 790 pass, 0 fail | `556c151` |
-| 8.5.1 | swVersion from package.json | ⬜ Not started | — | — |
+| 8.5.1 | swVersion from package.json | ✅ Done | 790 pass, 0 fail | `52b9f1f` |
 | 8.5.2 | parseMqttServerUrl IPv6 tests | ⬜ Not started | — | — |
 | 8.5.3 | Structured ConfigWarning type | ⬜ Not started | — | — |
 | 8.5.4 | Plugin metadata in runtime logs | ⬜ Not started | — | — |
