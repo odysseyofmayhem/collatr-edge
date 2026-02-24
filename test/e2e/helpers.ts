@@ -91,20 +91,47 @@ export function makeLocalStoreConfig(
 // ---------------------------------------------------------------------------
 
 /**
- * Capture console.error calls for assertions while still logging to stderr.
- * Returns captured error strings and a restore function.
+ * Capture error-level log output for assertions while still writing to stderr.
+ *
+ * Phase 6 replaced all console.error in src/ with getLogger().error() which
+ * writes JSON lines to process.stderr.write(). This helper intercepts stderr,
+ * parses JSON log lines, and captures error-level entries as human-readable
+ * strings ("msg: error") so existing .includes() assertions still work.
  */
 export function captureErrors(): { errors: string[]; restore: () => void } {
   const errors: string[] = [];
-  const original = console.error;
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-    original.apply(console, args); // still log to stderr for debugging visibility
-  };
+  const originalWrite = process.stderr.write.bind(process.stderr);
+
+  process.stderr.write = ((
+    chunk: Uint8Array | string,
+    encodingOrCb?: BufferEncoding | ((err?: Error) => void),
+    cb?: (err?: Error) => void,
+  ): boolean => {
+    const str = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    // Try to parse each line as a JSON log entry
+    for (const line of str.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const entry = JSON.parse(trimmed);
+        if (entry.level === "error") {
+          // Reconstruct a human-readable string containing both msg and error
+          const parts: string[] = [entry.msg];
+          if (entry.error) parts.push(entry.error);
+          errors.push(parts.join(": "));
+        }
+      } catch {
+        // Not JSON — ignore (could be non-logger stderr output)
+      }
+    }
+    // Still write to stderr for debugging visibility
+    return originalWrite(chunk, encodingOrCb as BufferEncoding, cb as any);
+  }) as typeof process.stderr.write;
+
   return {
     errors,
     restore: () => {
-      console.error = original;
+      process.stderr.write = originalWrite;
     },
   };
 }
