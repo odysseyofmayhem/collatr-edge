@@ -1,6 +1,6 @@
 # Phase 8.5 Progress: Pre-Web-UI Hardening
 
-## Status: NOT STARTED
+## Status: IN PROGRESS
 
 ## Baseline
 - **Starting commit:** `27cc6fc` (Phase 8 fix pass 2)
@@ -12,7 +12,7 @@
 
 | Task | Description | Status | Tests | Commit |
 |------|-------------|--------|-------|--------|
-| 8.5.0 | Ticker clock jump warning log | ⬜ Not started | — | — |
+| 8.5.0 | Ticker clock jump warning log | ✅ Done | 790 pass, 0 fail | `556c151` |
 | 8.5.1 | swVersion from package.json | ⬜ Not started | — | — |
 | 8.5.2 | parseMqttServerUrl IPv6 tests | ⬜ Not started | — | — |
 | 8.5.3 | Structured ConfigWarning type | ⬜ Not started | — | — |

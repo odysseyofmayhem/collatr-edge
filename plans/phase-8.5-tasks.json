@@ -14,7 +14,7 @@
         "Run bun test — ALL tests pass",
         "Commit: phase-8.5: wire clock jump warning to logger"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "8.5.1",
