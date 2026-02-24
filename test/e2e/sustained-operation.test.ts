@@ -250,11 +250,13 @@ describe("E2E: Sustained operation — compressed soak test (task 5.2)", () => {
   it("5.2.3: daily rotation — 3 daily files created, retention evicts oldest", async () => {
     const tmpDir = makeTempDir("523");
 
-    // Construct timestamps for 3 different UTC days with generous spacing
+    // Construct timestamps for 3 different UTC days, snapped to midday (noon UTC)
+    // so the 50-minute metric spread cannot cross a UTC day boundary at any time.
     const now = Date.now();
-    const day1Ms = now - 10 * MS_PER_DAY; // 10 days ago (well beyond retention)
-    const day2Ms = now - 1 * MS_PER_DAY; // 1 day ago (within retention)
-    const day3Ms = now; // today (within retention)
+    const todayMidnight = now - (now % MS_PER_DAY);
+    const day1Ms = todayMidnight - 10 * MS_PER_DAY + 12 * 3_600_000; // 10 days ago, noon
+    const day2Ms = todayMidnight - 1 * MS_PER_DAY + 12 * 3_600_000;  // yesterday, noon
+    const day3Ms = todayMidnight + 12 * 3_600_000;                     // today, noon
 
     function makeMetricsForDay(dayMs: number, count: number): Metric[] {
       const metrics: Metric[] = [];
