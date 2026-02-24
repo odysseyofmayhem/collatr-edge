@@ -13,7 +13,14 @@ You are implementing Phase 8 (Network Policy & Standalone Operation) of CollatrE
 4. When done: set `"passes": true` in the JSON, update `plans/phase-8-progress.md`, commit, push.
 5. Output: `TASK_COMPLETE — <task_id>`
 
-If ALL tasks have `"passes": true`, output: `PHASE_8_COMPLETE — <total test count> tests, <failure count> failures`
+If ALL tasks have `"passes": true`:
+1. Do NOT output PHASE_8_COMPLETE yet.
+2. Spawn a sub-agent code review (see CLAUDE.md "Phase Work Pattern" step 4).
+3. Write the review to `plans/phase-8-review.md`
+4. Address all 🔴 Must Fix findings. Re-run `bun test` after each fix.
+5. Commit fixes: `phase-8: address code review findings`
+6. Push all commits.
+7. THEN output: `PHASE_8_COMPLETE — <total test count> tests, <failure count> failures`
 
 **Do NOT continue to the next task.** Each task runs in a fresh context via the loop script.
 
