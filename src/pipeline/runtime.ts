@@ -204,7 +204,10 @@ async function runMainLoop(
     for (const { plugin: proc, filter } of processors) {
       const next: Metric[] = [];
       for (const m of metrics) {
-        // If processor has a filter and metric doesn't match, pass through unmodified
+        // If processor has a filter and metric doesn't match, pass through unmodified.
+        // Note: filter.apply() runs on a copy — the original metric (with all fields
+        // intact) is passed to the processor. fieldpass/fielddrop on processor filters
+        // only determine pass/drop at the metric level, not actual field removal.
         if (filter) {
           const filtered = filter.apply(m.copy());
           if (filtered === null) {

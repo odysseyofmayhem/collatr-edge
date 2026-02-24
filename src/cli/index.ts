@@ -44,6 +44,7 @@ const DEFAULT_CONFIG_PATH = "/etc/collatr-edge/config.toml";
 export function parseGlobalOptions(args: string[]): {
   options: ParsedGlobalOptions;
   remaining: string[];
+  error?: string;
 } {
   const configFromEnv = process.env.COLLATR_EDGE_CONFIG;
   let configPath = configFromEnv || DEFAULT_CONFIG_PATH;
@@ -54,8 +55,9 @@ export function parseGlobalOptions(args: string[]): {
     if (arg === "--config" || arg === "-c") {
       const next = args[i + 1];
       if (next === undefined || next.startsWith("-")) {
-        process.stderr.write(`Error: ${arg} requires a path argument\n`);
-        configPath = DEFAULT_CONFIG_PATH;
+        const msg = `Error: ${arg} requires a path argument`;
+        process.stderr.write(msg + "\n");
+        return { options: { configPath }, remaining, error: msg };
       } else {
         configPath = next;
         i++; // skip the value
@@ -113,7 +115,8 @@ export async function main(
   args: string[] = process.argv.slice(2),
 ): Promise<number> {
   // Parse global options first (--config/-c)
-  const { options, remaining } = parseGlobalOptions(args);
+  const { options, remaining, error } = parseGlobalOptions(args);
+  if (error) return 1;
   const command = remaining[0];
 
   switch (command) {

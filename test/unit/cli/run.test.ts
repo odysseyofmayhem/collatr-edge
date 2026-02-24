@@ -188,6 +188,25 @@ describe("run command", () => {
     expect(stopCalled).toBe(true);
   });
 
+  it("SIGTERM → pipeline.stop() called, exit 0 (systemd production path)", async () => {
+    let stopCalled = false;
+    const code = await runCommand("/any/path.toml", mockDeps({
+      awaitSignal: () => ({
+        promise: Promise.resolve("SIGTERM"),
+        cleanup: () => {},
+      }),
+      createRuntime: () => ({
+        start: async () => {},
+        stop: async () => {
+          stopCalled = true;
+        },
+      }),
+    }));
+    expect(code).toBe(0);
+    expect(stopCalled).toBe(true);
+    expect(stderr()).toContain("Received SIGTERM");
+  });
+
   it("logs startup banner and shutdown summary", async () => {
     const code = await runCommand("/any/path.toml", mockDeps());
     expect(code).toBe(0);

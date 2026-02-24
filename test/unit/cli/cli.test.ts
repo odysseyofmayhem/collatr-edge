@@ -171,6 +171,18 @@ describe("CLI framework", () => {
       expect(options.configPath).toBe("/my/config.toml");
       expect(remaining).toEqual(["run"]);
     });
+
+    it("--config with no value → returns error", () => {
+      const result = parseGlobalOptions(["--config"]);
+      expect(result.error).toBeDefined();
+      expect(stderr()).toContain("requires a path argument");
+    });
+
+    it("-c followed by another flag → returns error", () => {
+      const result = parseGlobalOptions(["-c", "-h"]);
+      expect(result.error).toBeDefined();
+      expect(stderr()).toContain("requires a path argument");
+    });
   });
 
   // =========================================================================
@@ -229,5 +241,11 @@ describe("CLI framework", () => {
     // File doesn't exist → exit 1, but config path was parsed correctly
     expect(code).toBe(1);
     expect(stdout()).toContain("Config file not found: /custom/path.toml");
+  });
+
+  it("--config with missing value → exit 1", async () => {
+    const code = await main(["--config"]);
+    expect(code).toBe(1);
+    expect(stderr()).toContain("requires a path argument");
   });
 });
