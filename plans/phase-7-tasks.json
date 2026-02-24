@@ -1,0 +1,159 @@
+{
+  "phase": 7,
+  "name": "Sparkplug B Hub Link",
+  "tasks": [
+    {
+      "id": "7.0",
+      "description": "Sparkplug B payload spike: verify sparkplug-payload works with Bun runtime and compilation",
+      "prd_refs": ["09-hub-link-control-plane.md", "appendix-c-sparkplug-b-topic-map.md"],
+      "steps": [
+        "bun add sparkplug-payload",
+        "Create test/unit/spike/sparkplug-payload.test.ts with encode/decode round-trip tests",
+        "Test NBIRTH payload with 3 metric types (Int32, Double, Boolean)",
+        "Test DDATA payload with metric aliases",
+        "Test NDEATH payload with bdSeq",
+        "Test 64-bit timestamp preservation",
+        "Run bun test test/unit/spike/ — must pass",
+        "Verify bun build --compile succeeds with sparkplug-payload bundled",
+        "If sparkplug-payload fails: try @jcoreio/sparkplug-payload or raw protobufjs",
+        "Commit: phase-7: spike — verify sparkplug-payload works with Bun"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.1",
+      "description": "Real MQTT client wrapper: extract MqttClientInterface types to shared module, implement real mqtt.js wrapper, update mqtt-consumer to use shared module",
+      "prd_refs": ["09-hub-link-control-plane.md", "14-error-handling-resilience.md"],
+      "steps": [
+        "Create src/core/mqtt-types.ts — move MqttClientInterface, MqttClientOptions, MqttMessageEvent from mqtt-consumer.ts",
+        "Extend MqttClientInterface with publish() and setWill() methods",
+        "Create src/core/mqtt-client.ts implementing RealMqttClient wrapping mqtt npm package",
+        "Support: connect, subscribe, unsubscribe, publish, onMessage/Connect/Error/Close/Reconnect, disconnect, setWill, TLS, clean session",
+        "Update mqtt-consumer.ts imports to use shared types from mqtt-types.ts",
+        "Update mqtt-consumer.ts createDefaultMqttClient() to use RealMqttClient",
+        "Write tests in test/unit/core/mqtt-client.test.ts",
+        "Run bun test — ALL tests pass including all existing mqtt-consumer tests",
+        "Commit: phase-7: extract shared MQTT client wrapper from mqtt-consumer"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.2",
+      "description": "Sparkplug B codec: metric type mapping, FNV-1a alias computation, payload encode/decode for all Sparkplug B message types (NBIRTH, NDEATH, DBIRTH, DDEATH, DDATA, NDATA, NCMD)",
+      "prd_refs": ["09-hub-link-control-plane.md", "appendix-c-sparkplug-b-topic-map.md"],
+      "steps": [
+        "Create src/hub/sparkplug-codec.ts",
+        "Implement fieldValueToSparkplugType() — FieldValue to Sparkplug B data type mapping per PRD §9 table",
+        "Implement FNV-1a 32-bit hash function",
+        "Implement computeMetricAlias(deviceId, metricName) — hash mod 2^31",
+        "Implement resolveAliases(deviceId, metricNames) — with collision resolution (increment until unique)",
+        "Implement encodeNBirth() with bdSeq, properties, control metrics, agent metrics",
+        "Implement encodeNDeath() with bdSeq",
+        "Implement encodeDBirth() with full metric definitions, aliases, types, device properties",
+        "Implement encodeDDeath()",
+        "Implement encodeDData() with alias-based metrics (no names, just alias + value + timestamp)",
+        "Implement encodeNData() with seq and agent self-metrics",
+        "Implement decodeNCmd() for parsing rebirth commands",
+        "Write tests in test/unit/hub/sparkplug-codec.test.ts — all type mappings, alias determinism, collision resolution, encode/decode round-trips for every message type",
+        "Run bun test — all pass",
+        "Commit: phase-7: add Sparkplug B codec — payload encoding, type mapping, metric aliases"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.3",
+      "description": "Hub link session manager: MQTT connection, Sparkplug B edge node lifecycle (NBIRTH/NDEATH/DBIRTH/DDEATH/DDATA/NDATA/NCMD), sequence numbering, device tracking, rebirth handling",
+      "prd_refs": ["09-hub-link-control-plane.md", "appendix-c-sparkplug-b-topic-map.md"],
+      "steps": [
+        "Create src/hub/hub-link.ts with HubLink class and HubLinkConfig interface",
+        "Implement topic builder: spBv1.0/{group_id}/{msgType}/{edge_node_id}[/{device_id}]",
+        "Implement constructor with MqttClientInterface DI (for testing)",
+        "Implement start(): setWill(NDEATH with bdSeq), connect, publish NBIRTH, subscribe to NCMD topic",
+        "Implement registerDevice(DeviceInfo): store device info for later DBIRTH",
+        "Implement publishDeviceBirth(deviceId, metrics): DBIRTH to correct topic, compute aliases",
+        "Implement publishDeviceData(deviceId, metrics): DDATA with alias-based encoding, auto-DBIRTH on first call",
+        "Implement publishDeviceDeath(deviceId): DDEATH",
+        "Implement publishNodeData(metrics): NDATA with agent self-metrics",
+        "Implement handleNCmd(payload): parse NCMD, handle Node Control/Rebirth",
+        "Implement rebirth(): re-publish NBIRTH + all DBIRTHs, reset seq to 0",
+        "Implement stop(): DDEATH for all known devices, disconnect",
+        "Implement seq numbering: 0-255 wrapping, reset on NBIRTH",
+        "bdSeq: start at 0 for MVP, TODO for SQLite persistence",
+        "Write tests in test/unit/hub/hub-link.test.ts with mock MQTT client",
+        "Run bun test — all pass",
+        "Commit: phase-7: add Hub link session manager — Sparkplug B edge node lifecycle"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.4",
+      "description": "MQTT output plugin: Sparkplug B mode (via Hub link) and plain MQTT mode. Zod schema, plugin factory registration, schema registry entry.",
+      "prd_refs": ["09-hub-link-control-plane.md", "19-mvp-plugin-inventory.md"],
+      "steps": [
+        "Create src/plugins/outputs/mqtt.ts with MqttOutputConfigSchema and MqttOutput class",
+        "Implement connect(): connect via own client (plain mode) or validate hub link reference (sparkplug mode)",
+        "Implement write() for Sparkplug mode: group metrics by _device_id tag, call hubLink.publishDeviceData()",
+        "Implement write() for plain MQTT mode: encode metrics as JSON, publish to topic template",
+        "Implement close(): disconnect own client (not hub link's)",
+        "Add MqttOutput to OUTPUT_FACTORIES in plugin-factory.ts",
+        "Add outputs.mqtt to PLUGIN_SCHEMAS in plugin-schemas.ts",
+        "Update config-init.ts template to include commented MQTT output example",
+        "Write tests in test/unit/plugins/outputs/mqtt.test.ts — sparkplug mode, plain mode, config validation",
+        "Run bun test — all pass",
+        "Commit: phase-7: add MQTT output plugin — Sparkplug B and plain MQTT modes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.5",
+      "description": "Pipeline integration: wire Hub link into PipelineRuntime and plugin factory. Extend [agent.hub] config schema. Add _device_id tag injection in accumulator.",
+      "prd_refs": ["08-pipeline-lifecycle.md", "09-hub-link-control-plane.md", "07-configuration.md"],
+      "steps": [
+        "Extend [agent.hub] schema in config.ts: add enabled (default false), heartbeat_interval (default 30s)",
+        "Extend PipelineOptions with optional hubLink: HubLink",
+        "Update buildPipeline() in plugin-factory.ts: create HubLink when hub.enabled, pass to MQTT output instances with sparkplug:true",
+        "Update ChannelAccumulator in accumulator.ts: when input alias is set, inject _device_id tag on all metrics",
+        "Update PipelineRuntime.start(): start hub link after output.connect(), before inputs start; register devices from input aliases",
+        "Update PipelineRuntime.stop(): stop hub link after pipeline drains, before plugin close()",
+        "Write test/integration/hub-link-pipeline.test.ts: full pipeline with hub link mock → verify NBIRTH, DBIRTH on first data, DDATA, shutdown sequence",
+        "Run bun test — ALL tests pass including all existing tests",
+        "Commit: phase-7: wire Hub link into pipeline — lifecycle, device registration, _device_id tagging"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.6",
+      "description": "Hub link heartbeat: periodic NDATA publication with agent self-metrics (uptime, event loop lag, buffer length)",
+      "prd_refs": ["09-hub-link-control-plane.md", "15-observability.md"],
+      "steps": [
+        "Add heartbeat timer to HubLink (configurable interval from heartbeatIntervalMs)",
+        "Accept optional StatsCollector in HubLink constructor for reading self-metrics",
+        "On heartbeat tick: read uptime_seconds, event_loop_lag_ms, buffer_total_length from stats",
+        "Encode as NDATA payload, publish to spBv1.0/{group_id}/NDATA/{edge_node_id}",
+        "Timer starts in start(), stops in stop()",
+        "Write tests: heartbeat fires at interval, NDATA published with correct metrics, timer cancelled on stop",
+        "Run bun test — all pass",
+        "Commit: phase-7: add Hub link heartbeat — periodic NDATA with agent self-metrics"
+      ],
+      "passes": false
+    },
+    {
+      "id": "7.7",
+      "description": "Phase 7 integration tests and cleanup: comprehensive Sparkplug B lifecycle tests, multi-device, sequence numbering, hub-disabled path, README/docs update",
+      "prd_refs": ["09-hub-link-control-plane.md", "22-mvp-acceptance-criteria.md"],
+      "steps": [
+        "Create test/integration/sparkplug-lifecycle.test.ts: full lifecycle (start → NBIRTH → DBIRTH → DDATA → rebirth → shutdown)",
+        "Test multi-device: two inputs with different aliases → separate DBIRTH/DDATA on correct topics",
+        "Test sequence numbering: seq increments, wraps at 255, resets on rebirth",
+        "Create test/integration/mqtt-output-pipeline.test.ts: config-driven pipeline with MQTT output",
+        "Test hub disabled: pipeline works normally when hub.enabled = false",
+        "Ensure plugin-schemas.ts includes outputs.mqtt",
+        "Ensure config-init templates include Hub + MQTT output examples",
+        "Update README.md with Hub configuration section",
+        "Run full bun test — zero failures",
+        "Commit: phase-7: add Sparkplug B integration tests and cleanup"
+      ],
+      "passes": false
+    }
+  ]
+}
