@@ -8,6 +8,7 @@
 
 import type { AgentConfig, PluginInstanceConfig } from "../core/config";
 import { parseDuration } from "../core/config";
+import packageJson from "../../package.json";
 import { MetricFilter, type MetricFilterConfig } from "../core/metric-filter";
 import { SimpleStatsCollector, type StatsCollector } from "../core/stats";
 import type { Input, Processor, Aggregator, Output } from "../core/plugin-types";
@@ -325,7 +326,7 @@ export function buildPipeline(
       tlsCert: hubConfig.tls_cert,
       tlsKey: hubConfig.tls_key,
       heartbeatIntervalMs: parseDuration(hubConfig.heartbeat_interval),
-      swVersion: "0.1.0", // TODO: read from package.json or build info
+      swVersion: packageJson.version,
     });
 
     // Wire stats collector for heartbeat NDATA (PRD §9 / §15)
