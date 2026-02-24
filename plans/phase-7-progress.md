@@ -1,6 +1,6 @@
 # Phase 7 Progress: Sparkplug B Hub Link
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Test Baseline
 - **560 tests, 0 failures, 4547 assertions** at start of Phase 7
@@ -17,7 +17,15 @@
 | 7.4 | MQTT output plugin | ✅ Done | 12 | `3574e5f` |
 | 7.5 | Pipeline integration | ✅ Done | 5 | `a55429f` |
 | 7.6 | Heartbeat / NDATA | ✅ Done | 4 | `eeb37af` |
-| 7.7 | Integration tests + cleanup | ✅ Done | 10 | `pending` |
+| 7.7 | Integration tests + cleanup | ✅ Done | 10 | `b424e47` |
+
+## Final Count
+- **658 tests, 0 failures, 4883 assertions**
+- **98 new tests** added in Phase 7 (requirement: ≥25)
+- Zero regressions from baseline
+
+## Acceptance Criteria
+All 10 criteria met — see `plans/phase-7-sparkplug-hub.md` §Acceptance Criteria.
 
 ## Notes
 
