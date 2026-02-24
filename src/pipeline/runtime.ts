@@ -153,11 +153,15 @@ async function runGatherLoop(
   timeoutMs: number,
   aligned: boolean,
   signal: AbortSignal,
+  alias?: string,
+  pluginType?: string,
 ): Promise<void> {
   const ticker = new Ticker();
+  const logCtx = { component: "pipeline", plugin: alias ?? "input", plugin_type: pluginType };
   // aligned maps to config's round_interval (PRD §7, §13)
   for await (const _seq of ticker.tick(intervalMs, { aligned })) {
     if (signal.aborted) break;
+    const start = performance.now();
     try {
       // TODO: Phase 2 — pass AbortSignal into gather() so timed-out calls can
       // cooperatively cancel. Currently a slow gather() continues in the background
@@ -173,8 +177,10 @@ async function runGatherLoop(
       } else {
         await input.gather(acc);
       }
+      const elapsed = Math.round(performance.now() - start);
+      getLogger().debug("gather complete", { ...logCtx, duration_ms: elapsed });
     } catch (err) {
-      getLogger().error("gather error", { component: "pipeline", error: (err as Error).message });
+      getLogger().error("gather error", { ...logCtx, error: (err as Error).message });
     }
   }
 }
@@ -300,9 +306,11 @@ async function runOutputFlushLoop(
   _signal: AbortSignal,
   metricBatchSize?: number,
   filter?: MetricFilter,
+  alias?: string,
 ): Promise<void> {
   const batch: Metric[] = [];
   let done = false;
+  const logCtx = { component: "pipeline", plugin: alias ?? "output" };
 
   // Reader: accumulates metrics from channel, applying per-output filter
   const reader = (async () => {
@@ -331,7 +339,7 @@ async function runOutputFlushLoop(
         try {
           await output.write(chunk);
         } catch (err) {
-          getLogger().error("output write error", { component: "pipeline", error: (err as Error).message });
+          getLogger().error("output write error", { ...logCtx, error: (err as Error).message });
           // Re-add remaining (unwritten) metrics to batch for retry
           const remaining = metrics.slice(i);
           batch.unshift(...remaining);
@@ -344,7 +352,7 @@ async function runOutputFlushLoop(
         await output.write(metrics);
         return true;
       } catch (err) {
-        getLogger().error("output write error", { component: "pipeline", error: (err as Error).message });
+        getLogger().error("output write error", { ...logCtx, error: (err as Error).message });
         batch.unshift(...metrics);
         return false;
       }
@@ -375,7 +383,7 @@ async function runOutputFlushLoop(
         // TODO: Phase 7 — when S&F buffer is integrated, failed final-flush
         // metrics should be persisted to the buffer for recovery on next startup.
         // Currently these metrics are lost if the output is still failing at shutdown.
-        getLogger().error("final flush error", { component: "pipeline", error: (err as Error).message });
+        getLogger().error("final flush error", { ...logCtx, error: (err as Error).message });
       }
     }
   })();
@@ -480,9 +488,11 @@ export class PipelineRuntime {
     // 6. Init plugins and start inputs
     for (const proc of this.options.processors) {
       if (proc.plugin.init) await proc.plugin.init();
+      getLogger().debug("plugin registered", { component: "pipeline", plugin: proc.alias ?? "processor", plugin_type: "processor" });
     }
     for (const agg of this.options.aggregators) {
       if (agg.plugin.init) await agg.plugin.init();
+      getLogger().debug("plugin registered", { component: "pipeline", plugin: agg.alias ?? "aggregator", plugin_type: "aggregator" });
     }
 
     const aligned = this.options.roundInterval ?? true;
@@ -492,6 +502,7 @@ export class PipelineRuntime {
 
     for (const input of this.options.inputs) {
       if (input.plugin.init) await input.plugin.init();
+      getLogger().debug("plugin registered", { component: "pipeline", plugin: input.alias ?? "input", plugin_type: input.pluginType ?? "input" });
 
       // Per-input accumulator with optional _device_id for Sparkplug B routing
       const baseInputAcc = new ChannelAccumulator(
@@ -512,7 +523,7 @@ export class PipelineRuntime {
           await input.plugin.start(inputAcc);
           this.serviceInputs.push({ plugin: input.plugin });
         } catch (err) {
-          getLogger().error("service input start error", { component: "pipeline", error: (err as Error).message });
+          getLogger().error("service input start error", { component: "pipeline", plugin: input.alias ?? "input", plugin_type: input.pluginType, error: (err as Error).message });
           // Log and continue — one service input failure doesn't stop the pipeline
         }
       } else {
@@ -520,7 +531,7 @@ export class PipelineRuntime {
         const interval = input.interval ?? this.options.gatherIntervalMs;
         const timeout = input.timeout ?? this.options.gatherTimeoutMs ?? 0;
         this.loops.push(
-          runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal),
+          runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal, input.alias, input.pluginType),
         );
       }
     }
@@ -529,8 +540,9 @@ export class PipelineRuntime {
     for (let i = 0; i < this.options.outputs.length; i++) {
       const outputOpts = this.options.outputs[i]!;
       const ch = outputChannels[i]!;
+      getLogger().debug("plugin registered", { component: "pipeline", plugin: outputOpts.alias ?? "output", plugin_type: "output" });
       this.loops.push(
-        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter),
+        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter, outputOpts.alias),
       );
     }
   }
