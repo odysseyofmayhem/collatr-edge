@@ -14,6 +14,11 @@ import { RealMqttClient } from "../../core/mqtt-client.ts";
 import { getLogger } from "../../core/logger.ts";
 import { toJSON } from "./stdout.ts";
 import type { HubLink } from "../../hub/hub-link.ts";
+import {
+  type NetworkPolicy,
+  type EgressTarget,
+  PolicyViolationError,
+} from "../../core/network-policy.ts";
 
 // ---------------------------------------------------------------------------
 // Config schema
@@ -67,17 +72,25 @@ export class MqttOutput implements Output {
   private hubLink: HubLink | null;
   private client: MqttClientInterface | null;
   private ownClient: boolean;
+  private networkPolicy: NetworkPolicy | null;
 
-  constructor(config: MqttOutputConfig, hubLink?: HubLink, client?: MqttClientInterface) {
+  constructor(
+    config: MqttOutputConfig,
+    hubLink?: HubLink,
+    client?: MqttClientInterface,
+    networkPolicy?: NetworkPolicy,
+  ) {
     this.config = config;
     this.hubLink = hubLink ?? null;
     this.ownClient = false;
     this.client = client ?? null;
+    this.networkPolicy = networkPolicy ?? null;
   }
 
   async connect(): Promise<void> {
     if (this.config.sparkplug && this.hubLink) {
-      // Sparkplug mode — Hub link manages the connection
+      // Sparkplug mode — Hub link manages the connection.
+      // Hub broker URL is validated in plugin-factory.ts BEFORE HubLink is created.
       getLogger().info("mqtt output using hub link connection", { plugin: "mqtt_output" });
       return;
     }
@@ -85,6 +98,17 @@ export class MqttOutput implements Output {
     // Plain mode — connect our own client
     if (!this.config.servers || this.config.servers.length === 0) {
       throw new Error("MQTT output requires 'servers' config when not in sparkplug mode");
+    }
+
+    // Network policy enforcement: validate every server URL before connecting (PRD §10/§16)
+    if (this.networkPolicy) {
+      for (const server of this.config.servers) {
+        const target = parseMqttServerUrl(server, "mqtt_output");
+        const result = this.networkPolicy.checkEgress(target);
+        if (!result.allowed) {
+          throw new PolicyViolationError(target, result.reason, this.networkPolicy.mode);
+        }
+      }
     }
 
     if (!this.client) {
@@ -179,4 +203,33 @@ export class MqttOutput implements Output {
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// URL parsing for network policy enforcement
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse an MQTT server URL into an EgressTarget for policy checking.
+ * Handles mqtt://, mqtts://, tcp://, ssl:// schemes.
+ */
+export function parseMqttServerUrl(server: string, description: string): EgressTarget {
+  let url: URL;
+  try {
+    url = new URL(server);
+  } catch {
+    // Unparseable URL — return the raw string as host
+    return { host: server, protocol: "mqtt", description };
+  }
+
+  const scheme = url.protocol.replace(":", "");
+  const protocol = (scheme === "mqtts" || scheme === "ssl") ? "mqtts" : "mqtt";
+  const port = url.port ? parseInt(url.port, 10) : undefined;
+
+  return {
+    host: url.hostname,
+    port,
+    protocol,
+    description,
+  };
 }

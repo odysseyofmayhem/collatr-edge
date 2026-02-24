@@ -36,7 +36,9 @@ import { StdoutOutput } from "../plugins/outputs/stdout";
 import { StdoutConfigSchema } from "../plugins/outputs/stdout";
 import { MqttOutput } from "../plugins/outputs/mqtt";
 import { MqttOutputConfigSchema } from "../plugins/outputs/mqtt";
+import { parseMqttServerUrl } from "../plugins/outputs/mqtt";
 import { HubLink, type HubLinkConfig } from "../hub/hub-link";
+import { PolicyViolationError } from "../core/network-policy";
 
 // ---------------------------------------------------------------------------
 // Filter fields extracted from raw plugin config
@@ -305,9 +307,17 @@ export function buildPipeline(
   }
 
   // -- Hub link (PRD §9: created when [agent.hub] enabled, before outputs) --
+  // Network policy enforcement: validate hub broker URL BEFORE creating HubLink (PRD §10/§16)
   let hubLink: HubLink | undefined;
   const hubConfig = config.agent.hub;
   if (hubConfig?.enabled) {
+    const networkPolicy = config.networkPolicy;
+    const hubTarget = parseMqttServerUrl(hubConfig.broker, "sparkplug_hub");
+    const hubCheck = networkPolicy.checkEgress(hubTarget);
+    if (!hubCheck.allowed) {
+      throw new PolicyViolationError(hubTarget, hubCheck.reason, networkPolicy.mode);
+    }
+
     hubLink = new HubLink({
       groupId: hubConfig.group_id,
       edgeNodeId: hubConfig.edge_node_id,
@@ -348,7 +358,12 @@ export function buildPipeline(
       let plugin: Output;
       if (pluginName === "mqtt") {
         const parsedConfig = MqttOutputConfigSchema.parse(pluginConfig);
-        plugin = new MqttOutput(parsedConfig, parsedConfig.sparkplug ? hubLink : undefined);
+        plugin = new MqttOutput(
+          parsedConfig,
+          parsedConfig.sparkplug ? hubLink : undefined,
+          undefined, // client — let MqttOutput create its own
+          config.networkPolicy,
+        );
       } else {
         plugin = factory(pluginConfig);
       }
@@ -377,5 +392,6 @@ export function buildPipeline(
       ? config.global_tags
       : undefined,
     hubLink,
+    networkPolicy: config.networkPolicy,
   };
 }

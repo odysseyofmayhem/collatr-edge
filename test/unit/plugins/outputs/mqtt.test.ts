@@ -1,14 +1,19 @@
 // Unit tests: MQTT output plugin
-// PRD refs: §9 Hub Link & Control Plane, §19 MVP Plugin Inventory
+// PRD refs: §9 Hub Link & Control Plane, §10 Network Policy, §19 MVP Plugin Inventory
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import {
   MqttOutput,
   MqttOutputConfigSchema,
+  parseMqttServerUrl,
   type MqttOutputConfig,
 } from "@plugins/outputs/mqtt";
 import { createMetric } from "@core/metric";
 import { MockMqttClient } from "../../../helpers/mock-mqtt-client.ts";
+import {
+  resolveNetworkPolicy,
+  PolicyViolationError,
+} from "@core/network-policy";
 
 // ---------------------------------------------------------------------------
 // Mock Hub link
@@ -234,6 +239,174 @@ describe("MQTT Output Plugin", () => {
       const output = new MqttOutput(config);
 
       await expect(output.connect()).rejects.toThrow("requires 'servers'");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Network policy enforcement (PRD §10/§16)
+  // -------------------------------------------------------------------------
+
+  describe("Network policy enforcement", () => {
+    let mockClient: MockMqttClient;
+
+    beforeEach(() => {
+      mockClient = new MockMqttClient();
+    });
+
+    it("plain mode with standalone policy → connect() throws PolicyViolationError", async () => {
+      const policy = resolveNetworkPolicy({ mode: "standalone" });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://192.168.1.10:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      await expect(output.connect()).rejects.toThrow(PolicyViolationError);
+    });
+
+    it("plain mode with local_network + server not in allowedHosts → throws", async () => {
+      const policy = resolveNetworkPolicy({
+        mode: "local_network",
+        egress: { allowed_hosts: ["192.168.1.50:8086"] },
+      });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://10.0.0.5:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      await expect(output.connect()).rejects.toThrow(PolicyViolationError);
+    });
+
+    it("plain mode with local_network + server in allowedHosts → does not throw", async () => {
+      const policy = resolveNetworkPolicy({
+        mode: "local_network",
+        egress: { allowed_hosts: ["192.168.1.10:1883"] },
+      });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://192.168.1.10:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      // Should not throw — proceeds to connect
+      await output.connect();
+      expect(mockClient.connectCalls.length).toBe(1);
+      await output.close();
+    });
+
+    it("plain mode with connected policy → does not throw", async () => {
+      const policy = resolveNetworkPolicy({ mode: "connected" });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://remote-broker.example.com:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      await output.connect();
+      expect(mockClient.connectCalls.length).toBe(1);
+      await output.close();
+    });
+
+    it("plain mode without networkPolicy (undefined) → no enforcement (backward compat)", async () => {
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://any-broker:1883"],
+      });
+      // No policy passed — backward compatible
+      const output = new MqttOutput(config, undefined, mockClient);
+
+      await output.connect();
+      expect(mockClient.connectCalls.length).toBe(1);
+      await output.close();
+    });
+
+    it("PolicyViolationError message includes target host, port, mode, and reason", async () => {
+      const policy = resolveNetworkPolicy({ mode: "standalone" });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://192.168.1.10:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      try {
+        await output.connect();
+        expect(true).toBe(false); // Should not reach here
+      } catch (err) {
+        expect(err).toBeInstanceOf(PolicyViolationError);
+        const pve = err as PolicyViolationError;
+        expect(pve.message).toContain("192.168.1.10");
+        expect(pve.message).toContain("1883");
+        expect(pve.message).toContain("standalone");
+        expect(pve.policyMode).toBe("standalone");
+        expect(pve.target.host).toBe("192.168.1.10");
+        expect(pve.target.port).toBe(1883);
+      }
+    });
+
+    it("validates all servers — second server blocked", async () => {
+      const policy = resolveNetworkPolicy({
+        mode: "local_network",
+        egress: { allowed_hosts: ["192.168.1.10:1883"] },
+      });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["tcp://192.168.1.10:1883", "tcp://10.0.0.5:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      await expect(output.connect()).rejects.toThrow(PolicyViolationError);
+    });
+
+    it("local_network blocks hostname when allowDns=false", async () => {
+      const policy = resolveNetworkPolicy({ mode: "local_network" });
+      const config = MqttOutputConfigSchema.parse({
+        servers: ["mqtt://broker.example.com:1883"],
+      });
+      const output = new MqttOutput(config, undefined, mockClient, policy);
+
+      try {
+        await output.connect();
+        expect(true).toBe(false);
+      } catch (err) {
+        expect(err).toBeInstanceOf(PolicyViolationError);
+        expect((err as PolicyViolationError).message).toContain("DNS");
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // parseMqttServerUrl helper
+  // -------------------------------------------------------------------------
+
+  describe("parseMqttServerUrl", () => {
+    it("parses tcp:// URL", () => {
+      const target = parseMqttServerUrl("tcp://192.168.1.10:1883", "test");
+      expect(target.host).toBe("192.168.1.10");
+      expect(target.port).toBe(1883);
+      expect(target.protocol).toBe("mqtt");
+      expect(target.description).toBe("test");
+    });
+
+    it("parses mqtt:// URL", () => {
+      const target = parseMqttServerUrl("mqtt://broker:1883", "test");
+      expect(target.host).toBe("broker");
+      expect(target.port).toBe(1883);
+      expect(target.protocol).toBe("mqtt");
+    });
+
+    it("parses mqtts:// URL as mqtts protocol", () => {
+      const target = parseMqttServerUrl("mqtts://secure-broker:8883", "test");
+      expect(target.host).toBe("secure-broker");
+      expect(target.port).toBe(8883);
+      expect(target.protocol).toBe("mqtts");
+    });
+
+    it("parses ssl:// URL as mqtts protocol", () => {
+      const target = parseMqttServerUrl("ssl://secure-broker:8883", "test");
+      expect(target.host).toBe("secure-broker");
+      expect(target.port).toBe(8883);
+      expect(target.protocol).toBe("mqtts");
+    });
+
+    it("handles URL without port", () => {
+      const target = parseMqttServerUrl("mqtt://broker", "test");
+      expect(target.host).toBe("broker");
+      expect(target.port).toBeUndefined();
+      expect(target.protocol).toBe("mqtt");
     });
   });
 });

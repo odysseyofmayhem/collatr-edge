@@ -10,6 +10,7 @@ import { isServiceInput } from "../core/plugin-types";
 import { getLogger } from "../core/logger";
 import { MetricFilter } from "../core/metric-filter";
 import type { HubLink } from "../hub/hub-link";
+import type { NetworkPolicy } from "../core/network-policy";
 
 // ---------------------------------------------------------------------------
 // Pipeline configuration
@@ -28,6 +29,8 @@ export interface PipelineOptions {
   globalTags?: Record<string, string>;
   /** Hub link instance for Sparkplug B. Created when [agent.hub] enabled. */
   hubLink?: HubLink;
+  /** Resolved network policy. Used for startup logging. */
+  networkPolicy?: NetworkPolicy;
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +411,14 @@ export class PipelineRuntime {
   async start(): Promise<void> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
+
+    // 0. Log network policy (PRD §10: visible at startup)
+    if (this.options.networkPolicy) {
+      getLogger().info("network policy", {
+        mode: this.options.networkPolicy.mode,
+        summary: this.options.networkPolicy.summary(),
+      });
+    }
 
     // 1. Create output channels and broadcaster (PRD §4: per-output channel)
     const outputBroadcaster = new Broadcaster<Metric>();

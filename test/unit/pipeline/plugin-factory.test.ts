@@ -1,7 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { buildPipeline } from "@pipeline/plugin-factory";
 import type { AgentConfig } from "@core/config";
-import { resolveNetworkPolicy } from "@core/network-policy";
+import { resolveNetworkPolicy, PolicyViolationError } from "@core/network-policy";
 import { SimpleStatsCollector } from "@core/stats";
 import { InternalInput } from "@plugins/inputs/internal";
 import { ModbusInput } from "@plugins/inputs/modbus";
@@ -560,5 +560,122 @@ describe("buildPipeline", () => {
     expect(opts.processors).toHaveLength(0);
     expect(opts.aggregators).toHaveLength(0);
     expect(opts.outputs).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Network policy enforcement (PRD §10/§16)
+  // -------------------------------------------------------------------------
+
+  describe("network policy enforcement", () => {
+    it("hub enabled + standalone policy → throws PolicyViolationError", () => {
+      const config = makeConfig({
+        agent: {
+          interval: "10s",
+          round_interval: true,
+          collection_jitter: "0s",
+          collection_offset: "0s",
+          flush_interval: "10s",
+          flush_jitter: "0s",
+          precision: "1ms",
+          log_level: "info",
+          hub: {
+            enabled: true,
+            group_id: "factory",
+            edge_node_id: "edge1",
+            broker: "mqtt://hub.collatr.cloud:1883",
+            heartbeat_interval: "30s",
+          },
+        },
+        networkPolicy: resolveNetworkPolicy({ mode: "standalone" }),
+        outputs: { stdout: [{}] },
+      });
+
+      expect(() => buildPipeline(config)).toThrow(PolicyViolationError);
+    });
+
+    it("hub enabled + connected policy → creates hub link normally", () => {
+      const config = makeConfig({
+        agent: {
+          interval: "10s",
+          round_interval: true,
+          collection_jitter: "0s",
+          collection_offset: "0s",
+          flush_interval: "10s",
+          flush_jitter: "0s",
+          precision: "1ms",
+          log_level: "info",
+          hub: {
+            enabled: true,
+            group_id: "factory",
+            edge_node_id: "edge1",
+            broker: "mqtt://hub.collatr.cloud:1883",
+            heartbeat_interval: "30s",
+          },
+        },
+        networkPolicy: resolveNetworkPolicy({ mode: "connected" }),
+        outputs: {
+          mqtt: [{ sparkplug: true }],
+        },
+      });
+
+      const opts = buildPipeline(config);
+      expect(opts.hubLink).toBeDefined();
+    });
+
+    it("hub enabled + local_network policy → throws PolicyViolationError", () => {
+      const config = makeConfig({
+        agent: {
+          interval: "10s",
+          round_interval: true,
+          collection_jitter: "0s",
+          collection_offset: "0s",
+          flush_interval: "10s",
+          flush_jitter: "0s",
+          precision: "1ms",
+          log_level: "info",
+          hub: {
+            enabled: true,
+            group_id: "factory",
+            edge_node_id: "edge1",
+            broker: "mqtt://hub.collatr.cloud:1883",
+            heartbeat_interval: "30s",
+          },
+        },
+        networkPolicy: resolveNetworkPolicy({ mode: "local_network" }),
+        outputs: { stdout: [{}] },
+      });
+
+      expect(() => buildPipeline(config)).toThrow(PolicyViolationError);
+    });
+
+    it("passes networkPolicy to PipelineOptions", () => {
+      const policy = resolveNetworkPolicy({ mode: "standalone" });
+      const config = makeConfig({
+        networkPolicy: policy,
+        outputs: { stdout: [{}] },
+      });
+
+      const opts = buildPipeline(config);
+      expect(opts.networkPolicy).toBe(policy);
+    });
+
+    it("passes networkPolicy to MQTT output", () => {
+      const policy = resolveNetworkPolicy({
+        mode: "local_network",
+        egress: { allowed_hosts: ["192.168.1.10:1883"] },
+      });
+      const config = makeConfig({
+        networkPolicy: policy,
+        outputs: {
+          mqtt: [{
+            servers: ["tcp://192.168.1.10:1883"],
+          }],
+        },
+      });
+
+      // Should not throw — the server is in the allowed hosts list
+      const opts = buildPipeline(config);
+      expect(opts.outputs).toHaveLength(1);
+    });
   });
 });
