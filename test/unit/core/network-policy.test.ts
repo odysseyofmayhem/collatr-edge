@@ -249,6 +249,25 @@ describe("resolveNetworkPolicy", () => {
     });
     expect(policy.egress.unrestricted).toBe(false);
   });
+
+  it("connected mode with redundant allow_dns=true remains unrestricted", () => {
+    const policy = resolveNetworkPolicy({
+      mode: "connected",
+      egress: { allow_dns: true },
+    });
+    // Permissive redundant override does not break unrestricted mode
+    expect(policy.egress.unrestricted).toBe(true);
+    expect(policy.egress.allowDns).toBe(true);
+  });
+
+  it("allow_local_subnet user override is respected", () => {
+    const policy = resolveNetworkPolicy({
+      mode: "local_network",
+      egress: { allow_local_subnet: false },
+    });
+    // Override replaces preset default (local_network defaults to true)
+    expect(policy.egress.allowLocalSubnet).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -553,6 +572,17 @@ describe("checkEgress — edge cases", () => {
     if (!result.allowed) {
       expect(result.reason).toContain("not in allowed_hosts");
     }
+  });
+
+  it("IPv6 target matches allowed_hosts entry with bracket notation", () => {
+    const policy = resolveNetworkPolicy({
+      mode: "local_network",
+      egress: { allowed_hosts: ["[::1]:8080"] },
+    });
+    const result = policy.checkEgress(
+      makeTarget({ host: "::1", port: 8080, protocol: "http" }),
+    );
+    expect(result.allowed).toBe(true);
   });
 
   it("invalid IPv4-like address (999.999.999.999) is treated as hostname, not IP", () => {

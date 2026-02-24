@@ -224,7 +224,8 @@ export function parseMqttServerUrl(server: string, description: string): EgressT
 
   const scheme = url.protocol.replace(":", "");
   const protocol = (scheme === "mqtts" || scheme === "ssl") ? "mqtts" : "mqtt";
-  const port = url.port ? parseInt(url.port, 10) : undefined;
+  // Use explicit port if present, otherwise default for known schemes (mqtt→1883, mqtts→8883)
+  const port = url.port ? parseInt(url.port, 10) : (protocol === "mqtts" ? 8883 : 1883);
 
   return {
     host: url.hostname,

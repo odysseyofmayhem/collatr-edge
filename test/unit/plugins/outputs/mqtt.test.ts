@@ -253,6 +253,15 @@ describe("MQTT Output Plugin", () => {
       mockClient = new MockMqttClient();
     });
 
+    it("plain mode with servers = [] → connect() throws (missing servers)", async () => {
+      const config = MqttOutputConfigSchema.parse({
+        servers: [],
+      });
+      const output = new MqttOutput(config, undefined, mockClient);
+
+      await expect(output.connect()).rejects.toThrow("requires 'servers' config");
+    });
+
     it("plain mode with standalone policy → connect() throws PolicyViolationError", async () => {
       const policy = resolveNetworkPolicy({ mode: "standalone" });
       const config = MqttOutputConfigSchema.parse({
@@ -402,11 +411,18 @@ describe("MQTT Output Plugin", () => {
       expect(target.protocol).toBe("mqtts");
     });
 
-    it("handles URL without port", () => {
+    it("defaults to port 1883 for mqtt:// URL without explicit port", () => {
       const target = parseMqttServerUrl("mqtt://broker", "test");
       expect(target.host).toBe("broker");
-      expect(target.port).toBeUndefined();
+      expect(target.port).toBe(1883);
       expect(target.protocol).toBe("mqtt");
+    });
+
+    it("defaults to port 8883 for mqtts:// URL without explicit port", () => {
+      const target = parseMqttServerUrl("mqtts://secure-broker", "test");
+      expect(target.host).toBe("secure-broker");
+      expect(target.port).toBe(8883);
+      expect(target.protocol).toBe("mqtts");
     });
 
     it("handles unparseable URL — returns raw string as host", () => {

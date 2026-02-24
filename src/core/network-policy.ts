@@ -43,6 +43,7 @@ export const NetworkPolicySchema = z.object({
   egress: z.object({
     allow_dns: z.boolean().optional(),
     allow_mqtt_hub: z.boolean().optional(),
+    allow_local_subnet: z.boolean().optional(), // TODO: post-MVP — parsed but not enforced (PRD §10)
     allowed_hosts: z.array(z.string()).optional(),
   }).optional(),
   ingress: z.object({
@@ -183,7 +184,7 @@ export function resolveNetworkPolicy(raw?: NetworkPolicyInput | null): NetworkPo
   const egress: ResolvedEgressRules = {
     allowDns: raw?.egress?.allow_dns ?? preset.egress.allowDns,
     allowMqttHub: raw?.egress?.allow_mqtt_hub ?? preset.egress.allowMqttHub,
-    allowLocalSubnet: preset.egress.allowLocalSubnet, // TODO: post-MVP — no config override yet
+    allowLocalSubnet: raw?.egress?.allow_local_subnet ?? preset.egress.allowLocalSubnet, // TODO: post-MVP — parsed, not enforced
     allowedHosts: raw?.egress?.allowed_hosts ?? [...preset.egress.allowedHosts],
     // unrestricted: connected mode is unrestricted UNLESS user provides explicit egress overrides
     // that restrict things. But per PRD, unrestricted means no host restrictions.

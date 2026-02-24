@@ -165,6 +165,7 @@ function detectOutputPolicyConflicts(config: AgentConfig): string[] {
   const warnings: string[] = [];
   const policy = config.networkPolicy;
 
+  // TODO: extend to HTTP and other network outputs when implemented (PRD Appendix A)
   // Check MQTT output instances for structural issues (independent of policy mode)
   const mqttInstances = config.outputs.mqtt ?? [];
   for (let i = 0; i < mqttInstances.length; i++) {
