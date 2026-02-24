@@ -1,6 +1,8 @@
 // CollatrEdge — Ticker with dual-clock design
 // PRD ref: §13 Scheduling
 
+import { getLogger } from "./logger";
+
 export interface TickerOptions {
   /** Fire at clock-aligned boundaries (e.g., :00, :10, :20 for 10s interval). Default: true per PRD §13 */
   aligned?: boolean;
@@ -65,8 +67,12 @@ export class Ticker {
       const monoElapsedMs =
         Number(Bun.nanoseconds() - monotonicAnchor) / 1_000_000;
       if (seq > 0 && detectClockJump(wallElapsedMs, monoElapsedMs, interval)) {
-        // TODO: log.warn('System clock change detected, re-anchoring Ticker')
-        // Deferred until logging framework is integrated.
+        getLogger().warn("system clock change detected, re-anchoring ticker", {
+          component: "ticker",
+          wall_elapsed_ms: Math.round(wallElapsedMs),
+          mono_elapsed_ms: Math.round(monoElapsedMs),
+          interval_ms: interval,
+        });
         anchor = aligned
           ? alignToInterval(Date.now(), interval)
           : Date.now();
