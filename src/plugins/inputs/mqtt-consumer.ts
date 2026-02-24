@@ -11,6 +11,12 @@ import type { Accumulator } from "../../core/accumulator";
 import { getLogger } from "../../core/logger";
 import type { FieldValue } from "../../core/metric";
 import { parseDuration } from "../../core/config";
+import type {
+  MqttClientInterface,
+  MqttClientOptions,
+  MqttMessageEvent,
+} from "../../core/mqtt-types.ts";
+import { RealMqttClient } from "../../core/mqtt-client.ts";
 
 // ---------------------------------------------------------------------------
 // Zod config schema — matches PRD Appendix A + §19 + task 2.3 spec
@@ -79,42 +85,8 @@ export const MqttConsumerConfigSchema = z.object({
 
 export type MqttConsumerConfig = z.infer<typeof MqttConsumerConfigSchema>;
 
-// ---------------------------------------------------------------------------
-// MQTT client interface (for dependency injection / testing)
-// ---------------------------------------------------------------------------
-
-export interface MqttMessageEvent {
-  topic: string;
-  payload: Buffer;
-  qos: number;
-  retain: boolean;
-}
-
-export interface MqttClientOptions {
-  clientId?: string;
-  username?: string;
-  password?: string;
-  reconnectPeriod?: number;
-  maxReconnectDelay?: number;
-  maxReconnectAttempts?: number;
-  ca?: string;
-  cert?: string;
-  key?: string;
-  rejectUnauthorized?: boolean;
-}
-
-export interface MqttClientInterface {
-  connect(servers: string[], options: MqttClientOptions): void;
-  subscribe(topics: string[], qos: number): Promise<void>;
-  unsubscribe(topics: string[]): Promise<void>;
-  onMessage(handler: (event: MqttMessageEvent) => void): void;
-  onConnect(handler: () => void): void;
-  onError(handler: (error: Error) => void): void;
-  onClose(handler: () => void): void;
-  onReconnect(handler: () => void): void;
-  disconnect(): Promise<void>;
-  readonly isConnected: boolean;
-}
+// Re-export shared types for backwards compatibility with existing imports
+export type { MqttClientInterface, MqttClientOptions, MqttMessageEvent } from "../../core/mqtt-types.ts";
 
 // ---------------------------------------------------------------------------
 // JSON payload flattening (nested → dot-notation)
@@ -381,30 +353,11 @@ export class MqttConsumerInput implements ServiceInput {
 }
 
 // ---------------------------------------------------------------------------
-// Default MQTT client factory (wraps mqtt.js)
+// Default MQTT client factory (wraps mqtt.js via RealMqttClient)
 // ---------------------------------------------------------------------------
 
 function createDefaultMqttClient(): MqttClientInterface {
-  // Stub client that defers failure to start() time instead of throwing at construction.
-  // Tests inject mock clients. Production will need a real mqtt.js wrapper (Phase 7+).
-  const notImplemented = (): never => {
-    throw new Error(
-      "MQTT client not implemented — inject a client via constructor for testing, " +
-      "or implement the real mqtt.js wrapper for production use.",
-    );
-  };
-  return {
-    connect: notImplemented,
-    subscribe: () => Promise.reject(new Error("MQTT client not implemented")),
-    unsubscribe: () => Promise.reject(new Error("MQTT client not implemented")),
-    onMessage: notImplemented,
-    onConnect: notImplemented,
-    onError: notImplemented,
-    onClose: notImplemented,
-    onReconnect: notImplemented,
-    disconnect: () => Promise.reject(new Error("MQTT client not implemented")),
-    get isConnected() { return false; },
-  };
+  return new RealMqttClient();
 }
 
 // ---------------------------------------------------------------------------
