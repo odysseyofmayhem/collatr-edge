@@ -187,12 +187,14 @@ async function runMainLoop(
   outputBroadcaster: Broadcaster<Metric>,
   globalTags?: Record<string, string>,
 ): Promise<void> {
-  // drop_original semantics: originals are suppressed only when EVERY aggregator
-  // has dropOriginal=true. If any aggregator wants originals, they flow through.
-  // This is a global all-or-nothing decision rather than per-aggregator routing.
-  // Full per-aggregator routing (where each aggregator independently controls
-  // whether its downstream sees originals) would require separate output channels
-  // per aggregator — deferred until multi-aggregator mixed-mode scenarios arise.
+  // drop_original semantics (PRD §6): configured per-aggregator but evaluated
+  // globally. Originals are only suppressed when EVERY aggregator has
+  // dropOriginal=true. This is a deliberate design decision: all aggregators
+  // share one output broadcaster, so the runtime cannot selectively forward
+  // originals to some outputs while suppressing them for others. The .every()
+  // resolution preserves data when aggregators disagree — the safe default.
+  // Per-instance dropOriginal values are wired through PipelineOptions for
+  // future per-aggregator output routing if needed.
   const shouldDropOriginals =
     aggregators.length > 0 && aggregators.every((a) => a.dropOriginal);
 

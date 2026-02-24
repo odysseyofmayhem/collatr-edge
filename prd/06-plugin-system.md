@@ -38,11 +38,37 @@ interface Accumulator {
 |-------------|-------------------|----------------------------------|
 | **Input** | `acc.addFields()` creates new metrics. This is the only way metrics enter the pipeline. Timestamp is auto-assigned via `Bun.nanoseconds()` (monotonic-to-wall-clock converted) if not explicitly provided. Inputs can override the timestamp (e.g., OPC-UA provides source timestamps). | N/A — inputs create metrics, they don't receive them. |
 | **Processor** | Receives one metric. Emits zero or more via `acc.addMetric()` or `acc.addFields()`. **No auto-forwarding.** If the processor emits nothing, the metric is dropped. To pass through unchanged: `acc.addMetric(metric)`. To transform: modify and emit. To split: emit multiple. To filter: emit conditionally. | **Explicitly controlled by the plugin.** No magic. The processor owns the decision of what goes downstream. |
-| **Aggregator** | `add(metric)` is called by the **runtime** with a **copy** of each metric for accumulation. The runtime automatically forwards the original metric downstream — the aggregator never touches originals. When the time window fires, `push(acc)` emits additional summary metrics via `acc.addFields()`. | **Automatically forwarded by the runtime.** The aggregator only adds summaries. `drop_original = true` in config suppresses the automatic forwarding (handled by runtime, not the plugin). |
+| **Aggregator** | `add(metric)` is called by the **runtime** with a **copy** of each metric for accumulation. The runtime automatically forwards the original metric downstream — the aggregator never touches originals. When the time window fires, `push(acc)` emits additional summary metrics via `acc.addFields()`. | **Automatically forwarded by the runtime.** The aggregator only adds summaries. `drop_original = true` in config suppresses the automatic forwarding (handled by runtime, not the plugin). See **`drop_original` semantics** below. |
 
 **Why no auto-forward for processors:** Simpler contract, no ambiguity. The processor author always knows exactly what they're responsible for. A rename processor: receive → modify → `acc.addMetric(modified)`. A filter: receive → check → `acc.addMetric(metric)` or nothing. A splitter: receive → `acc.addMetric(a)` + `acc.addMetric(b)`. No hidden behaviours.
 
 **Why auto-forward for aggregators:** Aggregators are accumulation windows, not transforms. Their job is to add summaries alongside the raw data stream. Making every aggregator plugin duplicate the forwarding logic would be error-prone and pointless — the runtime handles it once, correctly.
+
+#### `drop_original` semantics with multiple aggregators
+
+`drop_original` is configured per-aggregator but evaluated globally by the runtime. **Originals are only suppressed when every aggregator has `drop_original = true`.** If any aggregator has `drop_original = false` (the default), originals flow through to all outputs.
+
+This is a deliberate design decision driven by the pipeline topology: all aggregators share a single output broadcaster. The runtime cannot selectively forward originals to some outputs (for aggregators that want them) while suppressing them for others — that would require per-aggregator output routing with separate output channel sets, which is not part of the MVP architecture.
+
+The `.every()` resolution is the safe default: when aggregators disagree, data is preserved. Dropping originals when one aggregator still expects them would cause silent data loss. Keeping originals when one aggregator doesn't need them is harmless — the aggregator's summaries are additive, not replacements.
+
+```
+# Example: two aggregators with conflicting drop_original
+[[aggregators.basicstats]]
+  period = "30s"
+  drop_original = true          # wants summaries only
+  namepass = ["motor_speed"]
+
+[[aggregators.basicstats]]
+  period = "60s"
+  drop_original = false         # wants originals + summaries
+  namepass = ["temperature"]
+
+# Result: originals flow through (because not all aggregators agree to drop)
+# Both aggregators still receive copies and produce summaries
+```
+
+If per-aggregator output routing is needed in the future (e.g., aggregator A feeds output X, aggregator B feeds output Y), the per-instance `drop_original` values are already wired through `PipelineOptions` and can be consumed by a routing layer without config changes.
 
 ### Plugin Definition
 

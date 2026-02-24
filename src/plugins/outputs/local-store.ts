@@ -8,7 +8,6 @@ import { mkdirSync, readdirSync, statSync, unlinkSync, existsSync, renameSync } 
 import { join } from "node:path";
 import type { Output } from "@core/plugin-types";
 import type { Metric, FieldValue } from "@core/metric";
-import { getLogger } from "@core/logger";
 
 // ---------------------------------------------------------------------------
 // Config schema (PRD §11)
@@ -228,7 +227,7 @@ export class LocalStoreOutput implements Output {
       try {
         db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
       } catch (err) {
-        getLogger().warn("checkpoint error during shutdown", { plugin: "local_store", error: (err as Error).message });
+        console.warn(`[local_store] checkpoint error during shutdown: ${(err as Error).message}`);
       }
       db.close();
     }
@@ -275,7 +274,9 @@ export class LocalStoreOutput implements Output {
       // If integrity_check is enabled, treat any open/init error as corruption.
       // Guard against unbounded recursion: only attempt recovery once (isRetry).
       if (this.config.integrity_check && existsSync(dbPath) && !isRetry) {
-        getLogger().error("corruption detected", { plugin: "local_store", file: filename, error: (err as Error).message });
+        console.error(
+          `[local_store] corruption detected in ${filename}: ${(err as Error).message}`,
+        );
         try { db?.close(); } catch { /* ignore close errors on corrupt DB */ }
         // Move corrupt file aside (PRD §8: "move corrupt file aside, create fresh")
         const corruptPath = `${dbPath}.corrupt.${Date.now()}`;
@@ -322,11 +323,11 @@ export class LocalStoreOutput implements Output {
     } catch (e) {
       const err = e as Error;
       if (err.message.includes("SQLITE_BUSY")) {
-        getLogger().warn("write blocked (SQLITE_BUSY), retrying once", { plugin: "local_store" });
+        console.warn("[local_store] write blocked (SQLITE_BUSY), retrying once");
         try {
           tx();
         } catch (retryErr) {
-          getLogger().error("write retry also failed", { plugin: "local_store", error: (retryErr as Error).message });
+          console.error("[local_store] write retry also failed:", (retryErr as Error).message);
           throw retryErr;
         }
       } else {

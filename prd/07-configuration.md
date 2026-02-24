@@ -54,7 +54,7 @@
 # Aggregator plugins
 [[aggregators.basicstats]]
   period = "30s"
-  drop_original = false
+  drop_original = false         # Per-aggregator, but evaluated globally — see §6
 
 # Output plugins (non-Hub destinations)
 [[outputs.http]]
