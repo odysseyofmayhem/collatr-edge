@@ -421,9 +421,11 @@ describe("Config parser", () => {
 
       // Should NOT throw — it's a warning, not an error
       expect(config.warnings.length).toBeGreaterThanOrEqual(1);
-      expect(config.warnings[0]).toContain("Hub credentials configured");
-      expect(config.warnings[0]).toContain("local_network");
-      expect(config.warnings[0]).toContain("prevents Hub connectivity");
+      expect(config.warnings[0]!.code).toBe("hub_policy_conflict");
+      expect(config.warnings[0]!.severity).toBe("warning");
+      expect(config.warnings[0]!.message).toContain("Hub credentials configured");
+      expect(config.warnings[0]!.message).toContain("local_network");
+      expect(config.warnings[0]!.message).toContain("prevents Hub connectivity");
     });
 
     it("hub disabled + policy blocks hub → no warning", () => {

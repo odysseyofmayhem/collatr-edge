@@ -150,6 +150,16 @@ export interface PluginInstanceConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Structured config warnings (for Phase 9 Web UI display)
+// ---------------------------------------------------------------------------
+
+export interface ConfigWarning {
+  code: string;           // Machine-readable: "hub_policy_conflict", "sparkplug_no_hub", etc.
+  severity: "warning";    // Future: could add "info" | "error"
+  message: string;        // Human-readable (existing string content)
+}
+
+// ---------------------------------------------------------------------------
 // Full parsed config
 // ---------------------------------------------------------------------------
 
@@ -162,7 +172,7 @@ export interface AgentConfig {
   outputs: Record<string, PluginInstanceConfig[]>;
   networkPolicy: NetworkPolicy;
   secretRefs: string[];
-  warnings: string[];
+  warnings: ConfigWarning[];
 }
 
 // ---------------------------------------------------------------------------
@@ -227,13 +237,15 @@ export function parseConfig(tomlText: string): AgentConfig {
 
   // 9. Collect warnings (non-fatal config issues)
   // PRD §10: "If Hub credentials are present but mode != 'connected', log a warning"
-  const warnings: string[] = [];
+  const warnings: ConfigWarning[] = [];
   const hubConfig = agentResult.data.hub;
   if (hubConfig?.enabled && !networkPolicy.egress.allowMqttHub) {
-    warnings.push(
-      `Hub credentials configured but network_policy ("${networkPolicy.mode}") prevents Hub connectivity. ` +
-      `Either change mode to "connected", set egress.allow_mqtt_hub = true, or disable the Hub.`,
-    );
+    warnings.push({
+      code: "hub_policy_conflict",
+      severity: "warning",
+      message: `Hub credentials configured but network_policy ("${networkPolicy.mode}") prevents Hub connectivity. ` +
+        `Either change mode to "connected", set egress.allow_mqtt_hub = true, or disable the Hub.`,
+    });
   }
 
   return {
