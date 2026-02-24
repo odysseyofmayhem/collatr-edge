@@ -1,0 +1,101 @@
+{
+  "phase": "8.5",
+  "name": "Pre-Web-UI Hardening",
+  "tasks": [
+    {
+      "id": "8.5.0",
+      "description": "Uncomment ticker clock jump warning log — logger has been available since Phase 6",
+      "prd_refs": ["13-scheduling.md"],
+      "steps": [
+        "Read src/core/ticker.ts — find the commented-out TODO at the clock jump detection site",
+        "Add import: import { getLogger } from './logger';",
+        "Replace the TODO comment with a real log call: getLogger().warn('system clock change detected, re-anchoring ticker', { component: 'ticker', wall_elapsed_ms: Math.round(wallElapsedMs), mono_elapsed_ms: Math.round(monoElapsedMs), interval_ms: interval })",
+        "Remove the 'Deferred until logging framework is integrated' comment",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: wire clock jump warning to logger"
+      ],
+      "passes": false
+    },
+    {
+      "id": "8.5.1",
+      "description": "Read swVersion from package.json instead of hardcoded '0.1.0' in plugin-factory.ts",
+      "prd_refs": ["09-hub-link-control-plane.md"],
+      "steps": [
+        "Read src/pipeline/plugin-factory.ts — find the swVersion: '0.1.0' TODO",
+        "Add import: import packageJson from '../../package.json'; (pattern from run.ts and version.ts)",
+        "Replace swVersion: '0.1.0', // TODO: read from package.json or build info with: swVersion: packageJson.version,",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: read swVersion from package.json for NBIRTH"
+      ],
+      "passes": false
+    },
+    {
+      "id": "8.5.2",
+      "description": "Add parseMqttServerUrl IPv6 test coverage",
+      "prd_refs": [],
+      "steps": [
+        "Read test/unit/plugins/outputs/mqtt.test.ts — find the parseMqttServerUrl describe block",
+        "Add test: parses mqtt://[::1]:1883 — expect host='::1', port=1883, protocol='mqtt'",
+        "Add test: parses mqtts://[2001:db8::1]:8883 — expect host='2001:db8::1', port=8883, protocol='mqtts'",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: add IPv6 URL tests for parseMqttServerUrl"
+      ],
+      "passes": false
+    },
+    {
+      "id": "8.5.3",
+      "description": "Structured config warnings — replace string[] with ConfigWarning[] for Phase 9 Web UI",
+      "prd_refs": ["07-configuration.md"],
+      "steps": [
+        "Read src/core/config.ts — understand the current warnings: string[] pattern",
+        "Read src/cli/commands/config-validate.ts — understand detectOutputPolicyConflicts() return type",
+        "Define ConfigWarning interface in config.ts: { code: string, severity: 'warning', message: string }",
+        "Export the ConfigWarning type",
+        "Change AgentConfig.warnings from string[] to ConfigWarning[]",
+        "Update the hub/policy conflict warning in parseConfig() to use ConfigWarning with code: 'hub_policy_conflict'",
+        "Update detectOutputPolicyConflicts() to return ConfigWarning[]",
+        "Assign codes: 'sparkplug_no_hub' for sparkplug without hub, 'mqtt_server_blocked' for blocked servers, 'hub_policy_conflict' for hub+policy conflict",
+        "Update config-validate.ts display logic to use warning.message for output (backward compat for display)",
+        "Update test/unit/core/config.test.ts — check warning objects have .code and .message",
+        "Update test/unit/cli/config-validate.test.ts — check warning objects have .code and .message",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: structured ConfigWarning type for Phase 9 Web UI"
+      ],
+      "passes": false
+    },
+    {
+      "id": "8.5.4",
+      "description": "Per-plugin metadata in runtime lifecycle logs — alias and pluginType in gather/flush/startup log lines",
+      "prd_refs": ["15-observability.md"],
+      "steps": [
+        "Read src/pipeline/runtime.ts — find the gather loop, flush loop, and startup log sites",
+        "In the gather loop: when logging gather completion or errors, include plugin alias and pluginType in the log context: { component: 'pipeline', plugin: input.alias ?? 'input', plugin_type: input.pluginType }",
+        "In the flush loop: when logging flush or write errors, include output alias: { component: 'pipeline', plugin: output.alias ?? 'output' }",
+        "In start(): log each input, processor, aggregator, output with its alias and type during startup (before the 'pipeline started' log)",
+        "Check existing tests in test/unit/pipeline/runtime.test.ts and test/unit/cli/run.test.ts — ensure any tests checking log output still pass (log format may have changed)",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: add plugin alias and type to runtime lifecycle logs"
+      ],
+      "passes": false
+    },
+    {
+      "id": "8.5.5",
+      "description": "integrity_check_on_startup as agent-level config — PRD §8 step 6",
+      "prd_refs": ["08-pipeline-lifecycle.md", "07-configuration.md"],
+      "steps": [
+        "Read PRD §8 step 6 for the spec on integrity_check_on_startup",
+        "Read src/core/config.ts AgentSchema — add integrity_check_on_startup: z.boolean().default(false)",
+        "Read src/pipeline/runtime.ts PipelineOptions — add integrityCheckOnStartup?: boolean",
+        "In src/pipeline/plugin-factory.ts buildPipeline(): read config.agent.integrity_check_on_startup and set on PipelineOptions",
+        "In local-store.ts: prefer agent-level setting over per-output setting. If PipelineOptions.integrityCheckOnStartup is true, use it. Per-output integrity_check still works as an override.",
+        "The simplest approach: pass the agent-level flag through the output factory. For local-store specifically, add an optional constructor parameter or a config field. Actually, the local-store already has integrity_check in its own config schema. The agent-level flag should be an alternative way to enable it. Simplest: in plugin-factory.ts, when creating local-store output, if agent.integrity_check_on_startup is true, merge it into the plugin config before Zod parsing: pluginConfig.integrity_check = pluginConfig.integrity_check ?? config.agent.integrity_check_on_startup",
+        "Update config-init.ts template: add commented-out integrity_check_on_startup under [agent] section",
+        "Add test in config.test.ts: agent.integrity_check_on_startup parses correctly",
+        "Add test in plugin-factory.test.ts: agent-level integrity check passes to local-store output config",
+        "Run bun test — ALL tests pass",
+        "Commit: phase-8.5: agent-level integrity_check_on_startup config (PRD §8 step 6)"
+      ],
+      "passes": false
+    }
+  ]
+}
