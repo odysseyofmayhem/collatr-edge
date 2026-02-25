@@ -669,6 +669,59 @@ Both approaches (SDK and raw) are functionally equivalent and verified working. 
 | SSE connection stays open continuously | **Pass** |
 | No console errors with RC.7 client | **Pass** |
 
+### Spike 3 — HTML Fragment Streaming (`datastar-patch-elements`)
+
+Verified server-rendered JSX fragments streamed via SSE and morphed into the DOM.
+
+**Kita JSX as `renderToString`:**
+- Kita JSX expressions evaluate to plain strings — no special `renderToString` call needed
+- `const fragment = <div id="foo"><p>bar</p></div>` produces `"<div id=\"foo\"><p>bar</p></div>"`
+- All whitespace is collapsed — output is always single-line, so SSE framing is trivial (no multi-line `data:` escaping needed)
+- JSX components work as plain functions returning strings:
+  ```tsx
+  function StatusPanel({ uptime }: { uptime: number }) {
+    return (<div id="status-panel"><p>Uptime: {uptime}s</p></div>) as string
+  }
+  ```
+
+**SDK `patchElements()` usage:**
+```typescript
+stream.patchElements(fragment)                              // default: morph by element ID
+stream.patchElements(html, { selector: '#target' })         // target by CSS selector
+stream.patchElements(html, { mode: 'append' })              // append instead of morph
+stream.patchElements('', { selector: '#x', mode: 'remove' }) // remove element
+```
+
+**Raw SSE format:**
+```
+event: datastar-patch-elements
+data: elements <div id="status-panel"><p>Uptime: 42s</p></div>
+
+```
+
+**Mixed signals + elements in one stream:**
+Both `patchSignals` and `patchElements` can be called on the same stream — Datastar processes each event independently. This is the pattern for Phase 9's dashboard stream (live metric values as signals, status panel as element patches).
+
+**DOM morph preserves local state:**
+Datastar's morph algorithm (default `outer` mode) preserves:
+- Input field values
+- Input focus
+- Scroll position
+- Elements not being patched
+
+An `<input>` inside a morphing container keeps its value and focus as long as its `id` attribute matches between the old and new HTML. This is critical for the Phase 9 dashboard (e.g., date picker or filter inputs alongside live-updating status panels).
+
+| Criterion | Result |
+|-----------|--------|
+| JSX rendered to string, delivered as SSE, morphed by Datastar | **Pass** |
+| Complex fragments (table, styled spans, 4 rows) morph correctly | **Pass** |
+| Element IDs matched for morphing | **Pass** |
+| Multi-line HTML works (Kita collapses to single line) | **Pass** — not needed, but confirmed |
+| Mixed signals + elements in one SSE stream | **Pass** |
+| DOM morph preserves input value and focus | **Pass** |
+| Raw `datastar-patch-elements` formatting works | **Pass** |
+| No console errors | **Pass** |
+
 ### Phase 9 Implications
 
 1. **All `data-on-*` attributes must use colon syntax** — grep for `data-on-` (hyphen) will catch mistakes.
@@ -676,3 +729,6 @@ Both approaches (SDK and raw) are functionally equivalent and verified working. 
 3. **One-shot actions use the same SSE format** — even a button click that hits the server returns a `text/event-stream` response. Datastar unifies the response format.
 4. **SDK vs raw is a Phase 9 decision** — both work. SDK is cleaner for complex responses (mixed signals + elements). Raw is simpler for signal-only streams.
 5. **The Datastar client bundle must be vendored** — download to `public/`, serve as static file, embed in compiled binary. No CDN at runtime.
+6. **Use signals for scalar live values, elements for complex UI** — temperature/pressure as signals (`data-text`), status tables as element patches (server-rendered JSX).
+7. **One SSE stream per dashboard section** — each `data-init` opens its own stream. A single stream can mix signals and element patches freely.
+8. **JSX components are just functions** — no special framework. `function MyPanel(props) { return <div>...</div> as string }` works for server-rendered fragments.
