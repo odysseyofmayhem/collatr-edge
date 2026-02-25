@@ -122,6 +122,7 @@ const WebUIConfigSchema = z.object({
   enabled: z.boolean().default(true),
   port: z.number().int().min(1).max(65535).default(8080),
   bind: z.string().default("127.0.0.1"),
+  admin_token: z.string().optional(),
 });
 
 export type WebUIConfig = z.infer<typeof WebUIConfigSchema>;

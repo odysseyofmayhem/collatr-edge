@@ -622,7 +622,7 @@ describe("PipelineWebUIAdapter.getCertificateInfo()", () => {
     expect(info.inputs[0]!.connectionState).toBe("disconnected");
   });
 
-  it("getTrustStorePath returns path derived from cert directory", () => {
+  it("getTrustStore returns SQLite trust store derived from cert directory", () => {
     const { certPath, keyPath } = generateTestCert(certTempDir);
     const opcuaInputs: OpcuaInputInfo[] = [{
       alias: "opcua1",
@@ -636,16 +636,23 @@ describe("PipelineWebUIAdapter.getCertificateInfo()", () => {
       mockOptions(), stateSource, null, opcuaInputs,
     );
 
-    const trustPath = adapter.getTrustStorePath();
-    expect(trustPath).toBeTruthy();
-    expect(trustPath).toContain("trusted-servers.json");
-    expect(trustPath).toContain(certTempDir);
+    const store = adapter.getTrustStore();
+    expect(store).not.toBeNull();
+    expect(store!.path).toContain("trust-store.db");
+    expect(store!.path).toContain(certTempDir);
+
+    // Verify the store is functional
+    store!.trust("opc.tcp://host:4840", "AB:CD");
+    const entry = store!.get("opc.tcp://host:4840");
+    expect(entry).not.toBeNull();
+    expect(entry!.thumbprint).toBe("AB:CD");
+    store!.close();
   });
 
-  it("getTrustStorePath returns null when no OPC-UA inputs have certs", () => {
+  it("getTrustStore returns null when no OPC-UA inputs have certs", () => {
     const stateSource = mockStateSource("running");
     const adapter = new PipelineWebUIAdapter(mockOptions(), stateSource);
 
-    expect(adapter.getTrustStorePath()).toBeNull();
+    expect(adapter.getTrustStore()).toBeNull();
   });
 });

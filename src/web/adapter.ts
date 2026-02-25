@@ -10,6 +10,7 @@ import type { FieldValue, Metric } from "../core/metric";
 import type { NetworkPolicy } from "../core/network-policy";
 import type { PipelineOptions, PipelineState } from "../pipeline/runtime";
 import type { LocalStoreOutput } from "../plugins/outputs/local-store";
+import { TrustStore } from "./trust-store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,8 +97,8 @@ export interface WebUIAdapter {
   /** OPC-UA certificate info for the certificate helper page. PRD Appendix D §D.3-D.4. */
   getCertificateInfo(): CertificateInfo;
 
-  /** Path to the trust store file for TOFU server certificate trust. Null if not applicable. */
-  getTrustStorePath(): string | null;
+  /** SQLite trust store for TOFU server certificate trust. Null if no OPC-UA inputs configured. */
+  getTrustStore(): TrustStore | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
   private _localStore: LocalStoreOutput | null;
   private _opcuaInputs: OpcuaInputInfo[];
   private _clientCertInfo: ClientCertInfo | null = null;
-  private _trustStorePath: string | null = null;
+  private _trustStore: TrustStore | null = null;
   private _liveMetrics: Map<string, LiveMetricValue> = new Map();
   private _lastActivity: Map<string, number> = new Map();
 
@@ -138,7 +139,8 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
     }
 
     const certPath = certInput.certificatePath;
-    this._trustStorePath = join(dirname(certPath), "trusted-servers.json");
+    const trustDbPath = join(dirname(certPath), "trust-store.db");
+    this._trustStore = new TrustStore(trustDbPath);
 
     if (!existsSync(certPath)) {
       this._clientCertInfo = { path: certPath, exists: false };
@@ -284,7 +286,7 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
     };
   }
 
-  getTrustStorePath(): string | null {
-    return this._trustStorePath;
+  getTrustStore(): TrustStore | null {
+    return this._trustStore;
   }
 }

@@ -57,7 +57,6 @@ function mockAdapter(overrides?: {
   localStore?: LocalStoreOutput | null;
   networkPolicy?: { mode: string; summary: string } | null;
   certInfo?: CertificateInfo;
-  trustStorePath?: string | null;
 }): WebUIAdapter {
   const state = overrides?.state ?? "running";
   const plugins = overrides?.plugins ?? [
@@ -68,7 +67,6 @@ function mockAdapter(overrides?: {
   const localStore = overrides?.localStore ?? null;
   const networkPolicy = overrides?.networkPolicy ?? null;
   const certInfo = overrides?.certInfo ?? { clientCert: null, inputs: [] };
-  const trustStorePath = overrides?.trustStorePath ?? null;
 
   return {
     getStatus: () => ({ state, startedAt: Date.now() - 60000 }),
@@ -84,7 +82,7 @@ function mockAdapter(overrides?: {
     handleMetric: () => {},
     getLocalStore: () => localStore,
     getCertificateInfo: () => certInfo,
-    getTrustStorePath: () => trustStorePath,
+    getTrustStore: () => null,
   };
 }
 

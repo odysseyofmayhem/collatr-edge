@@ -1,6 +1,6 @@
 # Phase 9 Progress — Local Web UI
 
-## Status: ALL TASKS COMPLETE — PENDING CODE REVIEW
+## Status: PHASE COMPLETE — CODE REVIEW FINDINGS ADDRESSED
 
 ## Tasks
 
@@ -66,6 +66,7 @@
 | 9.6 | 939 | 3240 | 60 |
 | 9.7 | 959 | 3296 | 61 |
 | 9.8 | 977 | 3365 | 63 |
+| Review fixes | 982 | 3390 | 64 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -235,3 +236,18 @@
 
 **Files created:** `test/integration/web-ui.test.ts`, `test/integration/web-ui-csv-perf.test.ts`
 **Files modified:** `plans/phase-9-tasks.json` (9.8 passes: true), `plans/phase-9-progress.md` (this file)
+
+### Code Review Fixes
+
+**Review:** `plans/phase-9-review.md` — 3 Must Fix, 7 Should Fix, 6 Nice to Have findings.
+
+**MF-1: TOFU trust store — JSON to SQLite (PRD Appendix D §D.4).** Created `src/web/trust-store.ts` with `TrustStore` class using `bun:sqlite`. Table schema: `trusted_servers (endpoint TEXT PRIMARY KEY, thumbprint TEXT NOT NULL, trusted_at TEXT NOT NULL)`. Uses WAL mode, UPSERT for atomic trust operations. Replaced JSON file read/write in `handleCertificateTrust` with SQLite operations. Updated adapter from `getTrustStorePath(): string | null` to `getTrustStore(): TrustStore | null`.
+
+**MF-2: Authentication on POST /api/certificates/trust (PRD §16).** Added `admin_token` optional field to `[webui]` config schema and `WebUIConfig` interface. The trust endpoint now requires `Authorization: Bearer <token>` when `admin_token` is configured. If not configured in TOML, `run.ts` auto-generates a random 32-character base64url token at startup and logs it. This protects the only write operation in the MVP Web UI.
+
+**MF-3: Sync I/O in async handler.** Resolved as side effect of MF-1 — the trust handler no longer uses `readFileSync`/`writeFileSync`. The `bun:sqlite` API is synchronous by design but non-blocking in Bun's runtime.
+
+**Files created:** `src/web/trust-store.ts`
+**Files modified:** `src/web/adapter.ts` (TrustStore import, interface change), `src/web/routes/certificates.ts` (SQLite trust store, auth check), `src/web/server.ts` (admin_token config, auth wiring), `src/core/config.ts` (admin_token schema), `src/cli/commands/run.ts` (auto-generate token)
+**Tests modified:** All 8 mock adapter files updated (`getTrustStorePath` → `getTrustStore`). `test/unit/web/routes/certificates.test.ts` rewritten: SQLite trust store verification, 4 new auth tests.
+**Tests:** 982 pass, 0 fail (5 new tests from review fixes)

@@ -179,6 +179,16 @@ export async function runCommand(
     const localStore = findLocalStore(pipelineOptions);
     const opcuaInputs = extractOpcuaInputInfo(config);
 
+    // Auto-generate admin_token if not configured (PRD §16: Admin auth on write endpoints)
+    if (!config.webui.admin_token) {
+      const bytes = new Uint8Array(24);
+      crypto.getRandomValues(bytes);
+      config.webui.admin_token = Buffer.from(bytes).toString("base64url");
+      log.info("Web UI admin token generated (not configured in [webui])", {
+        token: config.webui.admin_token,
+      });
+    }
+
     // Create adapter with pipeline as state source
     const stateSource = {
       get state() { return (pipeline as PipelineRuntime).state; },

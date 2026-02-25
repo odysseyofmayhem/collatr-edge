@@ -1,10 +1,10 @@
 // Unit tests: OPC-UA certificate helper page — routes and page rendering
 // Phase 9 Task 9.6: OPC-UA certificate helper page
 // PRD refs: Appendix D §D.3-D.4, §17 Local Web UI
+// Phase 9 review fixes: MF-1 (SQLite trust store), MF-2 (auth on trust endpoint)
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { readFileSync, existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
@@ -26,10 +26,9 @@ import type {
   PluginHealth,
   LiveMetricValue,
   CertificateInfo,
-  ClientCertInfo,
-  OpcuaConnectionInfo,
 } from "../../../../src/web/adapter";
 import type { PipelineState } from "../../../../src/pipeline/runtime";
+import { TrustStore } from "../../../../src/web/trust-store";
 
 // ---------------------------------------------------------------------------
 // Test certificate generation
@@ -67,11 +66,11 @@ function mockAdapter(overrides?: {
   plugins?: PluginHealth[];
   metrics?: Map<string, LiveMetricValue>;
   certInfo?: CertificateInfo;
-  trustStorePath?: string | null;
+  trustStore?: TrustStore | null;
 }): WebUIAdapter {
   const state = overrides?.state ?? "running";
   const certInfo = overrides?.certInfo ?? { clientCert: null, inputs: [] };
-  const trustStorePath = overrides?.trustStorePath ?? null;
+  const trustStore = overrides?.trustStore ?? null;
 
   return {
     getStatus: () => ({ state, startedAt: Date.now() - 60000 }),
@@ -88,7 +87,7 @@ function mockAdapter(overrides?: {
     handleMetric: () => {},
     getLocalStore: () => null,
     getCertificateInfo: () => certInfo,
-    getTrustStorePath: () => trustStorePath,
+    getTrustStore: () => trustStore,
   };
 }
 
@@ -286,47 +285,56 @@ describe("handleCertificateStatus", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/certificates/trust
+// POST /api/certificates/trust — SQLite trust store (MF-1) + auth (MF-2)
 // ---------------------------------------------------------------------------
 
 describe("handleCertificateTrust", () => {
-  it("returns 400 when endpoint is missing", async () => {
-    const adapter = mockAdapter({ trustStorePath: join(tempDir, "trust.json") });
-    const resp = await handleCertificateTrust(adapter, { thumbprint: "AB:CD" });
+  let trustStore: TrustStore;
+
+  beforeEach(() => {
+    trustStore = new TrustStore(join(tempDir, "trust-store.db"));
+  });
+
+  afterEach(() => {
+    try { trustStore.close(); } catch { /* already closed */ }
+  });
+
+  it("returns 400 when endpoint is missing", () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(adapter, { thumbprint: "AB:CD" });
     expect(resp.status).toBe(400);
   });
 
-  it("returns 400 when thumbprint is missing", async () => {
-    const adapter = mockAdapter({ trustStorePath: join(tempDir, "trust.json") });
-    const resp = await handleCertificateTrust(adapter, {
+  it("returns 400 when thumbprint is missing", () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host:4840",
     });
     expect(resp.status).toBe(400);
   });
 
-  it("returns 400 for invalid thumbprint format", async () => {
-    const adapter = mockAdapter({ trustStorePath: join(tempDir, "trust.json") });
-    const resp = await handleCertificateTrust(adapter, {
+  it("returns 400 for invalid thumbprint format", () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host:4840",
       thumbprint: "not-a-thumbprint",
     });
     expect(resp.status).toBe(400);
   });
 
-  it("returns 404 when no trust store path configured", async () => {
-    const adapter = mockAdapter({ trustStorePath: null });
-    const resp = await handleCertificateTrust(adapter, {
+  it("returns 404 when no trust store configured", () => {
+    const adapter = mockAdapter({ trustStore: null });
+    const resp = handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host:4840",
       thumbprint: "AB:CD:EF:12:34:56:78:90",
     });
     expect(resp.status).toBe(404);
   });
 
-  it("creates trust store and writes trusted server", async () => {
-    const trustPath = join(tempDir, "trusted-servers.json");
-    const adapter = mockAdapter({ trustStorePath: trustPath });
+  it("creates trust entry in SQLite store", async () => {
+    const adapter = mockAdapter({ trustStore });
 
-    const resp = await handleCertificateTrust(adapter, {
+    const resp = handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://192.168.10.50:4840",
       thumbprint: "AB:CD:EF:12:34:56:78:90",
     });
@@ -335,55 +343,97 @@ describe("handleCertificateTrust", () => {
     const body = await resp.json();
     expect(body.ok).toBe(true);
 
-    // Verify file was created
-    expect(existsSync(trustPath)).toBe(true);
-    const store = JSON.parse(readFileSync(trustPath, "utf-8"));
-    expect(store.trustedServers).toHaveLength(1);
-    expect(store.trustedServers[0].endpoint).toBe(
-      "opc.tcp://192.168.10.50:4840",
-    );
-    expect(store.trustedServers[0].thumbprint).toBe(
-      "AB:CD:EF:12:34:56:78:90",
-    );
+    // Verify entry in SQLite
+    const entry = trustStore.get("opc.tcp://192.168.10.50:4840");
+    expect(entry).not.toBeNull();
+    expect(entry!.endpoint).toBe("opc.tcp://192.168.10.50:4840");
+    expect(entry!.thumbprint).toBe("AB:CD:EF:12:34:56:78:90");
   });
 
-  it("updates existing trust entry for same endpoint", async () => {
-    const trustPath = join(tempDir, "trusted-servers.json");
-    const adapter = mockAdapter({ trustStorePath: trustPath });
+  it("updates existing trust entry for same endpoint", () => {
+    const adapter = mockAdapter({ trustStore });
 
     // Trust first server
-    await handleCertificateTrust(adapter, {
+    handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host:4840",
       thumbprint: "AA:BB:CC:DD",
     });
 
     // Trust same endpoint with different thumbprint
-    await handleCertificateTrust(adapter, {
+    handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host:4840",
       thumbprint: "11:22:33:44",
     });
 
-    const store = JSON.parse(readFileSync(trustPath, "utf-8"));
-    expect(store.trustedServers).toHaveLength(1); // Updated, not appended
-    expect(store.trustedServers[0].thumbprint).toBe("11:22:33:44");
+    const entries = trustStore.list();
+    expect(entries).toHaveLength(1); // Updated, not appended
+    expect(entries[0].thumbprint).toBe("11:22:33:44");
   });
 
-  it("appends new endpoint to existing trust store", async () => {
-    const trustPath = join(tempDir, "trusted-servers.json");
-    const adapter = mockAdapter({ trustStorePath: trustPath });
+  it("appends new endpoint to existing trust store", () => {
+    const adapter = mockAdapter({ trustStore });
 
-    await handleCertificateTrust(adapter, {
+    handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host1:4840",
       thumbprint: "AA:BB:CC:DD",
     });
 
-    await handleCertificateTrust(adapter, {
+    handleCertificateTrust(adapter, {
       endpoint: "opc.tcp://host2:4840",
       thumbprint: "11:22:33:44",
     });
 
-    const store = JSON.parse(readFileSync(trustPath, "utf-8"));
-    expect(store.trustedServers).toHaveLength(2);
+    const entries = trustStore.list();
+    expect(entries).toHaveLength(2);
+  });
+
+  // MF-2: Authentication tests
+  it("returns 401 when admin_token is set but no auth header provided", () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(
+      adapter,
+      { endpoint: "opc.tcp://host:4840", thumbprint: "AB:CD" },
+      "secret-token",
+      null,
+    );
+    expect(resp.status).toBe(401);
+  });
+
+  it("returns 401 when auth header has wrong token", () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(
+      adapter,
+      { endpoint: "opc.tcp://host:4840", thumbprint: "AB:CD" },
+      "secret-token",
+      "Bearer wrong-token",
+    );
+    expect(resp.status).toBe(401);
+  });
+
+  it("succeeds when auth header has correct token", async () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(
+      adapter,
+      { endpoint: "opc.tcp://host:4840", thumbprint: "AB:CD:EF:12" },
+      "secret-token",
+      "Bearer secret-token",
+    );
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("skips auth check when no admin_token configured", async () => {
+    const adapter = mockAdapter({ trustStore });
+    const resp = handleCertificateTrust(
+      adapter,
+      { endpoint: "opc.tcp://host:4840", thumbprint: "AB:CD:EF:12" },
+      undefined, // no token configured
+      null,      // no auth header
+    );
+    expect(resp.status).toBe(200);
+    const body = await resp.json();
+    expect(body.ok).toBe(true);
   });
 });
 
@@ -569,9 +619,9 @@ describe("certificate HTTP endpoints via Elysia", () => {
     expect(body).toContain("BEGIN CERTIFICATE");
   });
 
-  it("POST /api/certificates/trust succeeds with valid request", async () => {
-    const trustPath = join(tempDir, "trusted-servers.json");
-    const adapter = mockAdapter({ trustStorePath: trustPath });
+  it("POST /api/certificates/trust succeeds without auth when no token configured", async () => {
+    const store = new TrustStore(join(tempDir, "trust-store.db"));
+    const adapter = mockAdapter({ trustStore: store });
     const config: WebUIConfig = { enabled: true, port, bind: "127.0.0.1" };
     app = createWebServer(config, adapter);
     await startWebServer(app, config);
@@ -591,5 +641,51 @@ describe("certificate HTTP endpoints via Elysia", () => {
     expect(resp.status).toBe(200);
     const body = await resp.json();
     expect(body.ok).toBe(true);
+    store.close();
+  });
+
+  it("POST /api/certificates/trust requires auth when admin_token is configured", async () => {
+    const store = new TrustStore(join(tempDir, "trust-store-auth.db"));
+    const adapter = mockAdapter({ trustStore: store });
+    const config: WebUIConfig = {
+      enabled: true,
+      port,
+      bind: "127.0.0.1",
+      admin_token: "test-secret",
+    };
+    app = createWebServer(config, adapter);
+    await startWebServer(app, config);
+
+    // Without token — expect 401
+    const resp1 = await fetch(
+      `http://127.0.0.1:${port}/api/certificates/trust`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "opc.tcp://host:4840",
+          thumbprint: "AB:CD:EF:12",
+        }),
+      },
+    );
+    expect(resp1.status).toBe(401);
+
+    // With correct token — expect 200
+    const resp2 = await fetch(
+      `http://127.0.0.1:${port}/api/certificates/trust`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-secret",
+        },
+        body: JSON.stringify({
+          endpoint: "opc.tcp://host:4840",
+          thumbprint: "AB:CD:EF:12",
+        }),
+      },
+    );
+    expect(resp2.status).toBe(200);
+    store.close();
   });
 });

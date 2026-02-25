@@ -43,6 +43,7 @@ export interface WebUIConfig {
   enabled: boolean;
   port: number;
   bind: string;
+  admin_token?: string;
 }
 
 export const WEB_UI_DEFAULTS: WebUIConfig = {
@@ -129,8 +130,13 @@ export function createWebServer(
       handleCertificateDownload(adapter, query as { format?: string }),
     )
     .get("/api/certificates/status", () => handleCertificateStatus(adapter))
-    .post("/api/certificates/trust", async ({ body }) =>
-      handleCertificateTrust(adapter, (body ?? {}) as TrustRequest),
+    .post("/api/certificates/trust", ({ body, request }) =>
+      handleCertificateTrust(
+        adapter,
+        (body ?? {}) as TrustRequest,
+        config.admin_token,
+        request.headers.get("authorization"),
+      ),
     )
 
     // ── Static asset serving ────────────────────────────────────────────

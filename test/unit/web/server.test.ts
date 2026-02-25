@@ -24,7 +24,7 @@ function mockAdapter(): WebUIAdapter {
     handleMetric: () => {},
     getLocalStore: () => null,
     getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
-    getTrustStorePath: () => null,
+    getTrustStore: () => null,
   };
 }
 

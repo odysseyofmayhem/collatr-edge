@@ -8,9 +8,8 @@
 //   GET  /api/certificates/status            — per-input connection status
 //   POST /api/certificates/trust             — trust a server certificate (TOFU)
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
-import { dirname } from "node:path";
 import type { WebUIAdapter } from "../adapter";
 import { CertificatesPage } from "../views/certificates";
 
@@ -133,20 +132,23 @@ export interface TrustRequest {
   thumbprint?: string;
 }
 
-interface TrustedServer {
-  endpoint: string;
-  thumbprint: string;
-  trustedAt: string;
-}
-
-interface TrustStore {
-  trustedServers: TrustedServer[];
-}
-
-export async function handleCertificateTrust(
+export function handleCertificateTrust(
   adapter: WebUIAdapter,
   body: TrustRequest,
-): Promise<Response> {
+  adminToken?: string,
+  authHeader?: string | null,
+): Response {
+  // MF-2: Authenticate write operation (PRD §16: Admin role required)
+  if (adminToken) {
+    const expected = `Bearer ${adminToken}`;
+    if (!authHeader || authHeader !== expected) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized — valid admin token required" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   const { endpoint, thumbprint } = body;
 
   if (!endpoint || !thumbprint) {
@@ -164,8 +166,8 @@ export async function handleCertificateTrust(
     );
   }
 
-  const trustStorePath = adapter.getTrustStorePath();
-  if (!trustStorePath) {
+  const trustStore = adapter.getTrustStore();
+  if (!trustStore) {
     return new Response(
       JSON.stringify({ error: "No trust store configured — no OPC-UA inputs with certificate paths" }),
       { status: 404, headers: { "Content-Type": "application/json" } },
@@ -173,35 +175,7 @@ export async function handleCertificateTrust(
   }
 
   try {
-    // Read existing trust store or create new
-    let store: TrustStore = { trustedServers: [] };
-    if (existsSync(trustStorePath)) {
-      const raw = readFileSync(trustStorePath, "utf-8");
-      store = JSON.parse(raw) as TrustStore;
-    }
-
-    // Update or add the trusted server
-    const existing = store.trustedServers.findIndex(
-      (s) => s.endpoint === endpoint,
-    );
-    const entry: TrustedServer = {
-      endpoint,
-      thumbprint: thumbprint.toUpperCase(),
-      trustedAt: new Date().toISOString(),
-    };
-
-    if (existing >= 0) {
-      store.trustedServers[existing] = entry;
-    } else {
-      store.trustedServers.push(entry);
-    }
-
-    // Write trust store
-    const dir = dirname(trustStorePath);
-    if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    writeFileSync(trustStorePath, JSON.stringify(store, null, 2));
+    trustStore.trust(endpoint, thumbprint);
 
     return new Response(
       JSON.stringify({ ok: true, message: `Trusted server certificate for ${endpoint}` }),
