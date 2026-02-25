@@ -8,7 +8,7 @@
 |----|-------------|--------|
 | 9.0 | WebUIAdapter — read-only pipeline facade | ✅ |
 | 9.1 | Elysia HTTP server + static asset embedding | ✅ |
-| 9.2 | Dashboard page — JSX shell with Datastar | ⬜ |
+| 9.2 | Dashboard page — JSX shell with Datastar | ✅ |
 | 9.3 | SSE streaming endpoint | ⬜ |
 | 9.4 | ECharts trend charts | ⬜ |
 | 9.5 | CSV export with dual timestamps | ⬜ |
@@ -59,3 +59,26 @@
 | Baseline (Phase 8.5) | 773 | 2827 | 53 |
 | 9.0 | 799 | 2905 | 54 |
 | 9.1 | 814 | 2936 | 55 |
+| 9.2 | 835 | 3013 | 56 |
+
+### Task 9.2 — Dashboard Page (JSX Shell with Datastar)
+
+**Layout/Dashboard separation.** Created `src/web/views/layout.tsx` as the base HTML layout (head, scripts, styles) and `src/web/views/dashboard.tsx` as the main dashboard page component. The Layout wraps content with `<!DOCTYPE html>`, inline CSS, and script tags for Datastar (module), ECharts (UMD), and the line-chart web component.
+
+**Server-rendered initial state.** The dashboard renders initial values from the WebUIAdapter on first load — pipeline status badge, plugin health table, uptime, memory, network policy banner — so the page is immediately readable before SSE connects. No spinner or "Loading..." for the initial render.
+
+**Datastar RC.7 colon syntax.** All attributes follow RC.7 rules: `data-init` for SSE stream, `data-signals` (object form) for signal store, `data-text` for bindings, `data-effect` for ECharts bridge, `data-show` for conditional visibility. No hyphen-keyed attributes (`data-on-click`, `data-signals-name`, `data-on-load`) — these silently fail in RC.7.
+
+**Single SSE stream.** One `data-init="@get('/api/dashboard/stream')"` wraps the entire live section. This stream will deliver both `patchSignals` (live metric values + chart timestamps) and `patchElements` (status panel and plugin table fragments). Pattern validated in Spike 6.
+
+**Network policy banner.** Colour-coded per PRD §10: red for standalone, amber for local_network, green for connected. Uses `data-show` to hide the connected banner (non-connected modes are the warning states). When no network policy is configured, no banner renders at all.
+
+**ECharts bridge.** Four `collatr-line-chart` web components with `data-effect` bridge pattern (Spike 4 recommended). Each chart bridges via `document.getElementById('chart-X')?.addPoint($chartTs, parseFloat($signalName))`. The initial signal guard in the web component (`timestamp < 1e12`) prevents the 0-value data-effect from creating a bad data point.
+
+**CSV export form.** Plain HTML form with `method="get"` and `action="/api/export"` — no JavaScript involved in the export flow. Datastar is not needed for form submission (Spike 6 validated pattern).
+
+**Route registration.** Added `GET /` to `server.ts` returning `DashboardPage({ adapter })` as `text/html`. The adapter parameter is now used (was `_adapter` in 9.1).
+
+**Files created:** `src/web/views/layout.tsx`, `src/web/views/dashboard.tsx`
+**Files modified:** `src/web/server.ts` (dashboard route, adapter wiring)
+**Tests:** `test/unit/web/views/dashboard.test.ts` (21 tests — 18 JSX rendering, 3 HTTP route)

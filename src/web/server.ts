@@ -5,6 +5,7 @@
 import { Elysia } from "elysia";
 import { html } from "@elysiajs/html";
 import type { WebUIAdapter } from "./adapter.ts";
+import { DashboardPage } from "./views/dashboard.tsx";
 
 // ---------------------------------------------------------------------------
 // Static asset embedding (spike 5: import with { type: 'file' })
@@ -83,10 +84,18 @@ async function getGzipped(assetKey: string, filePath: string): Promise<Uint8Arra
 
 export function createWebServer(
   config: WebUIConfig,
-  _adapter: WebUIAdapter,
+  adapter: WebUIAdapter,
 ): WebApp {
   const app = new Elysia()
     .use(html())
+
+    // ── Dashboard route ─────────────────────────────────────────────────
+    .get("/", () => {
+      const page = DashboardPage({ adapter });
+      return new Response(page, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    })
 
     // ── Static asset serving ────────────────────────────────────────────
     .get("/static/*", async ({ params, request }) => {
