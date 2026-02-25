@@ -55,6 +55,7 @@ function mockAdapter(overrides?: {
       rss: 120_000_000,
     }),
     handleMetric: () => {},
+    getLocalStore: () => null,
   };
 }
 

@@ -5,6 +5,7 @@
 import type { FieldValue, Metric } from "../core/metric";
 import type { NetworkPolicy } from "../core/network-policy";
 import type { PipelineOptions, PipelineState } from "../pipeline/runtime";
+import type { LocalStoreOutput } from "../plugins/outputs/local-store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +47,9 @@ export interface WebUIAdapter {
 
   /** Metric sink callback — called by PipelineRuntime for each metric flowing to outputs. */
   handleMetric(metric: Metric): void;
+
+  /** Access to the local data store for historical queries and CSV export. Null if not configured. */
+  getLocalStore(): LocalStoreOutput | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,13 +60,19 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
   private _stateSource: PipelineStateSource;
   private _options: PipelineOptions;
   private _networkPolicy: NetworkPolicy | null;
+  private _localStore: LocalStoreOutput | null;
   private _liveMetrics: Map<string, LiveMetricValue> = new Map();
   private _lastActivity: Map<string, number> = new Map();
 
-  constructor(options: PipelineOptions, stateSource: PipelineStateSource) {
+  constructor(
+    options: PipelineOptions,
+    stateSource: PipelineStateSource,
+    localStore?: LocalStoreOutput | null,
+  ) {
     this._options = options;
     this._stateSource = stateSource;
     this._networkPolicy = options.networkPolicy ?? null;
+    this._localStore = localStore ?? null;
   }
 
   handleMetric(metric: Metric): void {
@@ -166,5 +176,9 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
       heapTotal: usage.heapTotal,
       rss: usage.rss,
     };
+  }
+
+  getLocalStore(): LocalStoreOutput | null {
+    return this._localStore;
   }
 }

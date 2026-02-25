@@ -1,5 +1,12 @@
 // CollatrLineChart — web component wrapping ECharts for time-series line data
-// Used in Spike 4 to validate Datastar → web component bridge patterns.
+// Phase 9 Task 9.4: historical data load + live append via SSE
+//
+// Spike findings applied:
+// - Bridge A (data-effect → addPoint) is the recommended pattern
+// - animation: false required for 1Hz+ updates (spike 4)
+// - yAxis min/max = dataMin/dataMax prevents anchoring at 0
+// - Guard timestamp < 1e12 to skip initial signal value of 0
+// - ResizeObserver for responsive resize
 
 class CollatrLineChart extends HTMLElement {
   static get observedAttributes() {
@@ -10,7 +17,8 @@ class CollatrLineChart extends HTMLElement {
     super()
     this.chart = null
     this.data = []
-    this.maxPoints = 200
+    this.maxPoints = 1000 // keep last 1000 live points in memory
+    this._historyLoaded = false
   }
 
   connectedCallback() {
@@ -21,7 +29,7 @@ class CollatrLineChart extends HTMLElement {
 
     this.chart = echarts.init(this)
     this.chart.setOption({
-      animation: false,
+      animation: false, // required for high-frequency updates (spike 4)
       grid: { left: 60, right: 20, top: 30, bottom: 30 },
       xAxis: {
         type: 'time',
@@ -30,7 +38,7 @@ class CollatrLineChart extends HTMLElement {
       yAxis: {
         type: 'value',
         name: this.getAttribute('unit') || '',
-        min: 'dataMin',
+        min: 'dataMin', // auto-scale to data range (spike 4)
         max: 'dataMax',
         splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
       },
@@ -63,6 +71,9 @@ class CollatrLineChart extends HTMLElement {
     // Observe resize
     this._resizeObserver = new ResizeObserver(() => this.chart?.resize())
     this._resizeObserver.observe(this)
+
+    // Load historical data from local store
+    this._loadHistory()
   }
 
   disconnectedCallback() {
@@ -91,7 +102,8 @@ class CollatrLineChart extends HTMLElement {
 
   _addPoint(timestamp, value) {
     // Guard: skip invalid data (e.g., initial signal value of 0)
-    if (!timestamp || !value || isNaN(value) || timestamp < 1000000000000) return
+    // Spike 4: check timestamp > 1e12 to filter epoch-zero
+    if (!timestamp || isNaN(value) || timestamp < 1000000000000) return
 
     this.data.push([timestamp, value])
     if (this.data.length > this.maxPoints) {
@@ -100,6 +112,37 @@ class CollatrLineChart extends HTMLElement {
     this.chart.setOption({
       series: [{ data: this.data }],
     })
+  }
+
+  // Fetch historical data from the /api/chart/history endpoint
+  async _loadHistory() {
+    const metric = this.getAttribute('metric')
+    if (!metric) return
+
+    try {
+      const res = await fetch(`/api/chart/history?metric=${encodeURIComponent(metric)}`)
+      if (!res.ok) return
+
+      const points = await res.json()
+      if (!Array.isArray(points) || points.length === 0) return
+
+      // Replace data with historical points
+      this.data = points.map(p => [p.timestamp, p.value])
+
+      // Trim to maxPoints (keep newest)
+      if (this.data.length > this.maxPoints) {
+        this.data = this.data.slice(this.data.length - this.maxPoints)
+      }
+
+      this._historyLoaded = true
+      if (this.chart) {
+        this.chart.setOption({
+          series: [{ data: this.data }],
+        })
+      }
+    } catch (e) {
+      console.warn('CollatrLineChart: failed to load history for', metric, e)
+    }
   }
 }
 

@@ -223,11 +223,13 @@ export function DashboardPage({ adapter }: DashboardProps): string {
             </div>
 
             {/* 5. Trend charts — ECharts web components + data-effect bridge */}
+            {/* metric attribute enables connectedCallback history fetch from /api/chart/history */}
             <div class="grid">
               <div class="card">
                 <h2>Temperature Trend</h2>
                 <collatr-line-chart
                   id="chart-temp"
+                  metric="temperature"
                   color="#3b82f6"
                   unit="&deg;C"
                   height="220px"
@@ -238,6 +240,7 @@ export function DashboardPage({ adapter }: DashboardProps): string {
                 <h2>Pressure Trend</h2>
                 <collatr-line-chart
                   id="chart-pressure"
+                  metric="pressure"
                   color="#ef4444"
                   unit="hPa"
                   height="220px"
@@ -250,6 +253,7 @@ export function DashboardPage({ adapter }: DashboardProps): string {
                 <h2>Line Speed Trend</h2>
                 <collatr-line-chart
                   id="chart-speed"
+                  metric="lineSpeed"
                   color="#22c55e"
                   unit="m/min"
                   height="220px"
@@ -260,6 +264,7 @@ export function DashboardPage({ adapter }: DashboardProps): string {
                 <h2>Humidity Trend</h2>
                 <collatr-line-chart
                   id="chart-humidity"
+                  metric="humidity"
                   color="#8b5cf6"
                   unit="%"
                   height="220px"

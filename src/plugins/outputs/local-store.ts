@@ -614,6 +614,29 @@ export class LocalStoreOutput implements Output {
   }
 
   // ---------------------------------------------------------------------------
+  // Metric name discovery (for chart selector)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * List all unique metric names across daily files.
+   * Uses the tag_index table for efficiency (no full-table scan of metrics).
+   */
+  listMetricNames(): string[] {
+    const files = this.listDailyFiles();
+    const names = new Set<string>();
+
+    for (const { filename } of files) {
+      const db = this.getOrOpenDb(filename);
+      const rows = db.prepare("SELECT DISTINCT name FROM tag_index").all() as { name: string }[];
+      for (const row of rows) {
+        names.add(row.name);
+      }
+    }
+
+    return [...names].sort();
+  }
+
+  // ---------------------------------------------------------------------------
   // Query (for testing and future use)
   // ---------------------------------------------------------------------------
 

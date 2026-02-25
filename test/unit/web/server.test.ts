@@ -22,6 +22,7 @@ function mockAdapter(): WebUIAdapter {
     getUptime: () => 0,
     getMemoryUsage: () => ({ heapUsed: 0, heapTotal: 0, rss: 0 }),
     handleMetric: () => {},
+    getLocalStore: () => null,
   };
 }
 

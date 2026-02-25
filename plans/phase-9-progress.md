@@ -10,7 +10,7 @@
 | 9.1 | Elysia HTTP server + static asset embedding | ✅ |
 | 9.2 | Dashboard page — JSX shell with Datastar | ✅ |
 | 9.3 | SSE streaming endpoint | ✅ |
-| 9.4 | ECharts trend charts | ⬜ |
+| 9.4 | ECharts trend charts | ✅ |
 | 9.5 | CSV export with dual timestamps | ⬜ |
 | 9.6 | OPC-UA certificate helper page | ⬜ |
 | 9.7 | Config parsing + CLI wiring | ⬜ |
@@ -61,6 +61,7 @@
 | 9.1 | 814 | 2936 | 55 |
 | 9.2 | 835 | 3013 | 56 |
 | 9.3 | 849 | 3045 | 57 |
+| 9.4 | 877 | 3096 | 58 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -99,3 +100,34 @@
 **Files created:** `src/web/views/layout.tsx`, `src/web/views/dashboard.tsx`
 **Files modified:** `src/web/server.ts` (dashboard route, adapter wiring)
 **Tests:** `test/unit/web/views/dashboard.test.ts` (21 tests — 18 JSX rendering, 3 HTTP route)
+
+### Task 9.4 — ECharts Trend Charts (Historical Load + Live SSE Append)
+
+**WebUIAdapter extension.** Added `getLocalStore(): LocalStoreOutput | null` to the `WebUIAdapter` interface and `PipelineWebUIAdapter` implementation. The adapter constructor now accepts an optional `LocalStoreOutput` parameter. This exposes the local data store for historical chart queries and metric name discovery without coupling routes to the store directly.
+
+**LocalStoreOutput extension.** Added `listMetricNames(): string[]` method that queries the `tag_index` table across all daily files for unique metric names. Uses `SELECT DISTINCT name FROM tag_index` — efficient since tag_index is a catalogue, not a full table scan of metrics.
+
+**Chart data endpoints.** Created `src/web/routes/chart-data.ts` with two endpoints:
+- `GET /api/chart/history?metric=<name>&from=<iso>&to=<iso>` — queries `LocalStoreOutput.query()` for the time range, filters by metric name, extracts the first numeric field value, and returns JSON `[{timestamp, value}, ...]`. Default range is last 24h (PRD §17: "last 24 hours"). Capped at 2000 points with uniform downsampling (every Nth point).
+- `GET /api/chart/metrics` — returns sorted list of available metric names from `LocalStoreOutput.listMetricNames()`.
+
+**Validation ordering.** Metric parameter and date validation happen before the local store null check. This ensures proper 400 errors for invalid requests even when no store is configured.
+
+**Downsample algorithm.** Simple uniform stride: `step = length / maxPoints`, take `floor(i * step)` for each output index. Always includes the first point (index 0) and replaces the last output point with the actual last data point to preserve the full time range. Adequate for trend visualisation — not a statistical downsample.
+
+**Line chart web component update.** Updated `src/web/public/components/line-chart.js`:
+- Added `_loadHistory()` in `connectedCallback` — fetches `/api/chart/history?metric=<attr>` on mount
+- Added `metric` attribute for specifying which metric to fetch history for
+- Increased `maxPoints` from 200 to 1000 (per task spec)
+- Historical data is loaded into `this.data` and rendered immediately
+- Live points from SSE `data-effect` bridge continue to append after history load
+- Guard: `timestamp < 1e12` filters initial signal 0-values (spike 4 finding)
+
+**Dashboard wiring.** Added `metric` attribute to all four `<collatr-line-chart>` elements in `dashboard.tsx`: `metric="temperature"`, `metric="pressure"`, `metric="lineSpeed"`, `metric="humidity"`. These names match the signal names used in the `data-effect` bridge expressions.
+
+**Mock adapter updates.** Added `getLocalStore: () => null` to all existing mock adapters in `stream.test.ts`, `dashboard.test.ts`, and `server.test.ts` to satisfy the extended interface.
+
+**Files created:** `src/web/routes/chart-data.ts`
+**Files modified:** `src/web/adapter.ts` (getLocalStore interface + impl), `src/plugins/outputs/local-store.ts` (listMetricNames), `src/web/server.ts` (chart-data route registration), `src/web/views/dashboard.tsx` (metric attributes on charts), `src/web/public/components/line-chart.js` (history loading, maxPoints 1000)
+**Tests modified:** `test/unit/web/routes/stream.test.ts`, `test/unit/web/views/dashboard.test.ts`, `test/unit/web/server.test.ts` (mock adapter updates)
+**Tests created:** `test/unit/web/routes/chart-data.test.ts` (28 tests — 5 downsample, 7 handleChartHistory, 3 handleChartMetrics, 4 HTTP endpoint, 9 line-chart.js validation)

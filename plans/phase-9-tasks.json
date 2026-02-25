@@ -168,7 +168,7 @@
         "Run bun test test/unit test/integration — ALL tests pass",
         "Commit: phase-9: trend charts with historical load and live SSE append (task 9.4)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "9.5",

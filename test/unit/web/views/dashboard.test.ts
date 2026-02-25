@@ -35,6 +35,7 @@ function mockAdapter(overrides?: {
     getUptime: () => 60000,
     getMemoryUsage: () => ({ heapUsed: 45_000_000, heapTotal: 80_000_000, rss: 120_000_000 }),
     handleMetric: () => {},
+    getLocalStore: () => null,
   };
 }
 
