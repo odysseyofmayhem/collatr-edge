@@ -294,7 +294,7 @@
         "Run bun test test/unit test/integration — ALL tests pass",
         "Commit: phase-9: integration tests for web UI endpoints and acceptance criteria (task 9.8)"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }

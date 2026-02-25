@@ -1,6 +1,6 @@
 # Phase 9 Progress — Local Web UI
 
-## Status: IN PROGRESS
+## Status: ALL TASKS COMPLETE — PENDING CODE REVIEW
 
 ## Tasks
 
@@ -14,7 +14,7 @@
 | 9.5 | CSV export with dual timestamps | ✅ |
 | 9.6 | OPC-UA certificate helper page | ✅ |
 | 9.7 | Config parsing + CLI wiring | ✅ |
-| 9.8 | Integration tests + acceptance criteria | ⬜ |
+| 9.8 | Integration tests + acceptance criteria | ✅ |
 
 ## Decisions & Notes
 
@@ -65,6 +65,7 @@
 | 9.5 | 904 | 3152 | 59 |
 | 9.6 | 939 | 3240 | 60 |
 | 9.7 | 959 | 3296 | 61 |
+| 9.8 | 977 | 3365 | 63 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -206,3 +207,31 @@
 **Files modified:** `src/core/config.ts` (WebUI schema + parsing), `src/cli/commands/run.ts` (web UI lifecycle), `src/cli/commands/config-init.ts` (template generation), `src/cli/commands/config-validate.ts` (validation output)
 **Tests created:** `test/unit/web/config.test.ts` (9 tests — defaults, explicit values, validation errors, integration)
 **Tests modified:** `test/unit/cli/run.test.ts` (+4 web UI tests), `test/unit/cli/config-init.test.ts` (+4 webui template tests), `test/unit/cli/config-validate.test.ts` (+3 webui validation tests), `test/unit/pipeline/plugin-factory.test.ts` (mock config updated)
+
+### Task 9.8 — Integration Tests + Acceptance Criteria
+
+**Two integration test files created.** Separated main web UI integration tests from the CSV performance test per task spec (timing-sensitive test in its own file).
+
+**`test/integration/web-ui.test.ts` (17 tests).** Covers:
+- Dashboard HTML: GET / returns HTML with Datastar attributes (data-init, data-text, data-signals, data-effect, collatr-line-chart, /api/export)
+- Static assets: datastar.js and echarts.min.js served with correct Content-Type
+- SSE streaming: patchSignals with metric data within 3s, patchElements with status panel HTML, 2+ signal events within 4s
+- Chart data: /api/chart/metrics returns JSON array, /api/chart/history returns data points from local store, /api/chart/metrics returns metric names from store
+- CSV export: /api/export with populated store returns CSV with timestamp_utc + timestamp_local + timestamp_ns columns, Content-Disposition with filename, empty time range returns 204
+- Certificates: /certificates returns certificate page HTML
+- Network policy: standalone banner visible with class and text, connected banner has data-show="false" and class="banner-connected" (not banner-standalone)
+- Web UI lifecycle: enabled=false means nothing listens, full start → verify → stop → verify cycle
+- WebUI disabled: connection refused when no server is created
+
+**`test/integration/web-ui-csv-perf.test.ts` (1 test).** Acceptance criteria Scenario 4: inserts 3600 metrics (1 per second for 1 hour) in batches of 360, then exports via HTTP and verifies:
+- CSV header contains timestamp_utc, timestamp_local, timestamp_ns
+- 3601 lines (header + 3600 data rows)
+- First row timestamp is 2024-01-15T12:00:00.000Z, last is 2024-01-15T12:59:59.000Z
+- Export completes in <5 seconds via full HTTP roundtrip
+
+**CSS vs element class assertion.** The "banner not visible" test initially failed because `banner-standalone` appears in the inline CSS class definitions (`.banner-standalone { ... }`). Fixed by asserting against the element's actual `class="banner-..."` attribute rather than the substring.
+
+**SSE timing.** The "2+ signal events" test initially timed out because `collectSSEEvents` ran for 5000ms, hitting bun:test's 5000ms default timeout. Reduced collection to 4000ms — still captures 3+ signal events (1s interval) with margin.
+
+**Files created:** `test/integration/web-ui.test.ts`, `test/integration/web-ui-csv-perf.test.ts`
+**Files modified:** `plans/phase-9-tasks.json` (9.8 passes: true), `plans/phase-9-progress.md` (this file)
