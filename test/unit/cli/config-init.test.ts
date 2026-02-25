@@ -315,6 +315,46 @@ describe("config init command", () => {
   // Template content checks
   // =========================================================================
 
+  // =========================================================================
+  // WebUI section in templates (Task 9.7)
+  // =========================================================================
+
+  it("connected template includes active [webui] section", () => {
+    const template = generateConfigTemplate("connected");
+    expect(template).toMatch(/^\[webui\]/m);
+    expect(template).toContain("enabled = true");
+    expect(template).toContain("port = 8080");
+    expect(template).toContain('bind = "127.0.0.1"');
+  });
+
+  it("local_network template includes active [webui] section", () => {
+    const template = generateConfigTemplate("local_network");
+    expect(template).toMatch(/^\[webui\]/m);
+    expect(template).toContain("enabled = true");
+    expect(template).toContain("port = 8080");
+  });
+
+  it("standalone template has [webui] section commented out", () => {
+    const template = generateConfigTemplate("standalone");
+    // Should NOT have an active [webui] line
+    expect(template).not.toMatch(/^\[webui\]/m);
+    // Should have a commented version
+    expect(template).toContain("# [webui]");
+    expect(template).toContain("#   enabled = true");
+  });
+
+  it("generated standalone template with [webui] commented still parses", () => {
+    const template = generateConfigTemplate("standalone");
+    const config = parseConfig(template);
+    // Default webui since it's commented out
+    expect(config.webui.enabled).toBe(true);
+    expect(config.webui.port).toBe(8080);
+  });
+
+  // =========================================================================
+  // Template content checks
+  // =========================================================================
+
   it("template includes commented examples for modbus, opcua, file", () => {
     const template = generateConfigTemplate("local_network");
     // Commented modbus example

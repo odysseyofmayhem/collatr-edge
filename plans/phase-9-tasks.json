@@ -265,7 +265,7 @@
         "Run bun test test/unit test/integration — ALL tests pass",
         "Commit: phase-9: webui config parsing, plugin factory wiring, CLI integration (task 9.7)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "9.8",

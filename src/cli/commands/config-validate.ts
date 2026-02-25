@@ -57,25 +57,33 @@ export async function configValidateCommand(
   process.stdout.write("\u2713 [agent] section valid\n");
   process.stdout.write("\u2713 [global_tags] valid\n");
 
-  // 2. Network policy
+  // 2. Web UI settings (PRD §17)
+  const webui = config.webui;
+  process.stdout.write(`\u2713 [webui] ${webui.enabled ? "enabled" : "disabled"}`);
+  if (webui.enabled) {
+    process.stdout.write(` — http://${webui.bind}:${webui.port}`);
+  }
+  process.stdout.write("\n");
+
+  // 3. Network policy
   const np = config.networkPolicy;
   process.stdout.write(`\u2713 [network_policy] ${np.summary()}\n`);
   process.stdout.write(`  mode: ${np.mode}\n`);
   process.stdout.write(`  egress: DNS ${np.egress.allowDns ? "allowed" : "blocked"}, Hub ${np.egress.allowMqttHub ? "allowed" : "blocked"}, ${np.egress.unrestricted ? "unrestricted" : `${np.egress.allowedHosts.length} allowed hosts`}\n`);
   process.stdout.write(`  ingress: WebUI ${np.ingress.allowLocalWebui ? "allowed" : "blocked"}, API ${np.ingress.allowLocalApi ? "allowed" : "blocked"}, CIDRs ${np.ingress.allowedCidrs.join(", ") || "(none)"}\n`);
 
-  // 3. Report config warnings (hub/policy conflicts, etc.)
+  // 4. Report config warnings (hub/policy conflicts, etc.)
   for (const warning of config.warnings) {
     process.stdout.write(`WARNING: ${warning.message}\n`);
   }
 
-  // 3a. Detect output/policy conflicts (MQTT servers blocked by policy)
+  // 4a. Detect output/policy conflicts (MQTT servers blocked by policy)
   const outputConflicts = detectOutputPolicyConflicts(config);
   for (const warning of outputConflicts) {
     process.stdout.write(`WARNING: ${warning.message}\n`);
   }
 
-  // 4. Validate each plugin instance against its Zod schema
+  // 5. Validate each plugin instance against its Zod schema
   let hasErrors = false;
 
   const sections: Array<{
@@ -132,7 +140,7 @@ export async function configValidateCommand(
     }
   }
 
-  // 5. Report secret references as warnings
+  // 6. Report secret references as warnings
   if (config.secretRefs.length > 0) {
     process.stdout.write(
       `\u26A0 Secret references found (not resolved during validation):\n`,
@@ -142,7 +150,7 @@ export async function configValidateCommand(
     }
   }
 
-  // 6. Final verdict
+  // 7. Final verdict
   if (hasErrors) {
     process.stdout.write("\u2717 Configuration has errors\n");
     return 1;

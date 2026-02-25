@@ -114,6 +114,22 @@ const durationString = z.string().check(
   "Invalid duration string. Expected format: <number><unit> (e.g., \"10s\", \"5m\", \"100ms\", \"1h\")"),
 );
 
+// ---------------------------------------------------------------------------
+// Zod schema for [webui] section (PRD §17)
+// ---------------------------------------------------------------------------
+
+const WebUIConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  port: z.number().int().min(1).max(65535).default(8080),
+  bind: z.string().default("127.0.0.1"),
+});
+
+export type WebUIConfig = z.infer<typeof WebUIConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// Zod schema for [agent] section (PRD §7)
+// ---------------------------------------------------------------------------
+
 const AgentSchema = z.object({
   hostname: z.string().optional(),
   interval: durationString.default("10s"),
@@ -171,6 +187,7 @@ export interface AgentConfig {
   aggregators: Record<string, PluginInstanceConfig[]>;
   outputs: Record<string, PluginInstanceConfig[]>;
   networkPolicy: NetworkPolicy;
+  webui: WebUIConfig;
   secretRefs: string[];
   warnings: ConfigWarning[];
 }
@@ -220,22 +237,32 @@ export function parseConfig(tomlText: string): AgentConfig {
     networkPolicy = resolveNetworkPolicy();
   }
 
-  // 5. Extract global_tags
+  // 5. Parse [webui] section (PRD §17 — optional, defaults to enabled on port 8080)
+  const rawWebUI = raw.webui as Record<string, unknown> | undefined;
+  const webuiResult = WebUIConfigSchema.safeParse(rawWebUI ?? {});
+  if (!webuiResult.success) {
+    const issues = webuiResult.error.issues
+      .map((i) => `  ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid [webui] config:\n${issues}`);
+  }
+
+  // 6. Extract global_tags
   const globalTags = (raw.global_tags ?? {}) as Record<string, string>;
 
-  // 6. Extract plugin sections
+  // 7. Extract plugin sections
   const inputs = extractPluginSection(raw, "inputs");
   const processors = extractPluginSection(raw, "processors");
   const aggregators = extractPluginSection(raw, "aggregators");
   const outputs = extractPluginSection(raw, "outputs");
 
-  // 7. Validate alias uniqueness across ALL plugin instances
+  // 8. Validate alias uniqueness across ALL plugin instances
   validateAliasUniqueness(inputs, processors, aggregators, outputs);
 
-  // 8. Detect secret references (mark, don't resolve)
+  // 9. Detect secret references (mark, don't resolve)
   const secretRefs = findSecretRefs(raw);
 
-  // 9. Collect warnings (non-fatal config issues)
+  // 10. Collect warnings (non-fatal config issues)
   // PRD §10: "If Hub credentials are present but mode != 'connected', log a warning"
   const warnings: ConfigWarning[] = [];
   const hubConfig = agentResult.data.hub;
@@ -256,6 +283,7 @@ export function parseConfig(tomlText: string): AgentConfig {
     aggregators,
     outputs,
     networkPolicy,
+    webui: webuiResult.data,
     secretRefs,
     warnings,
   };

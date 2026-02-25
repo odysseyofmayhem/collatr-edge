@@ -589,6 +589,73 @@ sparkplug = true
   });
 
   // =========================================================================
+  // WebUI settings in validation output (Task 9.7)
+  // =========================================================================
+
+  it("validation output shows webui settings with default config", async () => {
+    const path = writeConfig(
+      "webui-default.toml",
+      `
+[agent]
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("[webui] enabled");
+    expect(out).toContain("http://127.0.0.1:8080");
+  });
+
+  it("validation output shows webui disabled when enabled=false", async () => {
+    const path = writeConfig(
+      "webui-disabled.toml",
+      `
+[agent]
+
+[webui]
+enabled = false
+
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("[webui] disabled");
+    expect(out).not.toContain("http://");
+  });
+
+  it("validation output shows custom webui port and bind", async () => {
+    const path = writeConfig(
+      "webui-custom.toml",
+      `
+[agent]
+
+[webui]
+port = 9090
+bind = "0.0.0.0"
+
+[[inputs.internal]]
+[[outputs.stdout]]
+`,
+    );
+
+    const code = await configValidateCommand(path);
+    const out = stdout();
+
+    expect(code).toBe(0);
+    expect(out).toContain("[webui] enabled");
+    expect(out).toContain("http://0.0.0.0:9090");
+  });
+
+  // =========================================================================
   // Mixed valid and invalid plugins
   // =========================================================================
 

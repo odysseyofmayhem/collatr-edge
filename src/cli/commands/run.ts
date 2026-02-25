@@ -1,11 +1,14 @@
 // CollatrEdge — run command
-// PRD refs: §8 Pipeline Lifecycle, §14 Error Handling, §18 CLI
+// PRD refs: §8 Pipeline Lifecycle, §14 Error Handling, §17 Web UI, §18 CLI
 
 import { loadConfigFile, type AgentConfig } from "../../core/config";
 import { createLogger, getLogger, setGlobalLogger } from "../../core/logger";
 import type { LogLevel } from "../../core/logger";
 import { buildPipeline as buildPipelineFn } from "../../pipeline/plugin-factory";
 import { PipelineRuntime, type PipelineOptions } from "../../pipeline/runtime";
+import { PipelineWebUIAdapter, type OpcuaInputInfo } from "../../web/adapter";
+import { createWebServer, startWebServer, stopWebServer, type WebApp } from "../../web/server";
+import { LocalStoreOutput } from "../../plugins/outputs/local-store";
 import packageJson from "../../../package.json";
 
 // ---------------------------------------------------------------------------
@@ -16,6 +19,12 @@ import packageJson from "../../../package.json";
 export interface PipelineLike {
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Register a metric sink (Phase 9: Web UI live metrics). Only available on PipelineRuntime. */
+  registerMetricSink?(callback: (metric: import("../../core/metric").Metric) => void): void;
+  /** Pipeline state (Phase 9). Only available on PipelineRuntime. */
+  readonly state?: string;
+  /** Epoch ms when started (Phase 9). Only available on PipelineRuntime. */
+  readonly startedAt?: number | null;
 }
 
 /**
@@ -61,6 +70,47 @@ const DEFAULT_DEPS: RunCommandDeps = {
   forceExit: (code) => process.exit(code),
   shutdownTimeoutMs: 30_000,
 };
+
+// ---------------------------------------------------------------------------
+// Web UI helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the LocalStoreOutput instance from pipeline outputs.
+ * Returns null if no local_store output is configured.
+ */
+function findLocalStore(options: PipelineOptions): LocalStoreOutput | null {
+  for (const output of options.outputs) {
+    if (output.plugin instanceof LocalStoreOutput) {
+      return output.plugin;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract OPC-UA input info from parsed config for the certificate helper page.
+ * Returns empty array if no OPC-UA inputs are configured.
+ */
+function extractOpcuaInputInfo(config: AgentConfig): OpcuaInputInfo[] {
+  const opcuaInstances = config.inputs.opcua ?? [];
+  return opcuaInstances.map((instance) => ({
+    alias: (instance.alias as string) ?? "opcua",
+    endpoint: instance.endpoint as string,
+    certificatePath: instance.certificate as string | undefined,
+    privateKeyPath: instance.private_key as string | undefined,
+  }));
+}
+
+/**
+ * Determine whether the Web UI should be created.
+ * Checks webui.enabled and network_policy.ingress.allow_local_webui.
+ */
+function shouldStartWebUI(config: AgentConfig): boolean {
+  if (!config.webui.enabled) return false;
+  if (!config.networkPolicy.ingress.allowLocalWebui) return false;
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Run command
@@ -111,9 +161,45 @@ export async function runCommand(
     return 1;
   }
 
-  // 5. Create runtime and start (PRD §8 startup sequence: connect outputs,
-  //    start service inputs, begin gather loops)
+  // 5. Create runtime
   const pipeline = d.createRuntime(pipelineOptions);
+
+  // 6. Set up Web UI adapter before pipeline.start() so metric sink is ready
+  //    (the sink must be registered before start() wires it to the broadcaster)
+  let webApp: WebApp | null = null;
+  const webEnabled = shouldStartWebUI(config);
+
+  if (!config.webui.enabled) {
+    // Disabled in config — no logging needed
+  } else if (!config.networkPolicy.ingress.allowLocalWebui) {
+    log.info("Web UI disabled by network_policy (ingress.allow_local_webui = false)");
+  }
+
+  if (webEnabled && pipeline.registerMetricSink) {
+    const localStore = findLocalStore(pipelineOptions);
+    const opcuaInputs = extractOpcuaInputInfo(config);
+
+    // Create adapter with pipeline as state source
+    const stateSource = {
+      get state() { return (pipeline as PipelineRuntime).state; },
+      get startedAt() { return (pipeline as PipelineRuntime).startedAt; },
+    };
+    const adapter = new PipelineWebUIAdapter(
+      pipelineOptions,
+      stateSource,
+      localStore,
+      opcuaInputs,
+    );
+
+    // Register metric sink so live dashboard values are populated
+    pipeline.registerMetricSink(adapter.handleMetric.bind(adapter));
+
+    // Create the Elysia app (routes registered but not listening yet)
+    webApp = createWebServer(config.webui, adapter);
+  }
+
+  // 7. Start pipeline (PRD §8 startup sequence: connect outputs,
+  //    start service inputs, begin gather loops)
   const startTime = Date.now();
   try {
     await pipeline.start();
@@ -122,7 +208,19 @@ export async function runCommand(
     return 1;
   }
 
-  // 6. Log pipeline started + summary
+  // 8. Start Web UI after pipeline is running (PRD §17: served by same Bun process)
+  if (webApp) {
+    try {
+      await startWebServer(webApp, config.webui);
+      log.info(`Web UI available at http://${config.webui.bind}:${config.webui.port}`);
+    } catch (err) {
+      // Web UI failure doesn't prevent pipeline from running
+      log.error("failed to start web UI", { error: (err as Error).message });
+      webApp = null;
+    }
+  }
+
+  // 9. Log pipeline started + summary
   log.info("Pipeline started", {
     inputs: pipelineOptions.inputs.length,
     processors: pipelineOptions.processors.length,
@@ -130,14 +228,14 @@ export async function runCommand(
     outputs: pipelineOptions.outputs.length,
   });
 
-  // 7. Await termination signal (SIGINT or SIGTERM)
+  // 10. Await termination signal (SIGINT or SIGTERM)
   const { promise: signalPromise, cleanup: cleanupSignal } = d.awaitSignal();
   const signal = await signalPromise;
   cleanupSignal();
 
   log.info(`Received ${signal}, shutting down...`);
 
-  // 8. Register double-signal force exit + shutdown timeout (PRD §8 shutdown)
+  // 11. Register double-signal force exit + shutdown timeout (PRD §8 shutdown)
   const forceExitHandler = () => {
     log.warn("Received second signal, forcing exit");
     d.forceExit(1);
@@ -152,14 +250,24 @@ export async function runCommand(
   // Unref so the timer doesn't keep the process alive if shutdown completes first
   shutdownTimer.unref();
 
-  // 9. Graceful shutdown (PRD §8 shutdown sequence)
+  // 12. Stop Web UI first (stop accepting requests before pipeline shutdown)
+  if (webApp) {
+    try {
+      stopWebServer(webApp);
+      log.debug("Web UI stopped");
+    } catch (err) {
+      log.error("web UI stop error", { error: (err as Error).message });
+    }
+  }
+
+  // 13. Graceful pipeline shutdown (PRD §8 shutdown sequence)
   try {
     await pipeline.stop();
   } catch (err) {
     log.error("shutdown error", { error: (err as Error).message });
   }
 
-  // 10. Cleanup
+  // 14. Cleanup
   clearTimeout(shutdownTimer);
   process.off("SIGINT", forceExitHandler);
   process.off("SIGTERM", forceExitHandler);

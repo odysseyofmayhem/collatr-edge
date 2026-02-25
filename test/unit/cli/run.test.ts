@@ -37,6 +37,7 @@ const MOCK_CONFIG: AgentConfig = {
   aggregators: {},
   outputs: {},
   networkPolicy: resolveNetworkPolicy(),
+  webui: { enabled: true, port: 8080, bind: "127.0.0.1" },
   secretRefs: [],
   warnings: [],
 };
@@ -303,6 +304,82 @@ describe("run command", () => {
     expect(forceExitCode).toBe(1);
     expect(stderr()).toContain("Shutdown timeout");
   }, 5_000);
+
+  // =========================================================================
+  // Web UI integration (Task 9.7)
+  // =========================================================================
+
+  it("webui.enabled=false → no web UI URL in logs", async () => {
+    const noWebConfig: AgentConfig = {
+      ...MOCK_CONFIG,
+      webui: { enabled: false, port: 8080, bind: "127.0.0.1" },
+    };
+    const code = await runCommand("/any/path.toml", mockDeps({
+      loadConfig: async () => noWebConfig,
+    }));
+    expect(code).toBe(0);
+    // Should NOT log any web UI URL
+    expect(stderr()).not.toContain("Web UI available at");
+  });
+
+  it("ingress allow_local_webui=false → logs reason, no web server", async () => {
+    const blockedConfig: AgentConfig = {
+      ...MOCK_CONFIG,
+      networkPolicy: resolveNetworkPolicy({
+        mode: "standalone",
+        ingress: { allow_local_webui: false },
+      }),
+    };
+    const code = await runCommand("/any/path.toml", mockDeps({
+      loadConfig: async () => blockedConfig,
+    }));
+    expect(code).toBe(0);
+    expect(stderr()).toContain("Web UI disabled by network_policy");
+    expect(stderr()).not.toContain("Web UI available at");
+  });
+
+  it("webui enabled with registerMetricSink → web server starts and stops", async () => {
+    let metricSinkRegistered = false;
+    let webStarted = false;
+
+    // Use a random high port to avoid conflicts
+    const testPort = 18000 + Math.floor(Math.random() * 1000);
+    const webConfig: AgentConfig = {
+      ...MOCK_CONFIG,
+      webui: { enabled: true, port: testPort, bind: "127.0.0.1" },
+    };
+
+    const code = await runCommand("/any/path.toml", {
+      ...mockDeps({
+        loadConfig: async () => webConfig,
+      }),
+      createRuntime: () => ({
+        start: async () => {},
+        stop: async () => {},
+        registerMetricSink: () => { metricSinkRegistered = true; },
+        state: "running" as const,
+        startedAt: Date.now(),
+      }),
+    });
+
+    expect(code).toBe(0);
+    expect(metricSinkRegistered).toBe(true);
+    // The web UI URL should be logged
+    expect(stderr()).toContain("Web UI available at");
+    expect(stderr()).toContain(String(testPort));
+  });
+
+  it("webui enabled but registerMetricSink missing → no web server (mock pipeline)", async () => {
+    // Default mock pipeline has no registerMetricSink — web UI should be skipped
+    const code = await runCommand("/any/path.toml", mockDeps());
+    expect(code).toBe(0);
+    // No web UI URL logged (mock doesn't support it)
+    expect(stderr()).not.toContain("Web UI available at");
+  });
+
+  // =========================================================================
+  // Double signal / force exit
+  // =========================================================================
 
   it("double signal during shutdown → forceExit called", async () => {
     let forceExitCode: number | null = null;

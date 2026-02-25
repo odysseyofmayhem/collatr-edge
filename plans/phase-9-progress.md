@@ -13,7 +13,7 @@
 | 9.4 | ECharts trend charts | ✅ |
 | 9.5 | CSV export with dual timestamps | ✅ |
 | 9.6 | OPC-UA certificate helper page | ✅ |
-| 9.7 | Config parsing + CLI wiring | ⬜ |
+| 9.7 | Config parsing + CLI wiring | ✅ |
 | 9.8 | Integration tests + acceptance criteria | ⬜ |
 
 ## Decisions & Notes
@@ -64,6 +64,7 @@
 | 9.4 | 877 | 3096 | 58 |
 | 9.5 | 904 | 3152 | 59 |
 | 9.6 | 939 | 3240 | 60 |
+| 9.7 | 959 | 3296 | 61 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -179,3 +180,29 @@
 **Files modified:** `src/web/adapter.ts` (new types, extended interface + impl), `src/web/server.ts` (certificate route registration)
 **Tests modified:** `test/unit/web/adapter.test.ts` (+8 getCertificateInfo tests), `test/unit/web/views/dashboard.test.ts`, `test/unit/web/routes/stream.test.ts`, `test/unit/web/server.test.ts`, `test/unit/web/routes/export.test.ts`, `test/unit/web/routes/chart-data.test.ts` (mock adapter updates)
 **Tests created:** `test/unit/web/routes/certificates.test.ts` (27 tests — 3 client info, 5 download, 2 status, 7 trust, 5 page rendering, 5 HTTP endpoints)
+
+### Task 9.7 — Config Parsing, Plugin Factory Wiring, CLI Integration
+
+**[webui] config section.** Added `WebUIConfigSchema` Zod schema to `src/core/config.ts` with three fields: `enabled` (boolean, default true), `port` (integer 1–65535, default 8080), `bind` (string, default "127.0.0.1"). The section is optional — absent `[webui]` defaults to enabled on port 8080 bound to localhost. Added `webui: WebUIConfig` to the `AgentConfig` interface and parsing in `parseConfig()`.
+
+**Run command web UI lifecycle.** Updated `src/cli/commands/run.ts` with full web UI lifecycle wiring:
+- Before `pipeline.start()`: creates `PipelineWebUIAdapter` and registers the metric sink on the runtime (via `registerMetricSink`). This ensures the broadcaster observer is set before the output broadcaster is created.
+- After `pipeline.start()`: starts the Elysia HTTP server and logs the URL.
+- Before `pipeline.stop()`: stops the web server first (stop accepting requests before draining the pipeline).
+- Web UI failure is non-fatal — logged but doesn't prevent the pipeline from running.
+
+**Ingress enforcement.** `network_policy.ingress.allow_local_webui` is checked at startup. When false, the web server is not created and a clear log message explains why. When `webui.enabled=false`, no message is logged (explicit user choice).
+
+**LocalStoreOutput and OPC-UA extraction.** Helper functions in run.ts extract the `LocalStoreOutput` instance from pipeline outputs (instanceof check) and `OpcuaInputInfo` from raw config (alias, endpoint, certificate/private_key paths). These are passed to the adapter constructor for chart data queries and the certificate helper page.
+
+**PipelineLike extension.** Extended the `PipelineLike` interface with optional `registerMetricSink`, `state`, and `startedAt` properties. The web UI setup is conditional on `pipeline.registerMetricSink` being defined — test mocks without it simply skip web UI (existing tests unaffected).
+
+**Config init templates.** Added `[webui]` section to generated templates:
+- Connected and local_network modes: active `[webui]` section with defaults and a comment suggesting `"0.0.0.0"` for LAN access.
+- Standalone mode: commented out `[webui]` section (web UI may not be wanted in air-gapped deployments, but can be enabled by uncommenting).
+
+**Config validate output.** Added `[webui]` line showing enabled/disabled status and the URL when enabled (e.g., `✓ [webui] enabled — http://127.0.0.1:8080`).
+
+**Files modified:** `src/core/config.ts` (WebUI schema + parsing), `src/cli/commands/run.ts` (web UI lifecycle), `src/cli/commands/config-init.ts` (template generation), `src/cli/commands/config-validate.ts` (validation output)
+**Tests created:** `test/unit/web/config.test.ts` (9 tests — defaults, explicit values, validation errors, integration)
+**Tests modified:** `test/unit/cli/run.test.ts` (+4 web UI tests), `test/unit/cli/config-init.test.ts` (+4 webui template tests), `test/unit/cli/config-validate.test.ts` (+3 webui validation tests), `test/unit/pipeline/plugin-factory.test.ts` (mock config updated)
