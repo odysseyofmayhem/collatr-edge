@@ -9,7 +9,7 @@
 | 9.0 | WebUIAdapter — read-only pipeline facade | ✅ |
 | 9.1 | Elysia HTTP server + static asset embedding | ✅ |
 | 9.2 | Dashboard page — JSX shell with Datastar | ✅ |
-| 9.3 | SSE streaming endpoint | ⬜ |
+| 9.3 | SSE streaming endpoint | ✅ |
 | 9.4 | ECharts trend charts | ⬜ |
 | 9.5 | CSV export with dual timestamps | ⬜ |
 | 9.6 | OPC-UA certificate helper page | ⬜ |
@@ -60,6 +60,23 @@
 | 9.0 | 799 | 2905 | 54 |
 | 9.1 | 814 | 2936 | 55 |
 | 9.2 | 835 | 3013 | 56 |
+| 9.3 | 849 | 3045 | 57 |
+
+### Task 9.3 — SSE Streaming Endpoint
+
+**SDK-based SSE stream.** Used `ServerSentEventGenerator.stream()` from `@starfederation/datastar-sdk/web`. The SDK returns a standard `Response` with correct SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`). Elysia passes the Response through to the client. `keepalive: true` keeps the stream open until the client disconnects.
+
+**Mixed signals + elements in one stream.** One SSE connection serves both `patchSignals` (live metric values every 1s) and `patchElements` (status panel HTML every 2s). Pattern validated in Spike 3 and Spike 6. The stream loop uses a tick counter — signals on every tick, element patches on every 2nd tick.
+
+**Signal flattening.** Adapter metrics are flattened into `{metricName_fieldName: value, chartTs: epochMs}` format. Signal names are sanitised to valid JS identifiers (special characters → underscores). `chartTs` tracks the latest metric timestamp in milliseconds for the ECharts data-effect bridge.
+
+**Fragment components.** Created `src/web/views/fragments/status-panel.tsx` (full status panel with uptime, memory, and plugin table) and `src/web/views/fragments/plugin-table.tsx` (standalone plugin health table). The status panel fragment has `id="status-panel"` matching the dashboard target div for morph.
+
+**Client disconnect handling.** The stream loop is wrapped in try/catch — when the client disconnects, the SDK throws (or the controller is cancelled), and we break out cleanly. No resource leaks.
+
+**Files created:** `src/web/routes/stream.ts`, `src/web/views/fragments/status-panel.tsx`, `src/web/views/fragments/plugin-table.tsx`
+**Files modified:** `src/web/server.ts` (SSE route registration)
+**Tests:** `test/unit/web/routes/stream.test.ts` (14 tests — 6 flattenMetrics unit, 7 SSE endpoint with metrics, 1 empty metrics handling)
 
 ### Task 9.2 — Dashboard Page (JSX Shell with Datastar)
 

@@ -6,6 +6,7 @@ import { Elysia } from "elysia";
 import { html } from "@elysiajs/html";
 import type { WebUIAdapter } from "./adapter.ts";
 import { DashboardPage } from "./views/dashboard.tsx";
+import { createDashboardStream } from "./routes/stream.ts";
 
 // ---------------------------------------------------------------------------
 // Static asset embedding (spike 5: import with { type: 'file' })
@@ -96,6 +97,9 @@ export function createWebServer(
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     })
+
+    // ── SSE dashboard stream ───────────────────────────────────────────
+    .get("/api/dashboard/stream", () => createDashboardStream(adapter))
 
     // ── Static asset serving ────────────────────────────────────────────
     .get("/static/*", async ({ params, request }) => {
