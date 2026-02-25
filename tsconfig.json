@@ -13,6 +13,10 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
+    // JSX — Kita (server-side JSX producing HTML strings)
+    "jsx": "react-jsx",
+    "jsxImportSource": "@kitajs/html",
+
     // Best practices
     "strict": true,
     "skipLibCheck": true,
@@ -34,5 +38,5 @@
       "@buffer/*": ["src/buffer/*"]
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "test/**/*.tsx"]
 }

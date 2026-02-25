@@ -18,6 +18,9 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@elysiajs/html": "^1.4.0",
+    "@starfederation/datastar-sdk": "^1.0.0-RC.3",
+    "elysia": "^1.4.25",
     "modbus-serial": "^8.0.23",
     "mqtt": "^5.15.0",
     "msgpackr": "^1.11.8",
