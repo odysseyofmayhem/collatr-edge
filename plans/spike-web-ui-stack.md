@@ -500,3 +500,179 @@ CollatrEdge Phase 9 is the final MVP phase: a local Web UI served by the same Bu
 - The spike does NOT need to connect to a real pipeline. Mock data throughout.
 - After spike passes, the findings inform the PRD §17 rewrite and Phase 9 task plan.
 - Key question from spike: what's the best Datastar → web component bridge pattern? This will shape Phase 9 architecture.
+
+---
+
+## Spike Findings — Datastar RC.7 Reference
+
+> Captured during Spikes 1–2. This section is the authoritative reference for Datastar usage in Phase 9.
+
+### Distribution & Versioning
+
+**The Datastar browser client is NOT distributed via npm.** The npm `@starfederation/datastar` package is deprecated and stuck at beta.11. The current release is **RC.7**.
+
+| Component | Source | Version | Install |
+|-----------|--------|---------|---------|
+| Browser client | jsdelivr (download, self-host) | 1.0.0-RC.7 | `curl -o public/datastar.js https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.0-RC.7/bundles/datastar.js` |
+| Server SDK | npm | 1.0.0-RC.3 (latest on npm) | `bun add @starfederation/datastar-sdk` |
+| SDK source | GitHub | RC.4+ | https://github.com/starfederation/datastar-typescript |
+
+The browser bundle is ~31KB uncompressed. It must be loaded as `<script type="module">`.
+
+**Version alignment matters.** The beta.11 client and RC SDK use different SSE event names and are incompatible. Always ensure the client bundle and server SDK are on the same protocol generation (both RC, or both beta).
+
+### Attribute Syntax — RC.7 Breaking Changes
+
+RC.7 **requires colon syntax** for keyed attributes. The hyphen syntax from beta.11 no longer works.
+
+**Why:** RC.7 parses `data-*` attribute names by splitting on `:` to extract the plugin name and key. `data-on:click` → plugin `on`, key `click` (correct). `data-on-click` → plugin `on-click` (no such plugin — silently ignored).
+
+| Purpose | RC.7 Syntax | beta.11 Syntax (BROKEN) |
+|---------|-------------|------------------------|
+| Event handler | `data-on:click="expr"` | ~~`data-on-click="expr"`~~ |
+| Signal (individual) | `data-signals:name="value"` | ~~`data-signals-name="value"`~~ |
+| Signal (object) | `data-signals="{count: 0, msg: ''}"` | — |
+| Text binding | `data-text="$signalName"` | same |
+| Auto-init SSE | `data-init="@get('/endpoint')"` | ~~`data-on-load="@get(...)"`~~ |
+| Server action | `@get('/endpoint')` | same |
+| Show/hide | `data-show="$flag"` | same |
+| Computed | `data-computed:name="expr"` | — |
+| Indicator | `data-indicator:loading` | — |
+| Interval polling | `data-on-interval__duration.5s="@get('/endpoint')"` | — |
+
+### Kita JSX Compatibility
+
+Kita JSX (`@kitajs/html` via `@elysiajs/html`) handles colon attributes correctly:
+
+```tsx
+// This works — Kita outputs data-on:click in the HTML
+<button data-on:click="$count++">+1</button>
+<div data-signals:count="0" data-text="$count">0</div>
+```
+
+JSX namespaced names (`namespace:local`) are valid JSX syntax. Kita passes them through to HTML output unchanged. No workarounds needed.
+
+### SSE Event Protocol — RC.7
+
+Event names changed from beta.11:
+
+| RC.7 Event | beta.11 Event (BROKEN) | Purpose |
+|------------|------------------------|---------|
+| `datastar-patch-signals` | ~~`datastar-merge-signals`~~ | Update client signal store |
+| `datastar-patch-elements` | ~~`datastar-merge-fragments`~~ | Morph DOM elements |
+
+**Signal patch format:**
+```
+event: datastar-patch-signals
+data: signals {"temperature":"21.5","pressure":"1013.2"}
+
+```
+
+**Element patch format:**
+```
+event: datastar-patch-elements
+data: elements <div id="status-panel"><p>Uptime: 42s</p></div>
+
+```
+
+Required response headers:
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+### Server SDK Usage (RC.3 /web)
+
+Import the `/web` path for Bun compatibility — it returns standard `Response` objects:
+
+```typescript
+import { ServerSentEventGenerator } from '@starfederation/datastar-sdk/web'
+```
+
+**Continuous SSE stream (SDK approach):**
+```typescript
+app.get('/api/stream', () => {
+  return ServerSentEventGenerator.stream(async (stream) => {
+    let i = 0
+    try {
+      while (true) {
+        stream.patchSignals(JSON.stringify({ temperature: '21.5', tick: i }))
+        i++
+        await Bun.sleep(1000)
+      }
+    } catch {
+      // Client disconnected
+    }
+  }, { keepalive: true })
+})
+```
+
+- `stream()` returns a `Response` directly — Elysia passes it through
+- `patchSignals()` takes a **JSON string** (not an object) — use `JSON.stringify()`
+- `keepalive: true` keeps the stream open after the callback's first await
+- Headers are set automatically by the SDK
+
+**One-shot SSE response (no SDK needed):**
+```typescript
+app.get('/api/action', () => {
+  return new Response(
+    `event: datastar-patch-signals\ndata: signals ${JSON.stringify({ count: 42 })}\n\n`,
+    { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } }
+  )
+})
+```
+
+### Raw ReadableStream Alternative (No SDK)
+
+For continuous streaming without the SDK dependency:
+
+```typescript
+app.get('/api/stream', () => {
+  const encoder = new TextEncoder()
+  const readable = new ReadableStream({
+    async start(controller) {
+      let i = 0
+      try {
+        while (true) {
+          const signals = JSON.stringify({ temperature: '21.5', tick: i })
+          controller.enqueue(encoder.encode(
+            `event: datastar-patch-signals\ndata: signals ${signals}\n\n`
+          ))
+          i++
+          await Bun.sleep(1000)
+        }
+      } catch { /* client disconnected */ }
+    },
+  })
+  return new Response(readable, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' },
+  })
+})
+```
+
+Both approaches (SDK and raw) are functionally equivalent and verified working. The SDK adds convenience (auto-headers, `patchSignals`/`patchElements` helpers) but the raw approach has zero dependency risk.
+
+### Spike 1–2 Verified Behaviour
+
+| Criterion | Result |
+|-----------|--------|
+| Kita JSX renders `data-*` attributes with colons intact | **Pass** |
+| Datastar RC.7 hydrates page from `data-signals` | **Pass** |
+| Client-side signal expressions (`$count++`) | **Pass** |
+| `@get('/endpoint')` triggers server roundtrip | **Pass** |
+| Server returns `datastar-patch-signals`, client applies | **Pass** |
+| `data-init` auto-opens SSE stream on page load | **Pass** |
+| SDK `stream()` returns `Response` usable by Elysia | **Pass** |
+| Raw `ReadableStream` SSE streams without buffering | **Pass** |
+| `Transfer-Encoding: chunked` on HTTP/1.1 | **Pass** |
+| SSE connection stays open continuously | **Pass** |
+| No console errors with RC.7 client | **Pass** |
+
+### Phase 9 Implications
+
+1. **All `data-on-*` attributes must use colon syntax** — grep for `data-on-` (hyphen) will catch mistakes.
+2. **`data-init` is the SSE entry point** — each dashboard section that needs live data gets `data-init="@get('/api/...')"`.
+3. **One-shot actions use the same SSE format** — even a button click that hits the server returns a `text/event-stream` response. Datastar unifies the response format.
+4. **SDK vs raw is a Phase 9 decision** — both work. SDK is cleaner for complex responses (mixed signals + elements). Raw is simpler for signal-only streams.
+5. **The Datastar client bundle must be vendored** — download to `public/`, serve as static file, embed in compiled binary. No CDN at runtime.
