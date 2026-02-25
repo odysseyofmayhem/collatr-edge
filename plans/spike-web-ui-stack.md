@@ -826,6 +826,102 @@ class CollatrLineChart extends HTMLElement {
 | Initial signal guard prevents bad data points | **Pass** |
 | No console errors | **Pass** |
 
+### Spike 5 — Static Asset Embedding in Compiled Binary
+
+Verified all client-side assets embed in a `bun build --compile` binary and serve correctly without filesystem access.
+
+**The Problem:**
+`import.meta.dir` becomes `/$bunfs/root/` inside a compiled binary. The current `Bun.file(import.meta.dir + '/../public/...')` pattern breaks — the path doesn't exist.
+
+**The Solution: `import ... with { type: "file" }`**
+
+Each static asset must be imported with the `{ type: "file" }` attribute. Bun reads the file at build time, embeds the bytes in the executable, and returns a `$bunfs/` path at runtime.
+
+```typescript
+// These imports embed the file bytes in the compiled binary
+import datastarPath from '../public/datastar.js' with { type: 'file' }
+import echartsPath from '../public/echarts.min.js' with { type: 'file' }
+import lineChartPath from '../public/components/line-chart.js' with { type: 'file' }
+
+// In dev: returns real filesystem path e.g. "/Users/.../public/datastar.js"
+// In compiled binary: returns "$bunfs/datastar.js"
+// Both work with Bun.file() transparently
+
+const assetMap: Record<string, string> = {
+  'datastar.js': datastarPath,
+  'echarts.min.js': echartsPath,
+  'components/line-chart.js': lineChartPath,
+}
+
+app.get('/static/*', ({ params }) => {
+  const embeddedPath = assetMap[params['*']]
+  if (!embeddedPath) return new Response('Not Found', { status: 404 })
+  return new Response(Bun.file(embeddedPath), {
+    headers: {
+      'Content-Type': mimeType(params['*']),
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  })
+})
+```
+
+**`Bun.embeddedFiles` API:**
+```typescript
+// Enumerate all embedded files at runtime (useful for debugging)
+for (const blob of Bun.embeddedFiles) {
+  console.log(`${blob.name} — ${blob.size} bytes`)
+}
+```
+
+**Build command:**
+```bash
+bun build --compile --minify --asset-naming="[name].[ext]" src/server.tsx --outfile collatr-edge
+```
+- `--asset-naming="[name].[ext]"` removes content hashes from embedded filenames (default adds `-a1b2c3d4` hash)
+
+**Binary Size:**
+
+| Binary | Size |
+|--------|------|
+| Baseline (empty Bun server) | 57 MB |
+| With Elysia + Datastar + ECharts + web component | 59 MB |
+| **Asset overhead** | **1.48 MB** |
+
+The Bun runtime itself is ~57MB. All web UI assets add only 1.48MB — well under the 5MB threshold.
+
+**Compression:**
+
+Bun does NOT auto-compress responses. Compression must be handled manually.
+
+| Asset | Raw | Gzip | Brotli | Gzip % | Brotli % |
+|-------|-----|------|--------|--------|----------|
+| datastar.js | 30 KB | 12 KB | — | 60% | — |
+| echarts.min.js | 1,092 KB | 355 KB | 287 KB | 67% | 74% |
+| line-chart.js | 3 KB | 1.2 KB | — | 61% | — |
+| **Total** | **1,125 KB** | **368 KB** | — | — | — |
+
+- `Bun.gzipSync()` is built-in and fast (17ms for 1MB ECharts bundle)
+- Brotli available via Node's `zlib.brotliCompressSync()`
+- Phase 9 strategy: gzip on first request, cache in memory. Assets have `Cache-Control: immutable` so browser caches forever.
+
+**Detection pattern:**
+```typescript
+const isCompiled = import.meta.dir.startsWith('/$bunfs')
+```
+
+| Criterion | Result |
+|-----------|--------|
+| Compiled binary serves all static assets | **Pass** |
+| Assets load correctly in browser (no 404s) | **Pass** |
+| Datastar functional (signals, events) from compiled binary | **Pass** |
+| ECharts functional (renders chart) from compiled binary | **Pass** |
+| `Bun.embeddedFiles` enumerates 3 embedded files | **Pass** |
+| `Cache-Control: immutable` header present | **Pass** |
+| Binary size overhead < 5MB | **Pass** — 1.48 MB |
+| Gzip compression works (`Bun.gzipSync`) | **Pass** — 60-68% reduction |
+| Brotli compression works (`zlib.brotliCompressSync`) | **Pass** — 74% reduction |
+| `import.meta.dir` detection (dev vs compiled) | **Pass** |
+
 ### Phase 9 Implications
 
 1. **All `data-on-*` attributes must use colon syntax** — grep for `data-on-` (hyphen) will catch mistakes.
@@ -842,3 +938,7 @@ class CollatrLineChart extends HTMLElement {
 12. **Guard against initial signal values** — `data-signals="{val: 0}"` fires `data-effect` immediately with `0`. Web components must guard against invalid initial data.
 13. **Set `yAxis: { min: 'dataMin', max: 'dataMax' }`** — prevents ECharts from anchoring the Y-axis at 0, which compresses real data into a narrow band.
 14. **Set `animation: false` on charts** — required for high-frequency updates (1Hz+) to prevent animation queue buildup.
+15. **Embed static assets with `import ... with { type: "file" }`** — `Bun.file(import.meta.dir + '/...')` breaks in compiled binaries. Every static file needs an explicit import.
+16. **Build with `--asset-naming="[name].[ext]"`** — removes content hashes from embedded filenames so the asset map stays clean.
+17. **Gzip on first request, cache in memory** — `Bun.gzipSync()` is fast (17ms for 1MB). Serve with `Content-Encoding: gzip` and `Cache-Control: immutable`. Browser caches forever.
+18. **Total client payload: ~368KB gzipped** — ECharts (355KB) + Datastar (12KB) + web components (1KB). One-time load.
