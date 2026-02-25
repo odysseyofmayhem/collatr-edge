@@ -159,4 +159,36 @@ describe("Broadcaster", () => {
     // Should not throw
     await b.broadcast(42, (v) => v);
   });
+
+  it("setObserver() receives every broadcast value before consumers", async () => {
+    const b = new Broadcaster<number>();
+    const ch = new Channel<number>({ capacity: 10 });
+    b.addConsumer(ch);
+
+    const observed: number[] = [];
+    b.setObserver((value) => observed.push(value));
+
+    await b.broadcast(1, (v) => v);
+    await b.broadcast(2, (v) => v);
+    await b.broadcast(3, (v) => v);
+    b.closeAll();
+
+    expect(observed).toEqual([1, 2, 3]);
+  });
+
+  it("setObserver(null) removes observer", async () => {
+    const b = new Broadcaster<number>();
+    const ch = new Channel<number>({ capacity: 10 });
+    b.addConsumer(ch);
+
+    const observed: number[] = [];
+    b.setObserver((value) => observed.push(value));
+
+    await b.broadcast(1, (v) => v);
+    b.setObserver(null);
+    await b.broadcast(2, (v) => v);
+    b.closeAll();
+
+    expect(observed).toEqual([1]);
+  });
 });

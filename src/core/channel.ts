@@ -96,6 +96,7 @@ export class Channel<T> {
 
 export class Broadcaster<T> {
   private consumers: Set<Channel<T>> = new Set();
+  private _observer: ((value: T) => void) | null = null;
 
   addConsumer(channel: Channel<T>): void {
     this.consumers.add(channel);
@@ -105,7 +106,17 @@ export class Broadcaster<T> {
     this.consumers.delete(channel);
   }
 
+  /**
+   * Set an observer that receives every broadcast value (before copying to consumers).
+   * Used by WebUIAdapter to tap into the metric stream without creating a consumer channel.
+   * The observer must NOT mutate the value.
+   */
+  setObserver(observer: ((value: T) => void) | null): void {
+    this._observer = observer;
+  }
+
   async broadcast(value: T, copy: (v: T) => T): Promise<void> {
+    if (this._observer) this._observer(value);
     for (const channel of this.consumers) {
       await channel.send(copy(value));
     }

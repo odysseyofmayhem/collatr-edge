@@ -13,6 +13,12 @@ import type { HubLink } from "../hub/hub-link";
 import type { NetworkPolicy } from "../core/network-policy";
 
 // ---------------------------------------------------------------------------
+// Pipeline state (used by WebUIAdapter)
+// ---------------------------------------------------------------------------
+
+export type PipelineState = "starting" | "running" | "stopping" | "stopped";
+
+// ---------------------------------------------------------------------------
 // Pipeline configuration
 // ---------------------------------------------------------------------------
 
@@ -402,8 +408,37 @@ export class PipelineRuntime {
   private inputChannel: Channel<Metric> | null = null;
   private serviceInputs: { plugin: ServiceInput }[] = [];
 
+  // Pipeline state tracking (Phase 9: Web UI adapter)
+  private _state: PipelineState = "stopped";
+  private _startedAt: number | null = null;
+  private _metricSink: ((metric: Metric) => void) | null = null;
+
   constructor(options: PipelineOptions) {
     this.options = options;
+  }
+
+  /** Current pipeline lifecycle state. */
+  get state(): PipelineState {
+    return this._state;
+  }
+
+  /** Epoch milliseconds when start() was called, or null if never started. */
+  get startedAt(): number | null {
+    return this._startedAt;
+  }
+
+  /** Read-only access to pipeline options (used by WebUIAdapter for plugin metadata). */
+  get pipelineOptions(): PipelineOptions {
+    return this.options;
+  }
+
+  /**
+   * Register a callback that receives every metric flowing to outputs.
+   * Used by WebUIAdapter to track latest metric values for the dashboard.
+   * The callback must not mutate the metric.
+   */
+  registerMetricSink(callback: (metric: Metric) => void): void {
+    this._metricSink = callback;
   }
 
   /**
@@ -417,6 +452,9 @@ export class PipelineRuntime {
    * - Begin gather loops for polling inputs (Ticker)
    */
   async start(): Promise<void> {
+    this._state = "starting";
+    this._startedAt = Date.now();
+
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
 
@@ -430,6 +468,10 @@ export class PipelineRuntime {
 
     // 1. Create output channels and broadcaster (PRD §4: per-output channel)
     const outputBroadcaster = new Broadcaster<Metric>();
+    // Wire metric sink observer for Web UI live metrics (Phase 9)
+    if (this._metricSink) {
+      outputBroadcaster.setObserver(this._metricSink);
+    }
     const outputChannels: Channel<Metric>[] = [];
     for (const _output of this.options.outputs) {
       const ch = new Channel<Metric>({ capacity: 10_000 });
@@ -545,6 +587,8 @@ export class PipelineRuntime {
         runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter, outputOpts.alias),
       );
     }
+
+    this._state = "running";
   }
 
   /**
@@ -558,6 +602,7 @@ export class PipelineRuntime {
    */
   async stop(): Promise<void> {
     if (!this.abortController) return;
+    this._state = "stopping";
 
     // 1. Signal all loops to stop
     this.abortController.abort();
@@ -604,5 +649,6 @@ export class PipelineRuntime {
     this.loops = [];
     this.serviceInputs = [];
     this.abortController = null;
+    this._state = "stopped";
   }
 }
