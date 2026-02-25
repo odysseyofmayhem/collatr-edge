@@ -1,6 +1,10 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
 import { PipelineWebUIAdapter } from "../../../src/web/adapter";
-import type { PipelineStateSource } from "../../../src/web/adapter";
+import type { PipelineStateSource, OpcuaInputInfo } from "../../../src/web/adapter";
 import { PipelineRuntime } from "../../../src/pipeline/runtime";
 import type { PipelineOptions, PipelineState } from "../../../src/pipeline/runtime";
 import { createMetric } from "../../../src/core/metric";
@@ -485,5 +489,163 @@ describe("PipelineRuntime state and metric sink", () => {
 
     expect(runtime.pipelineOptions).toBe(options);
     expect(runtime.pipelineOptions.inputs[0]!.alias).toBe("inp");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCertificateInfo() — OPC-UA certificate management (Task 9.6)
+// ---------------------------------------------------------------------------
+
+describe("PipelineWebUIAdapter.getCertificateInfo()", () => {
+  let certTempDir: string;
+
+  beforeEach(async () => {
+    certTempDir = await mkdtemp(join(tmpdir(), "collatr-adapter-cert-"));
+  });
+
+  afterEach(async () => {
+    await rm(certTempDir, { recursive: true, force: true });
+  });
+
+  function generateTestCert(dir: string): { certPath: string; keyPath: string } {
+    const certPath = join(dir, "test-cert.pem");
+    const keyPath = join(dir, "test-key.pem");
+    execSync(
+      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=collatr-edge-test" 2>/dev/null`,
+    );
+    return { certPath, keyPath };
+  }
+
+  it("returns null clientCert and empty inputs when no OPC-UA inputs provided", () => {
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(mockOptions(), stateSource);
+
+    const info = adapter.getCertificateInfo();
+    expect(info.clientCert).toBeNull();
+    expect(info.inputs).toEqual([]);
+  });
+
+  it("returns clientCert info when certificate file exists", () => {
+    const { certPath, keyPath } = generateTestCert(certTempDir);
+    const opcuaInputs: OpcuaInputInfo[] = [{
+      alias: "opcua1",
+      endpoint: "opc.tcp://192.168.1.50:4840",
+      certificatePath: certPath,
+      privateKeyPath: keyPath,
+    }];
+
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    const info = adapter.getCertificateInfo();
+    expect(info.clientCert).not.toBeNull();
+    expect(info.clientCert!.exists).toBe(true);
+    expect(info.clientCert!.path).toBe(certPath);
+    expect(info.clientCert!.thumbprint).toBeTruthy();
+    expect(info.clientCert!.thumbprint).toContain(":"); // colon-separated hex
+    expect(info.clientCert!.subject).toContain("CN=collatr-edge-test");
+    expect(info.clientCert!.validFrom).toBeTruthy();
+    expect(info.clientCert!.validTo).toBeTruthy();
+  });
+
+  it("returns exists=false when certificate file does not exist", () => {
+    const opcuaInputs: OpcuaInputInfo[] = [{
+      alias: "opcua1",
+      endpoint: "opc.tcp://192.168.1.50:4840",
+      certificatePath: join(certTempDir, "nonexistent.pem"),
+    }];
+
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    const info = adapter.getCertificateInfo();
+    expect(info.clientCert).not.toBeNull();
+    expect(info.clientCert!.exists).toBe(false);
+    expect(info.clientCert!.thumbprint).toBeUndefined();
+  });
+
+  it("returns OPC-UA inputs with connection state based on pipeline state", () => {
+    const opcuaInputs: OpcuaInputInfo[] = [
+      { alias: "siemens", endpoint: "opc.tcp://192.168.10.50:4840" },
+      { alias: "kepware", endpoint: "opc.tcp://192.168.10.51:4840" },
+    ];
+
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    const info = adapter.getCertificateInfo();
+    expect(info.inputs).toHaveLength(2);
+    // No metrics have flowed, so state is "unknown" when running
+    expect(info.inputs[0]!.connectionState).toBe("unknown");
+    expect(info.inputs[0]!.alias).toBe("siemens");
+    expect(info.inputs[0]!.endpoint).toBe("opc.tcp://192.168.10.50:4840");
+  });
+
+  it("reports 'connected' when metrics have flowed for an alias", () => {
+    const opcuaInputs: OpcuaInputInfo[] = [
+      { alias: "siemens", endpoint: "opc.tcp://192.168.10.50:4840" },
+    ];
+
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    // Simulate metrics flowing for the "siemens" alias
+    adapter.handleMetric(createMetric({
+      name: "temperature",
+      fields: { value: 23.5 },
+      tags: { _device_id: "siemens" },
+    }));
+
+    const info = adapter.getCertificateInfo();
+    expect(info.inputs[0]!.connectionState).toBe("connected");
+  });
+
+  it("reports 'disconnected' when pipeline is stopped", () => {
+    const opcuaInputs: OpcuaInputInfo[] = [
+      { alias: "siemens", endpoint: "opc.tcp://192.168.10.50:4840" },
+    ];
+
+    const stateSource = mockStateSource("stopped");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    const info = adapter.getCertificateInfo();
+    expect(info.inputs[0]!.connectionState).toBe("disconnected");
+  });
+
+  it("getTrustStorePath returns path derived from cert directory", () => {
+    const { certPath, keyPath } = generateTestCert(certTempDir);
+    const opcuaInputs: OpcuaInputInfo[] = [{
+      alias: "opcua1",
+      endpoint: "opc.tcp://host:4840",
+      certificatePath: certPath,
+      privateKeyPath: keyPath,
+    }];
+
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(
+      mockOptions(), stateSource, null, opcuaInputs,
+    );
+
+    const trustPath = adapter.getTrustStorePath();
+    expect(trustPath).toBeTruthy();
+    expect(trustPath).toContain("trusted-servers.json");
+    expect(trustPath).toContain(certTempDir);
+  });
+
+  it("getTrustStorePath returns null when no OPC-UA inputs have certs", () => {
+    const stateSource = mockStateSource("running");
+    const adapter = new PipelineWebUIAdapter(mockOptions(), stateSource);
+
+    expect(adapter.getTrustStorePath()).toBeNull();
   });
 });

@@ -12,7 +12,7 @@
 | 9.3 | SSE streaming endpoint | ✅ |
 | 9.4 | ECharts trend charts | ✅ |
 | 9.5 | CSV export with dual timestamps | ✅ |
-| 9.6 | OPC-UA certificate helper page | ⬜ |
+| 9.6 | OPC-UA certificate helper page | ✅ |
 | 9.7 | Config parsing + CLI wiring | ⬜ |
 | 9.8 | Integration tests + acceptance criteria | ⬜ |
 
@@ -63,6 +63,7 @@
 | 9.3 | 849 | 3045 | 57 |
 | 9.4 | 877 | 3096 | 58 |
 | 9.5 | 904 | 3152 | 59 |
+| 9.6 | 939 | 3240 | 60 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -155,3 +156,26 @@
 **Files created:** `src/web/routes/export.ts`
 **Files modified:** `src/web/server.ts` (export route registration), `src/web/views/dashboard.tsx` (hidden tz field + auto-detect script)
 **Tests:** `test/unit/web/routes/export.test.ts` (27 tests — 7 addFormattedTimestamps unit, 17 handleExport unit, 3 HTTP endpoint)
+
+### Task 9.6 — OPC-UA Certificate Helper Page
+
+**WebUIAdapter extension.** Added `getCertificateInfo(): CertificateInfo` and `getTrustStorePath(): string | null` to the `WebUIAdapter` interface and `PipelineWebUIAdapter` implementation. New types: `OpcuaInputInfo` (alias, endpoint, cert paths), `ClientCertInfo` (path, exists, thumbprint, subject, validity), `OpcuaConnectionInfo` (alias, endpoint, connection state, server cert), `CertificateInfo` (combines client cert and inputs).
+
+**Client certificate parsing.** The adapter reads the client certificate from disk at construction time using `node:crypto`'s `X509Certificate`. Extracts SHA-1 fingerprint (colon-separated hex), subject DN, and validity dates. Handles missing files (exists=false) and unparseable files gracefully. Certificate path is found from the first OPC-UA input that has a `certificatePath` configured.
+
+**Connection state derivation.** For MVP, connection state is derived from existing adapter metrics activity tracking: if the pipeline is running and the adapter has received metrics tagged with the input's alias (`_device_id`), the state is "connected"; if running but no activity, "unknown"; if stopped, "disconnected". This reuses the `_lastActivity` map from task 9.0 without modifying the OPC-UA plugin.
+
+**Trust store (TOFU).** `POST /api/certificates/trust` writes trusted server certificate fingerprints to a JSON file (`trusted-servers.json` in the same directory as the client certificate). The trust store supports update-or-append semantics — trusting the same endpoint again replaces the existing entry. This is the only write operation in the MVP Web UI per PRD §17.
+
+**Certificate page.** Three sections: client certificate (download PEM/DER, thumbprint display, validity, subject), connection status (per-input table with status dots), and server certificates (trust buttons, placeholder when no server certs available yet). When no OPC-UA inputs are configured, a clear message is shown instead of empty tables.
+
+**Certificate download.** `GET /api/certificates/client/download?format=pem|der` serves the client certificate file. PEM returns the raw file; DER uses `X509Certificate.raw` to get the DER-encoded bytes. Both set appropriate Content-Type and Content-Disposition headers.
+
+**Navigation.** Dashboard already had a link to `/certificates` (added in task 9.2). Certificates page has a link back to `/` (Dashboard).
+
+**Mock adapter updates.** All 5 existing test files with mock adapters updated to include `getCertificateInfo` and `getTrustStorePath` methods, satisfying the extended interface.
+
+**Files created:** `src/web/routes/certificates.ts`, `src/web/views/certificates.tsx`
+**Files modified:** `src/web/adapter.ts` (new types, extended interface + impl), `src/web/server.ts` (certificate route registration)
+**Tests modified:** `test/unit/web/adapter.test.ts` (+8 getCertificateInfo tests), `test/unit/web/views/dashboard.test.ts`, `test/unit/web/routes/stream.test.ts`, `test/unit/web/server.test.ts`, `test/unit/web/routes/export.test.ts`, `test/unit/web/routes/chart-data.test.ts` (mock adapter updates)
+**Tests created:** `test/unit/web/routes/certificates.test.ts` (27 tests — 3 client info, 5 download, 2 status, 7 trust, 5 page rendering, 5 HTTP endpoints)

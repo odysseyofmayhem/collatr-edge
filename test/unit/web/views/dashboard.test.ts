@@ -36,6 +36,8 @@ function mockAdapter(overrides?: {
     getMemoryUsage: () => ({ heapUsed: 45_000_000, heapTotal: 80_000_000, rss: 120_000_000 }),
     handleMetric: () => {},
     getLocalStore: () => null,
+    getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
+    getTrustStorePath: () => null,
   };
 }
 

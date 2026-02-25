@@ -23,6 +23,8 @@ function mockAdapter(): WebUIAdapter {
     getMemoryUsage: () => ({ heapUsed: 0, heapTotal: 0, rss: 0 }),
     handleMetric: () => {},
     getLocalStore: () => null,
+    getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
+    getTrustStorePath: () => null,
   };
 }
 

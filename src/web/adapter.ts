@@ -1,7 +1,11 @@
 // CollatrEdge — WebUIAdapter
 // PRD refs: §17 Local Web UI, §15 Observability, §4 Architecture Overview
 // Phase 9 Task 9.0: Read-only facade exposing pipeline state for HTTP routes
+// Phase 9 Task 9.6: getCertificateInfo() for OPC-UA certificate helper page
 
+import { existsSync, readFileSync } from "node:fs";
+import { X509Certificate } from "node:crypto";
+import { dirname, join } from "node:path";
 import type { FieldValue, Metric } from "../core/metric";
 import type { NetworkPolicy } from "../core/network-policy";
 import type { PipelineOptions, PipelineState } from "../pipeline/runtime";
@@ -17,6 +21,44 @@ export interface PluginHealth {
   status: "ok" | "error" | "stopped";
   lastActivity: number | null;
   errorMessage?: string;
+}
+
+/** OPC-UA input configuration info passed to the adapter for certificate management. */
+export interface OpcuaInputInfo {
+  alias: string;
+  endpoint: string;
+  certificatePath?: string;
+  privateKeyPath?: string;
+}
+
+/** Client certificate info parsed from disk. */
+export interface ClientCertInfo {
+  path: string;
+  exists: boolean;
+  thumbprint?: string;
+  subject?: string;
+  validFrom?: string;
+  validTo?: string;
+}
+
+/** Per-OPC-UA-input connection status and optional server certificate info. */
+export interface OpcuaConnectionInfo {
+  alias: string;
+  endpoint: string;
+  connectionState: "connected" | "rejected" | "disconnected" | "unknown";
+  errorMessage?: string;
+  serverCert?: {
+    thumbprint: string;
+    subject: string;
+    validFrom: string;
+    validTo: string;
+  };
+}
+
+/** Combined certificate information for the certificate helper page. */
+export interface CertificateInfo {
+  clientCert: ClientCertInfo | null;
+  inputs: OpcuaConnectionInfo[];
 }
 
 export interface LiveMetricValue {
@@ -50,6 +92,12 @@ export interface WebUIAdapter {
 
   /** Access to the local data store for historical queries and CSV export. Null if not configured. */
   getLocalStore(): LocalStoreOutput | null;
+
+  /** OPC-UA certificate info for the certificate helper page. PRD Appendix D §D.3-D.4. */
+  getCertificateInfo(): CertificateInfo;
+
+  /** Path to the trust store file for TOFU server certificate trust. Null if not applicable. */
+  getTrustStorePath(): string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +109,9 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
   private _options: PipelineOptions;
   private _networkPolicy: NetworkPolicy | null;
   private _localStore: LocalStoreOutput | null;
+  private _opcuaInputs: OpcuaInputInfo[];
+  private _clientCertInfo: ClientCertInfo | null = null;
+  private _trustStorePath: string | null = null;
   private _liveMetrics: Map<string, LiveMetricValue> = new Map();
   private _lastActivity: Map<string, number> = new Map();
 
@@ -68,11 +119,47 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
     options: PipelineOptions,
     stateSource: PipelineStateSource,
     localStore?: LocalStoreOutput | null,
+    opcuaInputs?: OpcuaInputInfo[],
   ) {
     this._options = options;
     this._stateSource = stateSource;
     this._networkPolicy = options.networkPolicy ?? null;
     this._localStore = localStore ?? null;
+    this._opcuaInputs = opcuaInputs ?? [];
+    this._loadClientCert();
+  }
+
+  /** Read and parse the client certificate from disk at construction time. */
+  private _loadClientCert(): void {
+    const certInput = this._opcuaInputs.find((i) => i.certificatePath);
+    if (!certInput?.certificatePath) {
+      this._clientCertInfo = null;
+      return;
+    }
+
+    const certPath = certInput.certificatePath;
+    this._trustStorePath = join(dirname(certPath), "trusted-servers.json");
+
+    if (!existsSync(certPath)) {
+      this._clientCertInfo = { path: certPath, exists: false };
+      return;
+    }
+
+    try {
+      const data = readFileSync(certPath);
+      const cert = new X509Certificate(data);
+      this._clientCertInfo = {
+        path: certPath,
+        exists: true,
+        thumbprint: cert.fingerprint, // SHA-1, colon-separated
+        subject: cert.subject,
+        validFrom: cert.validFrom,
+        validTo: cert.validTo,
+      };
+    } catch {
+      // File exists but unparseable (corrupt or not a certificate)
+      this._clientCertInfo = { path: certPath, exists: true };
+    }
   }
 
   handleMetric(metric: Metric): void {
@@ -180,5 +267,24 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
 
   getLocalStore(): LocalStoreOutput | null {
     return this._localStore;
+  }
+
+  getCertificateInfo(): CertificateInfo {
+    const isRunning = this._stateSource.state === "running";
+
+    return {
+      clientCert: this._clientCertInfo,
+      inputs: this._opcuaInputs.map((input) => ({
+        alias: input.alias,
+        endpoint: input.endpoint,
+        connectionState: isRunning
+          ? (this._lastActivity.has(input.alias) ? "connected" as const : "unknown" as const)
+          : ("disconnected" as const),
+      })),
+    };
+  }
+
+  getTrustStorePath(): string | null {
+    return this._trustStorePath;
   }
 }

@@ -9,6 +9,14 @@ import { DashboardPage } from "./views/dashboard.tsx";
 import { createDashboardStream } from "./routes/stream.ts";
 import { handleChartHistory, handleChartMetrics } from "./routes/chart-data.ts";
 import { handleExport } from "./routes/export.ts";
+import {
+  handleCertificateClient,
+  handleCertificateDownload,
+  handleCertificateStatus,
+  handleCertificateTrust,
+  handleCertificatesPage,
+  type TrustRequest,
+} from "./routes/certificates.ts";
 
 // ---------------------------------------------------------------------------
 // Static asset embedding (spike 5: import with { type: 'file' })
@@ -112,6 +120,17 @@ export function createWebServer(
     // ── CSV export endpoint ──────────────────────────────────────────────
     .get("/api/export", ({ query }) =>
       handleExport(adapter, query as { from?: string; to?: string; tz?: string }),
+    )
+
+    // ── Certificate management routes (PRD Appendix D §D.3-D.4) ────────
+    .get("/certificates", () => handleCertificatesPage(adapter))
+    .get("/api/certificates/client", () => handleCertificateClient(adapter))
+    .get("/api/certificates/client/download", ({ query }) =>
+      handleCertificateDownload(adapter, query as { format?: string }),
+    )
+    .get("/api/certificates/status", () => handleCertificateStatus(adapter))
+    .post("/api/certificates/trust", async ({ body }) =>
+      handleCertificateTrust(adapter, (body ?? {}) as TrustRequest),
     )
 
     // ── Static asset serving ────────────────────────────────────────────

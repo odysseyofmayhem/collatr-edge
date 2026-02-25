@@ -234,7 +234,7 @@
         "Run bun test test/unit test/integration — ALL tests pass",
         "Commit: phase-9: OPC-UA certificate helper page (task 9.6)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "9.7",
