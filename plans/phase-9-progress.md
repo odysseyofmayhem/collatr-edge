@@ -11,7 +11,7 @@
 | 9.2 | Dashboard page — JSX shell with Datastar | ✅ |
 | 9.3 | SSE streaming endpoint | ✅ |
 | 9.4 | ECharts trend charts | ✅ |
-| 9.5 | CSV export with dual timestamps | ⬜ |
+| 9.5 | CSV export with dual timestamps | ✅ |
 | 9.6 | OPC-UA certificate helper page | ⬜ |
 | 9.7 | Config parsing + CLI wiring | ⬜ |
 | 9.8 | Integration tests + acceptance criteria | ⬜ |
@@ -62,6 +62,7 @@
 | 9.2 | 835 | 3013 | 56 |
 | 9.3 | 849 | 3045 | 57 |
 | 9.4 | 877 | 3096 | 58 |
+| 9.5 | 904 | 3152 | 59 |
 
 ### Task 9.3 — SSE Streaming Endpoint
 
@@ -131,3 +132,26 @@
 **Files modified:** `src/web/adapter.ts` (getLocalStore interface + impl), `src/plugins/outputs/local-store.ts` (listMetricNames), `src/web/server.ts` (chart-data route registration), `src/web/views/dashboard.tsx` (metric attributes on charts), `src/web/public/components/line-chart.js` (history loading, maxPoints 1000)
 **Tests modified:** `test/unit/web/routes/stream.test.ts`, `test/unit/web/views/dashboard.test.ts`, `test/unit/web/server.test.ts` (mock adapter updates)
 **Tests created:** `test/unit/web/routes/chart-data.test.ts` (28 tests — 5 downsample, 7 handleChartHistory, 3 handleChartMetrics, 4 HTTP endpoint, 9 line-chart.js validation)
+
+### Task 9.5 — CSV Export with UTC and Local Timezone Columns
+
+**Approach: Post-process existing exportCSV() output (Option B).** The existing `LocalStoreOutput.exportCSV()` returns CSV with a nanosecond `timestamp` column. Rather than modifying LocalStoreOutput, the export route post-processes the CSV to prepend formatted timestamp columns. This keeps LocalStoreOutput unchanged and isolates the presentation concern in the web layer.
+
+**Dual timestamp columns (PRD §22 Scenario 4).** The exported CSV replaces the single `timestamp` column with three columns:
+- `timestamp_utc` — ISO 8601 in UTC (Z suffix), e.g. `2024-01-15T12:00:00.000Z`
+- `timestamp_local` — ISO 8601 with timezone offset, e.g. `2024-01-15T07:00:00.000-05:00`
+- `timestamp_ns` — original nanosecond value preserved for machine consumption
+
+**Timezone handling.** The `tz` query parameter accepts IANA timezone names (e.g. `Europe/London`, `America/New_York`). Validated via `Intl.DateTimeFormat` — invalid names return 400. When omitted, defaults to the system timezone. The dashboard form auto-detects the browser's timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone` and sends it as a hidden form field.
+
+**Timezone offset calculation.** Uses `Intl.DateTimeFormat` with both UTC and target timezone to compute the offset by comparing formatted date parts. Handles DST transitions correctly (e.g. London +00:00 in January, +01:00 in July).
+
+**Error responses.** 400 for missing/invalid from/to, invalid timezone, or from > to. 503 when no local store is configured. 204 No Content for empty result (not an empty CSV with headers, per task spec).
+
+**Content-Disposition.** Filename includes ISO timestamp: `collatr-edge-export-2024-01-15T12-00-00-000Z.csv`. Colons/periods replaced with hyphens for filesystem safety.
+
+**Dashboard form update.** Added hidden `tz` input field and inline `<script>` that auto-populates it with the browser's detected timezone on page load. No Datastar involvement — plain HTML form with GET method (Spike 6 validated pattern).
+
+**Files created:** `src/web/routes/export.ts`
+**Files modified:** `src/web/server.ts` (export route registration), `src/web/views/dashboard.tsx` (hidden tz field + auto-detect script)
+**Tests:** `test/unit/web/routes/export.test.ts` (27 tests — 7 addFormattedTimestamps unit, 17 handleExport unit, 3 HTTP endpoint)

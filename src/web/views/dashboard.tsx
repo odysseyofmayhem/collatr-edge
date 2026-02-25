@@ -282,8 +282,10 @@ export function DashboardPage({ adapter }: DashboardProps): string {
               <input type="datetime-local" id="export-from" name="from" />
               <label for="export-to">To:</label>
               <input type="datetime-local" id="export-to" name="to" />
+              <input type="hidden" id="export-tz" name="tz" />
               <button type="submit">Export CSV</button>
             </form>
+            <script>{"document.getElementById('export-tz').value=Intl.DateTimeFormat().resolvedOptions().timeZone;"}</script>
           </div>
 
           {/* 7. Footer */}

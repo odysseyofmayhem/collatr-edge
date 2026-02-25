@@ -201,7 +201,7 @@
         "Run bun test test/unit test/integration — ALL tests pass",
         "Commit: phase-9: CSV export with UTC and local timezone columns (task 9.5)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "9.6",

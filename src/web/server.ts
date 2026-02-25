@@ -8,6 +8,7 @@ import type { WebUIAdapter } from "./adapter.ts";
 import { DashboardPage } from "./views/dashboard.tsx";
 import { createDashboardStream } from "./routes/stream.ts";
 import { handleChartHistory, handleChartMetrics } from "./routes/chart-data.ts";
+import { handleExport } from "./routes/export.ts";
 
 // ---------------------------------------------------------------------------
 // Static asset embedding (spike 5: import with { type: 'file' })
@@ -107,6 +108,11 @@ export function createWebServer(
       handleChartHistory(adapter, query as { metric?: string; from?: string; to?: string }),
     )
     .get("/api/chart/metrics", () => handleChartMetrics(adapter))
+
+    // ── CSV export endpoint ──────────────────────────────────────────────
+    .get("/api/export", ({ query }) =>
+      handleExport(adapter, query as { from?: string; to?: string; tz?: string }),
+    )
 
     // ── Static asset serving ────────────────────────────────────────────
     .get("/static/*", async ({ params, request }) => {
