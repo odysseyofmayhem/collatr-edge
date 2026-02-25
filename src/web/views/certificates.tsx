@@ -18,6 +18,7 @@ import { Layout } from "./layout";
 
 interface CertificatesProps {
   adapter: WebUIAdapter;
+  adminToken?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,43 +156,49 @@ function connectionLabel(state: string): string {
 // Server certificates section
 // ---------------------------------------------------------------------------
 
-function ServerCertSection({ inputs }: { inputs: OpcuaConnectionInfo[] }): string {
+function ServerCertSection({ inputs, adminToken }: { inputs: OpcuaConnectionInfo[]; adminToken?: string }): string {
   const hasServerCerts = inputs.some((i) => i.serverCert);
+  // Escape token for safe embedding in JS string literal
+  const escapedToken = adminToken ? adminToken.replace(/\\/g, "\\\\").replace(/'/g, "\\'") : "";
 
   return (
     <div class="card card-full">
       <h2>Server Certificates</h2>
       {hasServerCerts ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Alias</th>
-              <th>Thumbprint</th>
-              <th>Subject</th>
-              <th>Validity</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inputs.filter((i) => i.serverCert).map((input) => (
+        <>
+          <table>
+            <thead>
               <tr>
-                <td style="font-weight:500;">{input.alias}</td>
-                <td><code style="font-size:0.75rem;">{input.serverCert!.thumbprint}</code></td>
-                <td style="font-size:0.85rem;">{input.serverCert!.subject}</td>
-                <td style="font-size:0.85rem;">
-                  {input.serverCert!.validFrom} &mdash; {input.serverCert!.validTo}
-                </td>
-                <td>
-                  <form method="post" action="/api/certificates/trust" style="display:inline;">
-                    <input type="hidden" name="endpoint" value={input.endpoint} />
-                    <input type="hidden" name="thumbprint" value={input.serverCert!.thumbprint} />
-                    <button type="submit" class="btn btn-small">Trust</button>
-                  </form>
-                </td>
+                <th>Alias</th>
+                <th>Thumbprint</th>
+                <th>Subject</th>
+                <th>Validity</th>
+                <th>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {inputs.filter((i) => i.serverCert).map((input) => (
+                <tr>
+                  <td style="font-weight:500;">{input.alias}</td>
+                  <td><code style="font-size:0.75rem;">{input.serverCert!.thumbprint}</code></td>
+                  <td style="font-size:0.85rem;">{input.serverCert!.subject}</td>
+                  <td style="font-size:0.85rem;">
+                    {input.serverCert!.validFrom} &mdash; {input.serverCert!.validTo}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="btn btn-small trust-btn"
+                      data-endpoint={input.endpoint}
+                      data-thumbprint={input.serverCert!.thumbprint}
+                    >Trust</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <script>{`(function(){var t='${escapedToken}';document.querySelectorAll('.trust-btn').forEach(function(b){b.addEventListener('click',async function(){var ep=this.dataset.endpoint,tp=this.dataset.thumbprint;var h={'Content-Type':'application/json'};if(t)h['Authorization']='Bearer '+t;try{var r=await fetch('/api/certificates/trust',{method:'POST',headers:h,body:JSON.stringify({endpoint:ep,thumbprint:tp})});var d=await r.json();if(r.ok){this.textContent='Trusted';this.disabled=true;this.style.opacity='0.6';}else{alert('Error: '+(d.error||r.statusText));}}catch(e){alert('Network error: '+e.message);}});});})();`}</script>
+        </>
       ) : (
         <p style="color:#64748b;">
           Server certificate information will be available after connecting to OPC-UA servers.
@@ -206,7 +213,7 @@ function ServerCertSection({ inputs }: { inputs: OpcuaConnectionInfo[] }): strin
 // Certificates page
 // ---------------------------------------------------------------------------
 
-export function CertificatesPage({ adapter }: CertificatesProps): string {
+export function CertificatesPage({ adapter, adminToken }: CertificatesProps): string {
   const certInfo = adapter.getCertificateInfo();
   const noOpcuaInputs = certInfo.inputs.length === 0 && !certInfo.clientCert;
 
@@ -241,7 +248,7 @@ export function CertificatesPage({ adapter }: CertificatesProps): string {
             <>
               {ClientCertSection({ cert: certInfo.clientCert }) as "safe"}
               {ConnectionStatusSection({ inputs: certInfo.inputs }) as "safe"}
-              {ServerCertSection({ inputs: certInfo.inputs }) as "safe"}
+              {ServerCertSection({ inputs: certInfo.inputs, adminToken }) as "safe"}
             </>
           ) as string}
 

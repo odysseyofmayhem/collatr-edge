@@ -224,11 +224,13 @@ function getTimezoneOffset(date: Date, tz?: string): string {
   const getNum = (parts: Intl.DateTimeFormatPart[], type: string): number =>
     parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
 
+  // Date.UTC handles hour=24 correctly by rolling to next day 00:00,
+  // so no manual adjustment needed (fixes SF-2: UTC+13/+14 day boundary bug)
   const utcDate = new Date(Date.UTC(
     getNum(utcParts, "year"),
     getNum(utcParts, "month") - 1,
     getNum(utcParts, "day"),
-    getNum(utcParts, "hour") === 24 ? 0 : getNum(utcParts, "hour"),
+    getNum(utcParts, "hour"),
     getNum(utcParts, "minute"),
   ));
 
@@ -236,7 +238,7 @@ function getTimezoneOffset(date: Date, tz?: string): string {
     getNum(localParts, "year"),
     getNum(localParts, "month") - 1,
     getNum(localParts, "day"),
-    getNum(localParts, "hour") === 24 ? 0 : getNum(localParts, "hour"),
+    getNum(localParts, "hour"),
     getNum(localParts, "minute"),
   ));
 

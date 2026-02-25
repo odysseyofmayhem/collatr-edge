@@ -96,8 +96,16 @@ export function createDashboardStream(adapter: WebUIAdapter): Response {
           tick++;
           await Bun.sleep(SIGNAL_INTERVAL_MS);
         }
-      } catch {
-        // Client disconnected — stream cancelled. This is expected.
+      } catch (err) {
+        // Client disconnect is expected — only log unexpected errors
+        if (
+          err instanceof Error &&
+          !err.message.includes("abort") &&
+          !err.message.includes("cancel") &&
+          !err.message.includes("closed")
+        ) {
+          console.error("[web] SSE stream error:", err.message);
+        }
       }
     },
     { keepalive: true },

@@ -124,7 +124,7 @@ export function createWebServer(
     )
 
     // ── Certificate management routes (PRD Appendix D §D.3-D.4) ────────
-    .get("/certificates", () => handleCertificatesPage(adapter))
+    .get("/certificates", () => handleCertificatesPage(adapter, config.admin_token))
     .get("/api/certificates/client", () => handleCertificateClient(adapter))
     .get("/api/certificates/client/download", ({ query }) =>
       handleCertificateDownload(adapter, query as { format?: string }),

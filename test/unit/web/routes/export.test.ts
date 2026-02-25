@@ -149,6 +149,19 @@ describe("addFormattedTimestamps", () => {
     expect(localCol).toContain("07:00:00");
   });
 
+  it("handles UTC+13 timezone at day boundary correctly (SF-2)", () => {
+    // 2024-01-15 12:00:00 UTC → 2024-01-16 01:00:00 in Pacific/Tongatapu (UTC+13)
+    // This crosses a day boundary, which previously broke due to hour=24 hack
+    const csv = "timestamp,name,quality,value\n1705320000000000000,temperature,0,23.5\n";
+    const result = addFormattedTimestamps(csv, "Pacific/Tongatapu");
+    const dataRow = result.split("\n")[1]!;
+    const localCol = dataRow.split(",")[1]!;
+
+    expect(localCol).toContain("+13:00");
+    // 12:00 UTC + 13h = 01:00 next day (Jan 16)
+    expect(localCol).toContain("2024-01-16T01:00:00");
+  });
+
   it("preserves original nanosecond timestamp as timestamp_ns", () => {
     const csv = "timestamp,name,quality,value\n1705320000000000000,temperature,0,23.5\n";
     const result = addFormattedTimestamps(csv, "UTC");

@@ -161,20 +161,20 @@ describe("handleCertificateClient", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleCertificateDownload", () => {
-  it("returns 404 when no cert exists", () => {
+  it("returns 404 when no cert exists", async () => {
     const adapter = mockAdapter();
-    const resp = handleCertificateDownload(adapter, { format: "pem" });
+    const resp = await handleCertificateDownload(adapter, { format: "pem" });
     expect(resp.status).toBe(404);
   });
 
-  it("returns 400 for invalid format", () => {
+  it("returns 400 for invalid format", async () => {
     const adapter = mockAdapter({
       certInfo: {
         clientCert: { path: "/some/path", exists: true },
         inputs: [],
       },
     });
-    const resp = handleCertificateDownload(adapter, { format: "xml" });
+    const resp = await handleCertificateDownload(adapter, { format: "xml" });
     expect(resp.status).toBe(400);
   });
 
@@ -187,7 +187,7 @@ describe("handleCertificateDownload", () => {
       },
     });
 
-    const resp = handleCertificateDownload(adapter, { format: "pem" });
+    const resp = await handleCertificateDownload(adapter, { format: "pem" });
 
     expect(resp.status).toBe(200);
     expect(resp.headers.get("Content-Type")).toBe("application/x-pem-file");
@@ -209,7 +209,7 @@ describe("handleCertificateDownload", () => {
       },
     });
 
-    const resp = handleCertificateDownload(adapter, { format: "der" });
+    const resp = await handleCertificateDownload(adapter, { format: "der" });
 
     expect(resp.status).toBe(200);
     expect(resp.headers.get("Content-Type")).toBe(
@@ -233,7 +233,7 @@ describe("handleCertificateDownload", () => {
       },
     });
 
-    const resp = handleCertificateDownload(adapter, {});
+    const resp = await handleCertificateDownload(adapter, {});
 
     expect(resp.status).toBe(200);
     expect(resp.headers.get("Content-Type")).toBe("application/x-pem-file");
@@ -533,6 +533,42 @@ describe("certificates page rendering", () => {
 
     expect(html).toContain('href="/"');
     expect(html).toContain("Dashboard");
+  });
+
+  it("trust buttons use fetch with auth instead of form POST", async () => {
+    const adapter = mockAdapter({
+      certInfo: {
+        clientCert: null,
+        inputs: [
+          {
+            alias: "line3",
+            endpoint: "opc.tcp://10.0.0.1:4840",
+            connectionState: "rejected",
+            serverCert: {
+              thumbprint: "AA:BB:CC:DD",
+              subject: "CN=server",
+              validFrom: "2024-01-01",
+              validTo: "2025-01-01",
+            },
+          },
+        ],
+      },
+    });
+
+    const resp = handleCertificatesPage(adapter, "test-token-123");
+    const html = await resp.text();
+
+    // MF-1: No <form method="post"> — uses fetch-based trust with auth
+    expect(html).not.toContain('method="post"');
+    expect(html).not.toContain('action="/api/certificates/trust"');
+    // Button has data attributes for JS fetch
+    expect(html).toContain('class="btn btn-small trust-btn"');
+    expect(html).toContain('data-endpoint="opc.tcp://10.0.0.1:4840"');
+    expect(html).toContain('data-thumbprint="AA:BB:CC:DD"');
+    // Inline script includes the admin token for Authorization header
+    expect(html).toContain("test-token-123");
+    expect(html).toContain("Authorization");
+    expect(html).toContain("Bearer");
   });
 });
 

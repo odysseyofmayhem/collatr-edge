@@ -8,7 +8,6 @@
 //   GET  /api/certificates/status            — per-input connection status
 //   POST /api/certificates/trust             — trust a server certificate (TOFU)
 
-import { readFileSync } from "node:fs";
 import { X509Certificate } from "node:crypto";
 import type { WebUIAdapter } from "../adapter";
 import { CertificatesPage } from "../views/certificates";
@@ -53,10 +52,10 @@ export function handleCertificateClient(adapter: WebUIAdapter): Response {
 // Downloads the client certificate file.
 // ---------------------------------------------------------------------------
 
-export function handleCertificateDownload(
+export async function handleCertificateDownload(
   adapter: WebUIAdapter,
   query: { format?: string },
-): Response {
+): Promise<Response> {
   const certInfo = adapter.getCertificateInfo();
 
   if (!certInfo.clientCert?.exists || !certInfo.clientCert.path) {
@@ -75,7 +74,7 @@ export function handleCertificateDownload(
   }
 
   try {
-    const pemData = readFileSync(certInfo.clientCert.path);
+    const pemData = Buffer.from(await Bun.file(certInfo.clientCert.path).arrayBuffer());
 
     if (format === "pem") {
       return new Response(pemData, {
@@ -193,8 +192,11 @@ export function handleCertificateTrust(
 // GET /certificates — render the certificate management page
 // ---------------------------------------------------------------------------
 
-export function handleCertificatesPage(adapter: WebUIAdapter): Response {
-  const page = CertificatesPage({ adapter });
+export function handleCertificatesPage(
+  adapter: WebUIAdapter,
+  adminToken?: string,
+): Response {
+  const page = CertificatesPage({ adapter, adminToken });
   return new Response(page, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
