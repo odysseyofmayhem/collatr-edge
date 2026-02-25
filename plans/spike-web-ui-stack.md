@@ -922,6 +922,91 @@ const isCompiled = import.meta.dir.startsWith('/$bunfs')
 | Brotli compression works (`zlib.brotliCompressSync`) | **Pass** — 74% reduction |
 | `import.meta.dir` detection (dev vs compiled) | **Pass** |
 
+### Spike 6 — Integration: Full Stack Dashboard Page
+
+Combined all spikes into a single working dashboard demonstrating the complete stack end-to-end, in both dev mode and compiled binary.
+
+**Dashboard Sections:**
+1. **Header bar** — "CollatrEdge" title + pipeline status badge (static server-rendered HTML)
+2. **Network policy banner** — amber warning banner (static HTML, will come from config in Phase 9)
+3. **Live metrics card** — 4 values (temperature, pressure, line speed, humidity) via `patchSignals` every 1s
+4. **Pipeline status card** — uptime, heap, RSS, plugin table with traffic-light status dots via `patchElements` every 2s
+5. **4 trend charts** — ECharts web components fed by `data-effect` bridge from SSE signals
+6. **CSV export** — form with date pickers, GET to `/api/export` returns CSV with `Content-Disposition: attachment`
+7. **Footer** — version, mode (dev/compiled)
+
+**Architecture pattern validated:**
+```
+Browser                          Server (Elysia on Bun)
+───────                          ──────────────────────
+GET /                    →       Server-rendered JSX (Kita) with Datastar attributes
+  ↓ Datastar init
+GET /api/dashboard/stream →      SSE stream (SDK ServerSentEventGenerator)
+  ← patchSignals {temp, pressure, ...}    (every 1s)
+  ← patchElements <StatusPanel/>          (every 2s)
+  ↓ Datastar processes
+  → data-text="$temperature"     updates live values
+  → data-effect="chart.addPoint" pushes to ECharts web components
+  → morph #status-panel           replaces status table HTML
+
+GET /api/export          →       Returns text/csv with Content-Disposition header
+GET /static/*            →       Embedded assets via import { type: "file" }
+```
+
+**Single SSE stream for the whole dashboard:**
+The integration test confirmed that one SSE connection can serve both `patchSignals` (live values for `data-text` bindings and chart bridges) and `patchElements` (status panel HTML fragments) interleaved in the same stream. This simplifies the architecture — one connection per dashboard page, not one per section.
+
+**Compiled binary test:**
+- Binary compiles in ~100ms, 59MB total (1.48MB asset overhead)
+- All assets serve correctly from embedded `$bunfs` paths
+- Dashboard is fully functional — signals, element patches, charts, CSV export
+- Zero console errors
+- Client heap: 12MB after 30s+ of continuous streaming
+
+**CSV export pattern:**
+```typescript
+app.get('/api/export', ({ query }) => {
+  const csv = generateCSV(query.from, query.to)
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="collatr-edge-export-${Date.now()}.csv"`,
+    },
+  })
+})
+```
+Plain HTML form with `method="get"` triggers the download — no JavaScript needed. Datastar is not involved in the export flow.
+
+| Criterion | Result |
+|-----------|--------|
+| Complete dashboard renders and functions end-to-end | **Pass** |
+| SSE streaming works continuously (signals + elements) | **Pass** |
+| ECharts updates smoothly with incoming data (4 charts) | **Pass** |
+| CSV download works (correct headers, triggers save) | **Pass** |
+| Compiled binary serves everything correctly | **Pass** |
+| Page usable by non-technical person (labels, traffic-light colours) | **Pass** |
+| Client heap stable (12 MB after 30s+) | **Pass** |
+| Zero console errors in compiled mode | **Pass** |
+
+---
+
+## Go/No-Go Decision
+
+### **GO — All 6 spikes pass.**
+
+| Spike | Result | Key Finding |
+|-------|--------|-------------|
+| 1. Elysia + Kita JSX + Datastar attributes | **Pass** | Colon syntax required for RC.7 |
+| 2. SSE streaming | **Pass** | SDK `stream()` and raw `ReadableStream` both work |
+| 3. HTML fragment streaming | **Pass** | Mixed signals + elements in one SSE stream |
+| 4. ECharts web component | **Pass** | `data-effect` bridge recommended; `patchElements` incompatible with stateful web components |
+| 5. Static asset embedding | **Pass** | `import with { type: "file" }` + `Bun.embeddedFiles`; 1.48MB overhead |
+| 6. Full stack integration | **Pass** | Single SSE stream serves entire dashboard; 59MB compiled binary |
+
+**Stack confirmed for Phase 9 implementation.**
+
+---
+
 ### Phase 9 Implications
 
 1. **All `data-on-*` attributes must use colon syntax** — grep for `data-on-` (hyphen) will catch mistakes.
