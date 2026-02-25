@@ -722,6 +722,110 @@ An `<input>` inside a morphing container keeps its value and focus as long as it
 | Raw `datastar-patch-elements` formatting works | **Pass** |
 | No console errors | **Pass** |
 
+### Spike 4 — ECharts Web Component with Live Data
+
+Verified ECharts renders time-series data inside a custom element, driven by Datastar SSE signals. Tested three bridge patterns between Datastar signals and web component updates.
+
+**ECharts Setup:**
+- ECharts 6.0.0 installed via npm, browser bundle copied to `public/echarts.min.js`
+- Full bundle: 1.1MB, Simple bundle (line/bar/pie/scatter): 482KB — use Simple for Phase 9
+- Loaded as `<script src="/static/echarts.min.js"></script>` (UMD, not ESM module)
+- Web component wrapper: `<collatr-line-chart>` with `echarts.init(this)` in `connectedCallback`
+- Requires explicit dimensions (`display: block`, `width`, `height`) — ECharts cannot render in a 0x0 container
+- `ResizeObserver` on the element triggers `chart.resize()` for responsive layout
+
+**Web Component Pattern:**
+```javascript
+class CollatrLineChart extends HTMLElement {
+  static get observedAttributes() { return ['latest-point'] }
+
+  connectedCallback() {
+    this.style.display = 'block'
+    this.style.height = this.getAttribute('height') || '300px'
+    this.chart = echarts.init(this)
+    this.chart.setOption({ /* axis config */ })
+    new ResizeObserver(() => this.chart?.resize()).observe(this)
+  }
+
+  // Bridge A: called by data-effect
+  addPoint(timestamp, value) { this._addPoint(timestamp, value) }
+
+  // Bridge B: called by data-attr via attributeChangedCallback
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === 'latest-point' && newValue && this.chart) {
+      const point = JSON.parse(newValue)
+      this._addPoint(point.timestamp, point.value)
+    }
+  }
+
+  _addPoint(timestamp, value) {
+    if (!timestamp || timestamp < 1e12) return  // guard against initial signal value of 0
+    this.data.push([timestamp, value])
+    if (this.data.length > this.maxPoints) this.data.shift()
+    this.chart.setOption({ series: [{ data: this.data }] })
+  }
+}
+```
+
+**Bridge A: `data-effect` → direct method call (RECOMMENDED)**
+```html
+<div data-signals="{temp: 0, ts: 0}" data-init="@get('/api/chart/stream')">
+  <collatr-line-chart id="my-chart" unit="°C" height="250px"></collatr-line-chart>
+  <div data-effect="document.getElementById('my-chart')?.addPoint($ts, parseFloat($temp))"></div>
+</div>
+```
+- `data-effect` re-evaluates whenever any referenced signal (`$ts`, `$temp`) changes
+- Fires once per SSE event even when multiple signals update together
+- Simplest bridge — one line of HTML, no serialization overhead
+- Direct method call on the custom element
+
+**Bridge B: `data-attr` → `attributeChangedCallback`**
+```html
+<collatr-line-chart id="my-chart"
+  data-attr:latest-point="JSON.stringify({timestamp: $ts, value: parseFloat($temp)})">
+</collatr-line-chart>
+```
+- Official Datastar web component pattern
+- Datastar reactively sets the `latest-point` attribute when signals change
+- Web component observes the attribute and parses JSON in `attributeChangedCallback`
+- More ceremony than Bridge A (JSON stringify/parse roundtrip) but enables bi-directional communication via custom events + `data-on:event`
+
+**Bridge C: `patchElements` with attribute — DOES NOT WORK**
+- Server streams `<collatr-line-chart latest-point="...">` as HTML fragment
+- Morph correctly matches the element by ID and updates the attribute (triggering `attributeChangedCallback`)
+- **BUT: morph removes ECharts' internal DOM** (canvas, divs) because the server fragment has no children
+- The chart instance exists in JS memory but its rendering is destroyed — `hasCanvas: false`, `childCount: 0`
+- **Root cause:** Datastar's morph algorithm reconciles children to match the server fragment. Empty element in fragment = remove all children.
+- **Morph also strips programmatically-set inline styles** unless included in the server fragment
+- **Verdict: patchElements is incompatible with stateful web components that render internal DOM**
+
+**Performance at 5Hz (200ms updates):**
+- Smooth rendering with 200+ accumulated data points
+- No visible lag or dropped frames
+- ECharts `animation: false` is required for high-frequency updates (no animation queueing)
+
+**Y-axis auto-scaling:**
+- ECharts defaults `yAxis.min` to `0`, which compresses data into the top of the chart for values like pressure (~1013 hPa)
+- Fix: `yAxis: { min: 'dataMin', max: 'dataMax' }` auto-scales to the actual data range
+- Apply this in Phase 9 for all metric charts
+
+**Initial signal guard:**
+- `data-signals="{temp: 0, ts: 0}"` means `data-effect` fires immediately with `0` values before real SSE data arrives
+- Guard in `_addPoint()`: skip if `timestamp < 1e12` (filters epoch-zero and other invalid timestamps)
+- Without this guard, a point at `[0, 0]` creates a 1970–2026 x-axis range
+
+| Criterion | Result |
+|-----------|--------|
+| ECharts renders inside a custom element | **Pass** |
+| Bridge A: `data-effect` → `addPoint()` | **Pass** — recommended approach |
+| Bridge B: `data-attr` → `attributeChangedCallback` | **Pass** — official Datastar pattern |
+| Bridge C: `patchElements` with attribute | **Fail** — morph destroys internal DOM |
+| Chart responsive via ResizeObserver | **Pass** |
+| 5Hz (200ms) update performance | **Pass** — smooth with 200+ points |
+| Y-axis auto-scaling (`dataMin`/`dataMax`) | **Pass** — after config fix |
+| Initial signal guard prevents bad data points | **Pass** |
+| No console errors | **Pass** |
+
 ### Phase 9 Implications
 
 1. **All `data-on-*` attributes must use colon syntax** — grep for `data-on-` (hyphen) will catch mistakes.
@@ -732,3 +836,9 @@ An `<input>` inside a morphing container keeps its value and focus as long as it
 6. **Use signals for scalar live values, elements for complex UI** — temperature/pressure as signals (`data-text`), status tables as element patches (server-rendered JSX).
 7. **One SSE stream per dashboard section** — each `data-init` opens its own stream. A single stream can mix signals and element patches freely.
 8. **JSX components are just functions** — no special framework. `function MyPanel(props) { return <div>...</div> as string }` works for server-rendered fragments.
+9. **Use `data-effect` to bridge signals to chart web components** — `data-effect="el.addPoint($ts, $val)"` is the simplest, cleanest pattern. One line per chart.
+10. **Do NOT use `patchElements` for stateful web components** — morph removes internal DOM (canvas, divs). Use signals + `data-effect` or `data-attr` instead.
+11. **Use ECharts Simple bundle** — 482KB vs 1.1MB full. Covers line/bar/pie/scatter which is all Phase 9 needs.
+12. **Guard against initial signal values** — `data-signals="{val: 0}"` fires `data-effect` immediately with `0`. Web components must guard against invalid initial data.
+13. **Set `yAxis: { min: 'dataMin', max: 'dataMax' }`** — prevents ECharts from anchoring the Y-axis at 0, which compresses real data into a narrow band.
+14. **Set `animation: false` on charts** — required for high-frequency updates (1Hz+) to prevent animation queue buildup.

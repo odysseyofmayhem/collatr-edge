@@ -436,6 +436,176 @@ const app = new Elysia()
     }, { keepalive: true })
   })
 
+  // ── Spike 4: ECharts Web Component with Live Data ────────────────────────
+  .get('/spike4', ({ html }) => html(
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Spike 4 — ECharts + Datastar Bridge</title>
+        <style>{`
+          body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+          h1 { font-size: 1.4rem; }
+          .section { margin: 20px 0; padding: 16px; border: 1px solid #ddd; border-radius: 8px; }
+          .section h2 { margin-top: 0; font-size: 1.1rem; color: #555; }
+          .approach { font-size: 0.8rem; color: #888; margin-bottom: 12px; }
+          .metric-row { display: flex; align-items: baseline; gap: 8px; margin: 8px 0; }
+          .metric-label { color: #666; font-size: 0.9rem; min-width: 100px; }
+          .metric-value { font-size: 1.4rem; font-weight: bold; font-variant-numeric: tabular-nums; }
+          .note { font-size: 0.8rem; color: #999; margin-top: 8px; }
+        `}</style>
+      </head>
+      <body>
+        <h1>Spike 4: ECharts Web Component + Datastar (RC.7)</h1>
+
+        {/* Bridge A: data-effect — direct method call on the web component */}
+        <div class="section" data-signals="{chartATemp: 0, chartATimestamp: 0}" data-init="@get('/api/chart/stream-a')">
+          <h2>Bridge A: data-effect → addPoint()</h2>
+          <p class="approach">data-effect calls chart.addPoint() when signals change. Simplest bridge.</p>
+          <div class="metric-row">
+            <span class="metric-label">Temperature</span>
+            <span class="metric-value" data-text="$chartATemp + '°C'">--</span>
+          </div>
+          <collatr-line-chart id="chart-a" color="#3b82f6" unit="°C" height="250px"></collatr-line-chart>
+          <div data-effect="document.getElementById('chart-a')?.addPoint($chartATimestamp, parseFloat($chartATemp))"></div>
+          <p class="note">data-effect fires when $chartATemp or $chartATimestamp change. Calls addPoint() directly.</p>
+        </div>
+
+        {/* Bridge B: data-attr + attributeChangedCallback */}
+        <div class="section" data-signals="{chartBPressure: 0, chartBTimestamp: 0}" data-init="@get('/api/chart/stream-b')">
+          <h2>Bridge B: data-attr → attributeChangedCallback</h2>
+          <p class="approach">data-attr:latest-point sets an attribute; web component observes it. Official Datastar pattern.</p>
+          <div class="metric-row">
+            <span class="metric-label">Pressure</span>
+            <span class="metric-value" data-text="$chartBPressure + ' hPa'">--</span>
+          </div>
+          <collatr-line-chart id="chart-b" color="#ef4444" unit="hPa" height="250px"
+            data-attr:latest-point={"JSON.stringify({timestamp: $chartBTimestamp, value: parseFloat($chartBPressure)})"}></collatr-line-chart>
+          <p class="note">data-attr:latest-point sets the attribute reactively. attributeChangedCallback parses and adds the point.</p>
+        </div>
+
+        {/* Bridge C: patchElements with data attribute — server pushes HTML with updated data-attr */}
+        <div class="section" data-init="@get('/api/chart/stream-c')">
+          <h2>Bridge C: patchElements with data attribute</h2>
+          <p class="approach">Server streams HTML fragment with updated latest-point attribute. No client-side signal bridge needed.</p>
+          <div id="chart-c-wrapper">
+            <div class="metric-row">
+              <span class="metric-label">Line Speed</span>
+              <span class="metric-value" id="chart-c-value">--</span>
+            </div>
+            <collatr-line-chart id="chart-c" color="#22c55e" unit="m/min" height="250px" style="display:block;width:100%;height:250px;"></collatr-line-chart>
+          </div>
+          <p class="note">Server renders the latest-point attribute in the HTML fragment. Morph triggers attributeChangedCallback.</p>
+        </div>
+
+        {/* Performance: high-frequency updates */}
+        <div class="section" data-signals="{perfTemp: 0, perfTs: 0}" data-init="@get('/api/chart/stream-perf')">
+          <h2>Performance: 200ms updates (5Hz)</h2>
+          <p class="approach">Testing chart update performance at higher frequency.</p>
+          <div class="metric-row">
+            <span class="metric-label">Temperature</span>
+            <span class="metric-value" data-text="$perfTemp + '°C'">--</span>
+          </div>
+          <collatr-line-chart id="chart-perf" color="#8b5cf6" unit="°C" height="250px"></collatr-line-chart>
+          <div data-effect="document.getElementById('chart-perf')?.addPoint($perfTs, parseFloat($perfTemp))"></div>
+          <p class="note">5Hz updates. Watch for rendering lag or dropped frames with 200+ data points.</p>
+        </div>
+
+        <script src="/static/echarts.min.js"></script>
+        <script type="module" src="/static/components/line-chart.js"></script>
+        <script type="module" src="/static/datastar.js"></script>
+      </body>
+    </html>
+  ))
+
+  // Spike 4A: SSE stream for Bridge A (data-effect)
+  .get('/api/chart/stream-a', () => {
+    return ServerSentEventGenerator.stream(async (stream) => {
+      let i = 0
+      try {
+        while (true) {
+          const temp = 20 + Math.sin(i * 0.1) * 5 + (Math.random() - 0.5) * 0.5
+          stream.patchSignals(JSON.stringify({
+            chartATemp: temp.toFixed(1),
+            chartATimestamp: Date.now(),
+          }))
+          i++
+          await Bun.sleep(1000)
+        }
+      } catch {
+        console.log(`[Spike4 A] disconnected after ${i} ticks`)
+      }
+    }, { keepalive: true })
+  })
+
+  // Spike 4B: SSE stream for Bridge B (data-attr)
+  .get('/api/chart/stream-b', () => {
+    return ServerSentEventGenerator.stream(async (stream) => {
+      let i = 0
+      try {
+        while (true) {
+          const pressure = 1013 + Math.cos(i * 0.08) * 10 + (Math.random() - 0.5) * 2
+          stream.patchSignals(JSON.stringify({
+            chartBPressure: pressure.toFixed(1),
+            chartBTimestamp: Date.now(),
+          }))
+          i++
+          await Bun.sleep(1000)
+        }
+      } catch {
+        console.log(`[Spike4 B] disconnected after ${i} ticks`)
+      }
+    }, { keepalive: true })
+  })
+
+  // Spike 4C: SSE stream for Bridge C (patchElements)
+  .get('/api/chart/stream-c', () => {
+    return ServerSentEventGenerator.stream(async (stream) => {
+      let i = 0
+      try {
+        while (true) {
+          const speed = 12 + Math.sin(i * 0.12) * 3 + (Math.random() - 0.5) * 0.3
+          const fragment = (
+            <div id="chart-c-wrapper">
+              <div class="metric-row">
+                <span class="metric-label">Line Speed</span>
+                <span class="metric-value" id="chart-c-value">{speed.toFixed(1)} m/min</span>
+              </div>
+              <collatr-line-chart id="chart-c" color="#22c55e" unit="m/min" height="250px"
+                style="display:block;width:100%;height:250px;"
+                latest-point={JSON.stringify({ timestamp: Date.now(), value: speed })}></collatr-line-chart>
+            </div>
+          ) as string
+          stream.patchElements(fragment)
+          i++
+          await Bun.sleep(1000)
+        }
+      } catch {
+        console.log(`[Spike4 C] disconnected after ${i} ticks`)
+      }
+    }, { keepalive: true })
+  })
+
+  // Spike 4 Perf: High-frequency SSE stream (200ms = 5Hz)
+  .get('/api/chart/stream-perf', () => {
+    return ServerSentEventGenerator.stream(async (stream) => {
+      let i = 0
+      try {
+        while (true) {
+          const temp = 20 + Math.sin(i * 0.05) * 8 + (Math.random() - 0.5) * 1
+          stream.patchSignals(JSON.stringify({
+            perfTemp: temp.toFixed(1),
+            perfTs: Date.now(),
+          }))
+          i++
+          await Bun.sleep(200)
+        }
+      } catch {
+        console.log(`[Spike4 perf] disconnected after ${i} ticks`)
+      }
+    }, { keepalive: true })
+  })
+
   // ── Static files ──────────────────────────────────────────────────────────
   .get('/static/*', ({ params }) => {
     const file = Bun.file(`${import.meta.dir}/../public/${params['*']}`)
@@ -448,3 +618,4 @@ console.log(`Spikes running at http://localhost:${app.server!.port}`)
 console.log(`  Spike 1: http://localhost:${app.server!.port}/spike1`)
 console.log(`  Spike 2: http://localhost:${app.server!.port}/`)
 console.log(`  Spike 3: http://localhost:${app.server!.port}/spike3`)
+console.log(`  Spike 4: http://localhost:${app.server!.port}/spike4`)

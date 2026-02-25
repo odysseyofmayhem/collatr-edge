@@ -8,6 +8,7 @@
   "dependencies": {
     "@elysiajs/html": "^1.4",
     "@starfederation/datastar-sdk": "^1.0.0-RC.3",
+    "echarts": "^6.0.0",
     "elysia": "^1.4"
   }
 }
