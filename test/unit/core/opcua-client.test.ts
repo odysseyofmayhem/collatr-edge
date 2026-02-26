@@ -261,6 +261,7 @@ describe("RealOpcuaClient", () => {
         queueSize: 10,
         deadbandType: "none",
         deadbandValue: 0,
+        trigger: "status_value",
       });
 
       // Wait for initial data change
@@ -300,6 +301,7 @@ describe("RealOpcuaClient", () => {
         queueSize: 10,
         deadbandType: "none",
         deadbandValue: 0,
+        trigger: "status_value",
       });
 
       // Wait for initial value
@@ -448,6 +450,7 @@ describe("RealOpcuaClient", () => {
         queueSize: 10,
         deadbandType: "none",
         deadbandValue: 0,
+        trigger: "status_value",
       });
 
       // No events should arrive for a non-existent node
@@ -480,6 +483,7 @@ describe("RealOpcuaClient", () => {
         queueSize: 10,
         deadbandType: "none",
         deadbandValue: 0,
+        trigger: "status_value",
       });
 
       await waitForCondition(() => events.length >= 1, 3000);
@@ -513,6 +517,7 @@ describe("RealOpcuaClient", () => {
         queueSize: 10,
         deadbandType: "none",
         deadbandValue: 0,
+        trigger: "status_value",
       });
 
       await waitForCondition(() => events.length >= 1, 3000);

@@ -235,6 +235,7 @@ export interface OpcuaMonitoredItemParams {
   queueSize: number;
   deadbandType: "none" | "absolute" | "percent";
   deadbandValue: number;
+  trigger: "status" | "status_value" | "status_value_timestamp";
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +678,7 @@ export class OpcuaInput implements ServiceInput {
           queueSize: node.queue_size,
           deadbandType: node.deadband_type,
           deadbandValue: node.deadband_value,
+          trigger: config.data_change_filter.trigger,
         });
       } catch (err) {
         // Bad NodeID or other monitored item error — skip, log, continue (PRD D.7)

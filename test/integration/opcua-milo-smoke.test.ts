@@ -97,6 +97,7 @@ describe.skipIf(!miloReachable)(
             queueSize: 10,
             deadbandType: "none",
             deadbandValue: 0,
+            trigger: "status_value",
           });
         }
 

@@ -320,7 +320,7 @@ export class RealOpcuaClient implements OpcuaClient {
     // Add deadband filter if specified
     if (item.deadbandType !== "none") {
       monitoringParams.filter = new DataChangeFilter({
-        trigger: DataChangeTrigger.StatusValue,
+        trigger: TRIGGER_MAP[item.trigger] ?? DataChangeTrigger.StatusValue,
         deadbandType: DEADBAND_TYPE_MAP[item.deadbandType] ?? DeadbandType.None,
         deadbandValue: item.deadbandValue,
       });
@@ -393,18 +393,11 @@ export class RealOpcuaClient implements OpcuaClient {
     const allowedClasses = new Set(nodeClasses);
     const results: BrowseResultNode[] = [];
 
-    // Map string node class names to numeric NodeClass values for filtering
-    const nodeClassMap: Record<string, NodeClass> = {
-      Variable: NodeClass.Variable,
-      Object: NodeClass.Object,
-    };
-
     await this.browseRecursive(
       rootNodeId,
       0,
       maxDepth,
       allowedClasses,
-      nodeClassMap,
       results,
     );
 
@@ -416,7 +409,6 @@ export class RealOpcuaClient implements OpcuaClient {
     depth: number,
     maxDepth: number,
     allowedClasses: Set<string>,
-    nodeClassMap: Record<string, NodeClass>,
     results: BrowseResultNode[],
   ): Promise<void> {
     if (depth >= maxDepth || !this.session) return;
@@ -478,7 +470,6 @@ export class RealOpcuaClient implements OpcuaClient {
             depth + 1,
             maxDepth,
             allowedClasses,
-            nodeClassMap,
             results,
           );
         }
