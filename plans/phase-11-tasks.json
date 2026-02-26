@@ -17,7 +17,7 @@
       "prd_refs": ["Appendix D §D.1-D.7"],
       "files": ["src/core/opcua-client.ts"],
       "depends_on": ["11.0"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.2",
