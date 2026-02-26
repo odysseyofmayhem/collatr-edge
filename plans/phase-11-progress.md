@@ -8,7 +8,7 @@
 |----|-------------|--------|
 | 11.0 | PRD & Backlog Updates | ✅ |
 | 11.1 | RealOpcuaClient adapter | ✅ |
-| 11.2 | Wire into plugin factory | ⬜ |
+| 11.2 | Wire into plugin factory | ✅ |
 | 11.3 | Unit tests for RealOpcuaClient | ⬜ |
 | 11.4 | Integration test: full pipeline with in-process OPC-UA server | ⬜ |
 | 11.5 | Smoke test: live connection to Eclipse Milo demo server | ⬜ |
@@ -34,3 +34,9 @@
 - **Error handling**: All node-opcua errors wrapped with descriptive messages, non-fatal errors (browse value read, fingerprint extraction) caught and logged
 - **connectionStrategy.maxRetry = 0**: Reconnection managed by `OpcuaInput.reconnect()`, not node-opcua's internal retry
 - All 1006 existing tests pass unchanged
+
+### Task 11.2 (2026-02-26)
+- Updated `INPUT_FACTORIES.opcua` in `src/pipeline/plugin-factory.ts` to lazy-load `RealOpcuaClient` via `require("../core/opcua-client")` and pass it to `OpcuaInput` constructor
+- Lazy `require()` ensures `node-opcua` (~50MB) is only loaded when an OPC-UA input is actually configured — MQTT-only or Modbus-only deployments stay fast
+- Replaced the stale TODO/throw block in `OpcuaInput.start()` (lines 530-537) with a safety assertion: `"OPC-UA client not initialized — this is a bug"` — should never trigger since factory always provides a client and tests always inject a mock
+- All 1006 existing tests pass unchanged — mock-based OPC-UA tests unaffected because they inject the client directly via constructor

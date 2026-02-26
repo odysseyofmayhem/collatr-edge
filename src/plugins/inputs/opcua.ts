@@ -526,14 +526,10 @@ export class OpcuaInput implements ServiceInput {
     this.acc = acc;
     this.stopped = false;
 
-    // Lazy-load real OPC-UA client if not injected (e.g., from plugin factory)
+    // Safety assertion: the plugin factory always provides a RealOpcuaClient,
+    // and tests always inject a mock. This should never trigger.
     if (!this.client) {
-      // TODO: Phase 7+ — create real OpcuaClient wrapper from node-opcua.
-      // For now, tests inject mock clients. Production will need the real wrapper.
-      throw new Error(
-        "OPC-UA client not provided. Inject a client via constructor or " +
-        "implement the real node-opcua wrapper.",
-      );
+      throw new Error("OPC-UA client not initialized — this is a bug");
     }
 
     await this.connectAndSubscribe();

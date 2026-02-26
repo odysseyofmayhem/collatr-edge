@@ -180,7 +180,10 @@ type OutputFactory = (config: unknown) => Output;
 
 const INPUT_FACTORIES: Record<string, InputFactory> = {
   modbus: (config) => new ModbusInput(ModbusConfigSchema.parse(config)),
-  opcua: (config) => new OpcuaInput(OpcuaConfigSchema.parse(config)),
+  opcua: (config) => {
+    const { RealOpcuaClient } = require("../core/opcua-client");
+    return new OpcuaInput(OpcuaConfigSchema.parse(config), new RealOpcuaClient());
+  },
   mqtt_consumer: (config) => new MqttConsumerInput(MqttConsumerConfigSchema.parse(config)),
   internal: (config, stats) => new InternalInput(InternalConfigSchema.parse(config), stats),
 };

@@ -26,7 +26,7 @@
       "prd_refs": ["§6"],
       "files": ["src/pipeline/plugin-factory.ts", "src/plugins/inputs/opcua.ts"],
       "depends_on": ["11.1"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.3",
