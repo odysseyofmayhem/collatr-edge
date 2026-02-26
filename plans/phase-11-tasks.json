@@ -39,7 +39,7 @@
     },
     {
       "id": "11.4",
-      "name": "Integration test: full pipeline with real OPC-UA",
+      "name": "Integration test: full pipeline with in-process OPC-UA server",
       "description": "End-to-end: config → plugin factory → OpcuaInput + RealOpcuaClient → data to accumulator. Test data flow, browse mode output, security auto-negotiation. Uses in-process OPCUAServer.",
       "prd_refs": ["Appendix D", "§8"],
       "files": ["test/integration/opcua-real-client.test.ts"],
@@ -48,11 +48,20 @@
     },
     {
       "id": "11.5",
+      "name": "Smoke test: live connection to Eclipse Milo demo server",
+      "description": "Integration test that connects to the real public Eclipse Milo demo server at opc.tcp://milo.digitalpetri.com:62541/milo. Subscribe to Dynamic/RandomInt32, Dynamic/RandomFloat, Dynamic/RandomDouble. Verify data changes arrive within 10s. Verify field values are numeric. Verify source timestamps are present. This is the acceptance test that proves the original smoke test failure is fixed. Mark test with a skip-if-offline guard (test.skipIf or try/catch on connect) so CI doesn't fail when the public server is down.",
+      "prd_refs": ["Appendix D"],
+      "files": ["test/integration/opcua-milo-smoke.test.ts"],
+      "depends_on": ["11.2"],
+      "passes": false
+    },
+    {
+      "id": "11.6",
       "name": "Cleanup stale TODOs",
       "description": "Remove Phase 7 TODO from opcua.ts, update module header comment, verify all existing OPC-UA tests still pass with factory changes.",
       "prd_refs": [],
       "files": ["src/plugins/inputs/opcua.ts"],
-      "depends_on": ["11.4"],
+      "depends_on": ["11.5"],
       "passes": false
     }
   ]

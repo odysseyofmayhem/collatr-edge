@@ -243,7 +243,44 @@ End-to-end test of the full pipeline path: config → plugin factory → OpcuaIn
 
 **Timeout:** These tests involve real TCP connections. Set per-test timeout to 15s. Mark with a comment: `// Integration test — requires node-opcua server`
 
-### Task 11.5 — Remove Stale TODO, Update OpcuaInput Guard
+### Task 11.5 — Smoke Test: Live Connection to Eclipse Milo Demo Server
+
+**File:** `test/integration/opcua-milo-smoke.test.ts`
+
+This is the acceptance test that proves the original smoke test failure is fixed. It connects to the real public Eclipse Milo demo server — the same one that produced zero data when Lee ran `smoke-test-public.toml`.
+
+**Server:** `opc.tcp://milo.digitalpetri.com:62541/milo`
+**Security:** None/None, anonymous auth
+**Dynamic nodes:** `ns=2;s=Dynamic/RandomInt32`, `ns=2;s=Dynamic/RandomFloat`, `ns=2;s=Dynamic/RandomDouble`
+
+**Test steps:**
+1. Create `RealOpcuaClient`, connect to Milo demo server
+2. Create session (anonymous)
+3. Create subscription (publishing interval 2s)
+4. Add monitored items for 3 dynamic nodes
+5. Wait for data changes (up to 10s)
+6. Verify: at least 1 data change received per node
+7. Verify: field values are numeric (not null, not string)
+8. Verify: source timestamps are present and recent (within last 60s)
+9. Clean shutdown: close session, disconnect
+
+**Offline guard:** The public server may be down. Wrap the entire test in a skip-if-offline guard:
+```typescript
+let canConnect = true;
+try {
+  // Quick connect attempt with short timeout
+  await client.connect(endpoint, { ...opts, connectTimeout: 5000 });
+  await client.disconnect();
+} catch {
+  canConnect = false;
+}
+test.skipIf(!canConnect)("connects to Milo demo and receives data", async () => { ... });
+```
+Alternatively, use `try/catch` on the connect and `test.skip()` if it fails. The key constraint: this test MUST NOT cause CI failures when the public server is unreachable.
+
+**Timeout:** 30s for the full test (connect + subscribe + wait for data + teardown).
+
+### Task 11.6 — Remove Stale TODO, Update OpcuaInput Guard
 
 **File:** `src/plugins/inputs/opcua.ts`
 
@@ -271,6 +308,6 @@ End-to-end test of the full pipeline path: config → plugin factory → OpcuaIn
 
 ## Build Order
 
-11.0 (PRD/backlog) → 11.1 (adapter) → 11.2 (factory wiring) → 11.3 (adapter unit tests) → 11.4 (integration tests) → 11.5 (cleanup)
+11.0 (PRD/backlog) → 11.1 (adapter) → 11.2 (factory wiring) → 11.3 (adapter unit tests) → 11.4 (in-process integration tests) → 11.5 (Milo live smoke test) → 11.6 (cleanup)
 
-Task 11.1 is the bulk of the work. Task 11.2 is small but depends on 11.1. Tasks 11.3 and 11.4 can potentially be done together but keeping them separate follows the workflow pattern of separating unit and integration tests.
+Task 11.1 is the bulk of the work. Task 11.2 is small but depends on 11.1. Tasks 11.3 and 11.4 can potentially be done together but keeping them separate follows the workflow pattern of separating unit and integration tests. Task 11.5 is the acceptance test against the real public Milo server — the whole reason this phase exists.
