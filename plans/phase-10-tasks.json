@@ -44,7 +44,7 @@
       "prd_refs": [],
       "files": ["configs/smoke-test-public.toml"],
       "depends_on": ["10.1"],
-      "passes": false
+      "passes": true
     }
   ]
 }

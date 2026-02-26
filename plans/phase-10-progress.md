@@ -1,6 +1,6 @@
 # Phase 10 Progress — MQTT Data Format Hardening
 
-## Status: IN PROGRESS
+## Status: ALL TASKS COMPLETE — PENDING REVIEW
 
 ## Tasks
 
@@ -10,7 +10,7 @@
 | 10.1 | Add data_format auto and string modes | ✅ |
 | 10.2 | Parse error throttling | ✅ |
 | 10.3 | Tests for new data formats and throttling | ✅ |
-| 10.4 | Smoke test config update | ⬜ |
+| 10.4 | Smoke test config update | ✅ |
 
 ## Decisions & Notes
 
@@ -45,3 +45,8 @@
 - Throttling tests: first 5 verbose errors, 6th triggers summary (lastParseErrorLogTime starts at 0), 7th-10th silent, 60s interval summary with total count (Date.now mock), valid messages after errors, per-instance counter isolation (two independent instances).
 - Binary tests: all 4 data_format modes — json (error), auto (silent fallback), string (replacement chars), value (NaN → string).
 - Total test count: 1003 (984 → 1003). 0 failures.
+
+### Task 10.4 — Smoke test config update
+- Changed EMQX broker input from `data_format = "json"` to `data_format = "auto"` with inline comment explaining why.
+- Added explanatory comment block above the `[[inputs.mqtt_consumer]]` section documenting payload heterogeneity on public brokers and parse error throttling behaviour.
+- No code changes — config-only update. All 1003 tests still pass.

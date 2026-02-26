@@ -63,18 +63,24 @@
 # ─── MQTT: EMQX Public Broker ────────────────────────────────────────
 # More stable than mosquitto. People publish all sorts here.
 # We subscribe to a few common patterns where IoT devices post data.
+#
+# NOTE: Public MQTT brokers carry heterogeneous payloads from many devices.
+# Wildcard subscriptions will receive JSON, plain text, NMEA GPS sentences,
+# binary data, etc. Use data_format = "auto" for best results.
+# Parse errors from non-JSON payloads are throttled (first 5 verbose,
+# then periodic summaries every 60s).
 [[inputs.mqtt_consumer]]
   alias = "emqx_public"
   servers = ["tcp://broker.emqx.io:1883"]
   topics = [
     "sensor/#",
-    "device/#",
-    "iot/#",
+#    "device/#",
+#    "iot/#",
     "temperature/#",
-    "collatr/smoke-test/#",
+#    "collatr/smoke-test/#",
   ]
   qos = 0
-  data_format = "json"
+  data_format = "auto"  # Public brokers carry mixed payloads (JSON, NMEA, binary)
   topic_tag = "topic"
   tags = { broker = "emqx" }
 
@@ -85,21 +91,21 @@
 # ─── MQTT: Mosquitto Test Broker ─────────────────────────────────────
 # The canonical public MQTT broker. Noisy but real traffic.
 # Subscribe to specific prefixes to avoid overwhelming volume.
-[[inputs.mqtt_consumer]]
-  alias = "mosquitto_public"
-  servers = ["tcp://test.mosquitto.org:1883"]
-  topics = [
-    "collatr/smoke-test/#",
-    "test/sensor/#",
-  ]
-  qos = 0
-  data_format = "json"
-  topic_tag = "topic"
-  tags = { broker = "mosquitto" }
-
-  [inputs.mqtt_consumer.reconnect]
-    initial_delay = "2s"
-    max_delay = "30s"
+#[[inputs.mqtt_consumer]]
+#  alias = "mosquitto_public"
+#  servers = ["tcp://test.mosquitto.org:1883"]
+#  topics = [
+#    "collatr/smoke-test/#",
+#    "test/sensor/#",
+#  ]
+#  qos = 0
+#  data_format = "json"
+#  topic_tag = "topic"
+#  tags = { broker = "mosquitto" }
+#
+#  [inputs.mqtt_consumer.reconnect]
+#    initial_delay = "2s"
+#    max_delay = "30s"
 
 # ─── Internal Metrics ────────────────────────────────────────────────
 [[inputs.internal]]
