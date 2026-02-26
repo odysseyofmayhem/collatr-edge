@@ -949,6 +949,27 @@ describe("MQTT Consumer Input Plugin", () => {
       await input.stop();
     });
 
+    it("Infinity payload → falls back to string, not number (Y-1)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", "Infinity");
+      mockClient.emitMessage("t", "-Infinity");
+
+      expect(acc.metrics.length).toBe(2);
+      // Both should be strings, not numbers — Infinity corrupts aggregations
+      expect(acc.metrics[0]!.fields.value).toBe("Infinity");
+      expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+      expect(acc.metrics[1]!.fields.value).toBe("-Infinity");
+      expect(typeof acc.metrics[1]!.fields.value).toBe("string");
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
     it("does NOT call acc.addError() on JSON parse failure (silent fallback)", async () => {
       const config = makeConfig({ topics: ["t"], data_format: "auto" });
       const input = new MqttConsumerInput(config, mockClient);
@@ -966,6 +987,29 @@ describe("MQTT Consumer Input Plugin", () => {
 
       await input.stop();
     });
+  });
+
+  // =========================================================================
+  // Y-1: Infinity/hex rejected in value mode
+  // =========================================================================
+
+  it("value mode: Infinity and -Infinity → stored as strings, not numbers (Y-1)", async () => {
+    const config = makeConfig({ topics: ["t"], data_format: "value" });
+    const input = new MqttConsumerInput(config, mockClient);
+    await input.start(acc);
+    mockClient.emitConnect();
+    await Bun.sleep(10);
+
+    mockClient.emitMessage("t", "Infinity");
+    mockClient.emitMessage("t", "-Infinity");
+
+    expect(acc.metrics.length).toBe(2);
+    expect(acc.metrics[0]!.fields.value).toBe("Infinity");
+    expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+    expect(acc.metrics[1]!.fields.value).toBe("-Infinity");
+    expect(typeof acc.metrics[1]!.fields.value).toBe("string");
+
+    await input.stop();
   });
 
   // =========================================================================
@@ -1134,6 +1178,40 @@ describe("MQTT Consumer Input Plugin", () => {
       mockClient.emitMessage("t", JSON.stringify({ value: 42 }));
       expect(acc.metrics.length).toBe(1);
       expect(acc.metrics[0]!.fields.value).toBe(42);
+
+      await input.stop();
+    });
+
+    it("error counter resets on reconnect — fresh verbose errors (Y-2)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "json" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // Exhaust verbose limit (5 errors)
+      for (let i = 0; i < 5; i++) {
+        mockClient.emitMessage("t", `bad ${i}`);
+      }
+      expect(acc.errors.length).toBe(5);
+
+      // Simulate disconnect + reconnect
+      mockClient.emitClose();
+      mockClient.emitReconnect();
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // After reconnect, counter should be reset — next errors should be verbose again
+      acc.errors = [];
+      for (let i = 0; i < 3; i++) {
+        mockClient.emitMessage("t", `bad after reconnect ${i}`);
+      }
+      expect(acc.errors.length).toBe(3);
+      for (const err of acc.errors) {
+        expect(err.message).toContain("Payload parse error");
+        // Verbose errors, not throttled summary
+        expect(err.message).not.toContain("throttled");
+      }
 
       await input.stop();
     });

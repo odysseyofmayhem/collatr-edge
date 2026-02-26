@@ -246,6 +246,8 @@ export class MqttConsumerInput implements ServiceInput {
     this.client.onConnect(() => {
       if (this._stopped) return;
       this.reconnectAttempts = 0; // reset on successful connect
+      this.parseErrorCount = 0;
+      this.lastParseErrorLogTime = 0;
       // Subscribe on connect (and re-connect)
       this.client.subscribe(this.config.topics, this.config.qos).catch((err: Error) => {
         getLogger().error("subscribe error", { plugin: "mqtt_consumer", error: err.message });
@@ -351,7 +353,7 @@ export class MqttConsumerInput implements ServiceInput {
             } catch {
               // Auto mode: silent fallback to value — not an error
               const num = Number(payloadStr);
-              fields = (isNaN(num) || payloadStr.trim() === "")
+              fields = (isNaN(num) || !isFinite(num) || payloadStr.trim() === "")
                 ? { value: payloadStr }
                 : { value: num };
             }
@@ -365,7 +367,7 @@ export class MqttConsumerInput implements ServiceInput {
         case "value": {
           // Entire payload is a single value — try numeric, fall back to string
           const num = Number(payloadStr);
-          if (!isNaN(num) && payloadStr.trim() !== "") {
+          if (!isNaN(num) && isFinite(num) && payloadStr.trim() !== "") {
             fields = { value: num };
           } else {
             fields = { value: payloadStr };
