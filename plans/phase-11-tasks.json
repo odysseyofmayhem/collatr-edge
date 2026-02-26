@@ -62,7 +62,7 @@
       "prd_refs": [],
       "files": ["src/plugins/inputs/opcua.ts"],
       "depends_on": ["11.5"],
-      "passes": false
+      "passes": true
     }
   ]
 }

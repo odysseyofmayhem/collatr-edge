@@ -12,7 +12,7 @@
 | 11.3 | Unit tests for RealOpcuaClient | ✅ |
 | 11.4 | Integration test: full pipeline with in-process OPC-UA server | ✅ |
 | 11.5 | Smoke test: live connection to Eclipse Milo demo server | ✅ |
-| 11.6 | Cleanup stale TODOs | ⬜ |
+| 11.6 | Cleanup stale TODOs | ✅ |
 
 ## Decisions & Notes
 
@@ -77,3 +77,9 @@
 - **Test 2 — certificate fingerprint**: Connects to Milo server, verifies SHA-256 fingerprint is available and matches the expected colon-separated uppercase hex format (32 pairs).
 - Both tests skipped in current environment (Milo server unreachable from this machine) — expected and correct behavior
 - All 1048 tests registered (1046 pass, 2 skip, 0 fail)
+
+### Task 11.6 (2026-02-26)
+- Updated `opcua.ts` module header comment: added description of push-based subscription model and adapter architecture (RealOpcuaClient in core, wired by plugin factory via lazy require; tests inject mocks)
+- No stale TODOs found — the Phase 7 TODO/throw was already replaced with a safety assertion in task 11.2
+- No stale references in test files or other OPC-UA source files
+- All 1048 tests pass (1046 pass, 2 skip, 0 fail) — unchanged from task 11.5

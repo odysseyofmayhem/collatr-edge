@@ -1,6 +1,11 @@
 // CollatrEdge — OPC-UA input plugin (ServiceInput)
 // PRD refs: Appendix D (OPC-UA Input Plugin Specification), §6 Plugin System
 // ──────────────────────────────────────────────────────────────────────
+// Push-based input: subscribes to OPC-UA data change notifications via
+// the OpcuaClient interface. Production uses RealOpcuaClient (in
+// src/core/opcua-client.ts, wired by the plugin factory via lazy require);
+// tests inject mock OpcuaClient implementations.
+//
 // SAFETY: CollatrEdge is READ-ONLY. OPC-UA write services are not
 // implemented and MUST NOT be added. Input plugins never modify PLC state.
 // ──────────────────────────────────────────────────────────────────────
