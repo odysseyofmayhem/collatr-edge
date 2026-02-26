@@ -196,6 +196,12 @@ export class MqttConsumerInput implements ServiceInput {
   private _stopped = false;
   private reconnectAttempts = 0;
 
+  // Per-instance parse error throttling (Rule 13: per-instance, not global)
+  private parseErrorCount = 0;
+  private lastParseErrorLogTime = 0;
+  private static readonly PARSE_ERROR_VERBOSE_LIMIT = 5;
+  private static readonly PARSE_ERROR_SUMMARY_INTERVAL_MS = 60_000;
+
   constructor(config: MqttConsumerConfig, client?: MqttClientInterface) {
     this.config = config;
     this.client = client ?? createDefaultMqttClient();
@@ -372,10 +378,35 @@ export class MqttConsumerInput implements ServiceInput {
 
       this.acc.addFields(measurementName, fields, tags);
     } catch (error: unknown) {
-      // Parse error — log but don't crash
+      // Throttled parse error handling — downgraded from error to warn.
+      // Parse errors from garbage data on wildcard subs are expected noise.
+      this.parseErrorCount++;
       const msg = error instanceof Error ? error.message : String(error);
-      getLogger().error("payload parse error", { plugin: "mqtt_consumer", topic: event.topic, error: msg });
-      if (this.acc) this.acc.addError(new Error(`Payload parse error: ${msg}`));
+
+      if (this.parseErrorCount <= MqttConsumerInput.PARSE_ERROR_VERBOSE_LIMIT) {
+        // First N errors: full context at warn level
+        getLogger().warn("payload parse error", {
+          plugin: "mqtt_consumer",
+          topic: event.topic,
+          error: msg,
+          error_count: this.parseErrorCount,
+        });
+        if (this.acc) this.acc.addError(new Error(`Payload parse error: ${msg}`));
+      } else {
+        // After threshold: periodic summary
+        const now = Date.now();
+        if (now - this.lastParseErrorLogTime >= MqttConsumerInput.PARSE_ERROR_SUMMARY_INTERVAL_MS) {
+          this.lastParseErrorLogTime = now;
+          getLogger().warn("payload parse errors (throttled)", {
+            plugin: "mqtt_consumer",
+            total_errors: this.parseErrorCount,
+          });
+          if (this.acc) this.acc.addError(
+            new Error(`Payload parse errors: ${this.parseErrorCount} total (throttled)`),
+          );
+        }
+        // Between summaries: silently increment, no log, no acc.addError()
+      }
     }
   }
 
