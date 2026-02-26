@@ -108,12 +108,14 @@ Each iteration:
 7. Updates `passes: true` in the task JSON
 8. Updates the progress file with what was built and decisions made
 9. Commits with format: `phase-N: <what> (task N.X)`
-10. Outputs `TASK_COMPLETE` (or triggers internal review if all tasks done — see below)
+10. Outputs `TASK_COMPLETE` **and STOPS immediately**. Does not continue to the next task. The loop script starts a fresh iteration.
+
+(Exception: when ALL tasks have `passes: true`, triggers internal review instead — see below.)
 
 **The loop auto-pushes to git after each iteration** so Dex can monitor progress.
 
 **Key constraints enforced by PROMPT_build.md:**
-- **One task per session** — prevents context bleed and keeps commits atomic
+- **⚠️ ONE TASK PER SESSION — this is critical.** The agent completes exactly one task, commits, outputs `TASK_COMPLETE`, and stops. It does NOT look for the next failing task and continue. The `ralph.sh` loop handles iteration by starting a fresh context for each task. This prevents context bleed, keeps commits atomic, and ensures each task gets a clean context window. **Lesson learned (Phase 10):** If the PROMPT merely lists "output TASK_COMPLETE" as a step in a checklist, the agent treats it as one step among many and continues working. The PROMPT must use forceful language: "STOP immediately", "Do NOT continue", separate "STOPPING RULES" section.
 - **All tests must pass** — no partial implementations, no "fix it later"
 - **Progress file must be updated** — breadcrumbs for the next iteration and for reviewers
 - **3-attempt failure rule** — if a test can't be fixed after 3 genuine attempts, STOP and document. Don't hack around it.
@@ -277,16 +279,38 @@ Every `PROMPT_build.md` **must** include these sections. Missing any of these ha
 2. **Task workflow** — Find first failing task → read PRD → implement → test → commit → update progress. One task per session.
 3. **Rules reminder** — Key rules for this phase (not all 13, just the ones most likely to be violated).
 4. **Phase-specific notes** — Gotchas, known issues, constructor patterns, etc.
-5. **Completion signals:**
-   - `TASK_COMPLETE` — after each task passes and is committed.
+5. **Stopping rules** — Explicit, forceful instructions to STOP after one task. See below.
+6. **Completion signals:**
+   - `TASK_COMPLETE` — after each task passes and is committed. Agent STOPS.
    - After all tasks pass: **trigger internal code review** (spawn sub-agent, write `phase-N-review.md`), then implement fixes, then output `PHASE_COMPLETE`.
 
-**Critical: The review step must be in the PROMPT, not left to manual prompting.** Phase 6 missed this — the PROMPT said "if all tasks pass, output PHASE_COMPLETE" without requiring a review first. The review only happened because it was manually triggered. Future PROMPTs must include explicit instructions:
+**Critical: The review step must be in the PROMPT, not left to manual prompting.** Phase 6 missed this — the PROMPT said "if all tasks pass, output PHASE_COMPLETE" without requiring a review first. The review only happened because it was manually triggered. Future PROMPTs must include explicit instructions.
 
-```
+**Critical: ONE TASK PER SESSION must be enforced with forceful language.** Phase 10 demonstrated that if TASK_COMPLETE appears as just another step in a numbered list, the agent treats it as a waypoint and continues to the next task. The PROMPT must include a separate **STOPPING RULES** section with language like "STOP immediately", "Do NOT continue to the next task", "Do NOT look for the next failing task." Burying it in a checklist is not sufficient.
+
+### PROMPT_build.md Template
+
+```markdown
+## CRITICAL: ONE TASK PER SESSION
+
+You MUST implement exactly ONE task per session, then STOP.
+
+1. Read the phase plan
+2. Find the **first** task with `"passes": false` in the task JSON
+3. Implement ONLY that single task
+4. Run tests — ALL must pass
+5. Update task JSON (`"passes": true`) and progress file
+6. Commit
+7. Do NOT push
+8. Output TASK_COMPLETE and STOP. Do NOT continue to the next task.
+
+## STOPPING RULES
+
+**After completing ONE task:** Output `TASK_COMPLETE` and stop immediately.
+Do not look for the next task. Do not start another task.
+The ralph.sh loop will call you again for the next iteration.
+
 ## COMPLETION
-
-When your single task is done and committed, output: TASK_COMPLETE
 
 When ALL tasks in the task JSON have "passes": true:
 1. Do NOT output PHASE_COMPLETE yet.
@@ -313,7 +337,7 @@ When ALL tasks in the task JSON have "passes": true:
 
 ---
 
-## Lessons Learned (Phases 1–5)
+## Lessons Learned (Phases 1–10)
 
 ### What works well
 
@@ -332,6 +356,7 @@ When ALL tasks in the task JSON have "passes": true:
 4. **Independent review naming** changed from `phase-N-review-final.md` to `phase-N-independent-review.md` for clarity — the "final" was confusing because it suggested it was the last review, not that it was from an independent reviewer.
 5. **Phase plan quality improved** over time — early plans were thinner, later plans (Phase 5, 6) include specific implementation notes, edge case guidance, and "what this does NOT do" sections.
 6. **Internal review must be in the PROMPT** — Phase 6's PROMPT_build.md said "output PHASE_COMPLETE" without requiring a code review first. The review only happened because it was manually triggered. The PROMPT now explicitly includes the review-and-fix cycle before PHASE_COMPLETE.
+7. **ONE TASK PER SESSION needs forceful language** — Phase 10's initial PROMPT listed "Output: TASK_COMPLETE" as step 9 of a numbered list. The agent treated it as a checkpoint and continued to the next task, completing two tasks in one iteration. Fix: dedicated "CRITICAL: ONE TASK PER SESSION" header, separate "STOPPING RULES" section, and explicit "Do NOT continue to the next task" language. Burying the stop signal in a checklist does not work.
 
 ### What to watch for
 
