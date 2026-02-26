@@ -12,17 +12,19 @@ Phase 10 addresses real-world issues found during smoke testing against public M
 
 The smoke test config is at `configs/smoke-test-public.toml`. The errors came from `broker.emqx.io` delivering NMEA GPS sentences, binary data, etc. on wildcard topics like `sensor/#`, `device/#`.
 
-## YOUR TASK
+## CRITICAL: ONE TASK PER SESSION
+
+You MUST implement exactly ONE task per session, then STOP.
 
 1. Read `plans/phase-10-mqtt-data-format.md` for the full plan
-2. Read `plans/phase-10-tasks.json` to find the first task with `"passes": false`
-3. Read the relevant PRD sections referenced in the task
-4. Implement the task: write code, write tests, run `bun test test/unit test/integration` — ALL tests must pass
+2. Read `plans/phase-10-tasks.json` to find the **first** task with `"passes": false`
+3. Read the relevant PRD sections referenced in that task
+4. Implement ONLY that single task: write code, write tests, run `bun test test/unit test/integration` — ALL tests must pass
 5. Update `plans/phase-10-tasks.json`: set `"passes": true` for your completed task
 6. Update `plans/phase-10-progress.md` with what you built and any decisions
 7. Commit: `phase-10: <what> (task 10.X)`
 8. Do NOT push. Pushing is handled externally.
-9. Output: TASK_COMPLETE
+9. Output TASK_COMPLETE and STOP. Do NOT continue to the next task. The loop script handles iteration.
 
 ## PHASE-SPECIFIC RULES
 
@@ -33,11 +35,11 @@ The smoke test config is at `configs/smoke-test-public.toml`. The errors came fr
 - **Existing tests:** The existing "invalid JSON payload" test (~line 652 in mqtt-consumer.test.ts) must be updated to expect `warn` level instead of `error`.
 - **Binary payloads:** `Buffer.toString("utf-8")` replaces invalid bytes with `\uFFFD`. Test this path.
 
-## COMPLETION
+## STOPPING RULES
 
-When your single task is done and committed, output: TASK_COMPLETE
+**After completing ONE task:** Output `TASK_COMPLETE` and stop immediately. Do not look for the next task. Do not start another task. The ralph.sh loop will call you again for the next iteration.
 
-When ALL tasks in the task JSON have `"passes": true`:
+**When ALL tasks have `"passes": true`:** Instead of TASK_COMPLETE, do the following:
 1. Do NOT output PHASE_COMPLETE yet.
 2. Spawn a sub-agent code review (see CLAUDE.md "Phase Work Pattern" step 4).
 3. Write the review to `plans/phase-10-review.md`
