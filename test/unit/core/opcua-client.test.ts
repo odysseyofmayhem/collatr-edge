@@ -344,6 +344,7 @@ describe("RealOpcuaClient", () => {
           queueSize: 10,
           deadbandType: "none",
           deadbandValue: 0,
+          trigger: "status_value",
         });
       }
 
@@ -392,6 +393,7 @@ describe("RealOpcuaClient", () => {
           queueSize: 10,
           deadbandType: "none",
           deadbandValue: 0,
+          trigger: "status_value",
         }),
       ).rejects.toThrow(/subscription not active/);
     });
@@ -415,6 +417,7 @@ describe("RealOpcuaClient", () => {
           queueSize: 10,
           deadbandType: "none",
           deadbandValue: 0,
+          trigger: "status_value",
         }),
       ).rejects.toThrow(/cannot be coerced/);
 
@@ -456,6 +459,88 @@ describe("RealOpcuaClient", () => {
       // No events should arrive for a non-existent node
       await new Promise((r) => setTimeout(r, 500));
       expect(events.length).toBe(0);
+
+      await client.closeSession();
+      await client.disconnect();
+    }, 10_000);
+  });
+
+  describe("deadband filter", () => {
+    it("monitors with absolute deadband and status_value_timestamp trigger", async () => {
+      const client = new RealOpcuaClient();
+      await client.connect(endpointUrl, defaultOpts());
+      await client.createSession();
+      await client.createSubscription({
+        publishingInterval: 200,
+        maxKeepAliveCount: 10,
+        lifetimeCount: 100,
+        maxNotificationsPerPublish: 10,
+      });
+
+      const events: DataChangeEvent[] = [];
+      client.onDataChange((event) => events.push(event));
+
+      // Exercise the deadband filter code path (lines 321-326 of opcua-client.ts)
+      // with a non-default trigger value to also cover S-4 (TRIGGER_MAP wiring)
+      await client.addMonitoredItem({
+        nodeId: doubleVar.nodeId.toString(),
+        samplingInterval: 100,
+        queueSize: 10,
+        deadbandType: "absolute",
+        deadbandValue: 1.0,
+        trigger: "status_value_timestamp",
+      });
+
+      // Should still receive at least the initial value
+      await waitForCondition(() => events.length >= 1, 3000);
+
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      const first = events[0]!;
+      expect(first.nodeId).toBe(doubleVar.nodeId.toString());
+      expect(first.dataType).toBe("Double");
+      expect(typeof first.value).toBe("number");
+
+      await client.closeSession();
+      await client.disconnect();
+    }, 10_000);
+
+    it("monitors with percent deadband without error", async () => {
+      const client = new RealOpcuaClient();
+      await client.connect(endpointUrl, defaultOpts());
+      await client.createSession();
+      await client.createSubscription({
+        publishingInterval: 200,
+        maxKeepAliveCount: 10,
+        lifetimeCount: 100,
+        maxNotificationsPerPublish: 10,
+      });
+
+      const events: DataChangeEvent[] = [];
+      client.onDataChange((event) => events.push(event));
+
+      // Exercise percent deadband path — verifies DataChangeFilter construction
+      // with DeadbandType.Percent. Note: percent deadband requires EURange on
+      // the variable; the in-process test server may not deliver events without
+      // it, so we only assert the monitor call succeeds without error.
+      await client.addMonitoredItem({
+        nodeId: floatVar.nodeId.toString(),
+        samplingInterval: 100,
+        queueSize: 10,
+        deadbandType: "percent",
+        deadbandValue: 5.0,
+        trigger: "status_value",
+      });
+
+      // Give the server a moment to respond — events may or may not arrive
+      // depending on whether EURange is configured (it isn't in this test server)
+      await new Promise((r) => setTimeout(r, 500));
+
+      // The key assertion: addMonitoredItem succeeded (no throw)
+      // If events did arrive, verify they're well-formed
+      if (events.length > 0) {
+        expect(events[0]!.nodeId).toBe(floatVar.nodeId.toString());
+        expect(events[0]!.dataType).toBe("Float");
+      }
 
       await client.closeSession();
       await client.disconnect();

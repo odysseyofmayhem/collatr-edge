@@ -267,7 +267,9 @@ export class RealOpcuaClient implements OpcuaClient {
       throw new Error(`OPC-UA session creation failed: ${message}`);
     }
 
-    // Session closed event
+    // "session_closed" exists on the ClientSession implementation but may not
+    // be in node-opcua's TS type definitions — cast to avoid compilation error.
+    // If node-opcua renames this event, the handler will silently stop firing.
     this.session.on("session_closed" as any, () => {
       this._sessionActive = false;
     });
