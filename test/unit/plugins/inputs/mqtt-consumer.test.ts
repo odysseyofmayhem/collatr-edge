@@ -649,7 +649,9 @@ describe("MQTT Consumer Input Plugin", () => {
     expect(acc.metrics.length).toBe(1);  // Still 1
   });
 
-  it("invalid JSON payload → error logged, no crash", async () => {
+  // Phase 10: parse errors now logged at warn level (not error).
+  // First error still calls acc.addError() (within verbose limit of 5).
+  it("invalid JSON payload → parse error at warn level, no crash", async () => {
     const config = makeConfig({
       topics: ["sensors/temp"],
       data_format: "json",
@@ -853,6 +855,425 @@ describe("MQTT Consumer Input Plugin", () => {
     expect(mockClient.disconnected).toBe(false);
 
     await input.stop();
+  });
+
+  // =========================================================================
+  // Phase 10: data_format = "auto" tests (task 10.3)
+  // =========================================================================
+
+  describe("data_format = 'auto'", () => {
+    it("valid JSON object → fields extracted via flattenJson", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", JSON.stringify({ temperature: 23.5, humidity: 45.2 }));
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.temperature).toBe(23.5);
+      expect(acc.metrics[0]!.fields.humidity).toBe(45.2);
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("valid JSON primitive (number) → { value: 42 }", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", "42");
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe(42);
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("non-JSON string (NMEA sentence) → silent fallback to string value", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      const nmea = "$GNRMC,180045.820,A,4029.09,N,07436.62,W,0.52,360.93,230120,,,A";
+      mockClient.emitMessage("t", nmea);
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe(nmea);
+      // Silent fallback — no errors reported
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("non-JSON numeric string → falls back to numeric value", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // "+42" is not valid JSON but Number("+42") = 42
+      mockClient.emitMessage("t", "+42");
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe(42);
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("binary payload (non-UTF8 bytes) → falls back to string value", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // Invalid UTF-8 bytes → \uFFFD replacement characters
+      const binaryBuf = Buffer.from([0x48, 0x65, 0x6C, 0x80, 0xFF]);
+      mockClient.emitMessage("t", binaryBuf);
+
+      expect(acc.metrics.length).toBe(1);
+      expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+      expect((acc.metrics[0]!.fields.value as string).includes("\uFFFD")).toBe(true);
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("does NOT call acc.addError() on JSON parse failure (silent fallback)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // Multiple non-JSON payloads — all should produce metrics, zero errors
+      mockClient.emitMessage("t", "not json at all");
+      mockClient.emitMessage("t", "{broken");
+      mockClient.emitMessage("t", "NMEA $GPGGA sentence");
+
+      expect(acc.metrics.length).toBe(3);
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+  });
+
+  // =========================================================================
+  // Phase 10: data_format = "string" tests (task 10.3)
+  // =========================================================================
+
+  describe("data_format = 'string'", () => {
+    it("text payload → { value: 'hello' }", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "string" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", "hello");
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe("hello");
+
+      await input.stop();
+    });
+
+    it("numeric text → { value: '123.45' } (no coercion to number)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "string" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", "123.45");
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe("123.45");
+      expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+
+      await input.stop();
+    });
+
+    it("empty string → { value: '' }", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "string" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      mockClient.emitMessage("t", "");
+
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe("");
+
+      await input.stop();
+    });
+  });
+
+  // =========================================================================
+  // Phase 10: Parse error throttling tests (task 10.3)
+  // =========================================================================
+
+  describe("parse error throttling (data_format = 'json')", () => {
+    it("first 5 invalid JSON messages → 5 acc.addError() calls", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "json" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      for (let i = 0; i < 5; i++) {
+        mockClient.emitMessage("t", `bad json ${i}`);
+      }
+
+      expect(acc.errors.length).toBe(5);
+      for (const err of acc.errors) {
+        expect(err.message).toContain("Payload parse error");
+      }
+
+      await input.stop();
+    });
+
+    it("6th error triggers summary, 7th-10th silent (between summaries)", async () => {
+      const origDateNow = Date.now;
+      try {
+        let mockTime = 100_000;
+        Date.now = () => mockTime;
+
+        const config = makeConfig({ topics: ["t"], data_format: "json" });
+        const input = new MqttConsumerInput(config, mockClient);
+        await input.start(acc);
+        mockClient.emitConnect();
+        await Bun.sleep(10);
+
+        // 5 verbose errors
+        for (let i = 0; i < 5; i++) {
+          mockClient.emitMessage("t", `bad ${i}`);
+        }
+        expect(acc.errors.length).toBe(5);
+
+        // 6th error: Date.now() - lastParseErrorLogTime(0) = 100000 >= 60000 → summary
+        mockClient.emitMessage("t", "bad 5");
+        expect(acc.errors.length).toBe(6);
+        expect(acc.errors[5]!.message).toContain("total (throttled)");
+
+        // 7th-10th: within 60s of summary → silent
+        for (let i = 0; i < 4; i++) {
+          mockClient.emitMessage("t", `bad ${7 + i}`);
+        }
+        expect(acc.errors.length).toBe(6); // Unchanged
+
+        await input.stop();
+      } finally {
+        Date.now = origDateNow;
+      }
+    });
+
+    it("after 60s interval → new summary with total count", async () => {
+      const origDateNow = Date.now;
+      try {
+        let mockTime = 100_000;
+        Date.now = () => mockTime;
+
+        const config = makeConfig({ topics: ["t"], data_format: "json" });
+        const input = new MqttConsumerInput(config, mockClient);
+        await input.start(acc);
+        mockClient.emitConnect();
+        await Bun.sleep(10);
+
+        // 5 verbose + 1 summary = 6 acc.addError() calls
+        for (let i = 0; i < 6; i++) {
+          mockClient.emitMessage("t", `bad ${i}`);
+        }
+        expect(acc.errors.length).toBe(6);
+
+        // 4 more silent errors (within 60s)
+        for (let i = 0; i < 4; i++) {
+          mockClient.emitMessage("t", `bad ${6 + i}`);
+        }
+        expect(acc.errors.length).toBe(6); // Unchanged
+
+        // Advance time past 60s interval
+        mockTime += 61_000;
+
+        // 11th error → triggers new summary
+        mockClient.emitMessage("t", "bad 10");
+        expect(acc.errors.length).toBe(7);
+        expect(acc.errors[6]!.message).toContain("11 total");
+
+        await input.stop();
+      } finally {
+        Date.now = origDateNow;
+      }
+    });
+
+    it("valid messages still processed after throttled errors", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "json" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // Send 10 invalid JSON messages
+      for (let i = 0; i < 10; i++) {
+        mockClient.emitMessage("t", `bad ${i}`);
+      }
+      expect(acc.metrics.length).toBe(0);
+
+      // Valid JSON still produces a metric
+      mockClient.emitMessage("t", JSON.stringify({ value: 42 }));
+      expect(acc.metrics.length).toBe(1);
+      expect(acc.metrics[0]!.fields.value).toBe(42);
+
+      await input.stop();
+    });
+
+    it("error counter is per-instance (two instances have independent counters)", async () => {
+      const client1 = new MockMqttClient();
+      const client2 = new MockMqttClient();
+      const acc1 = new CollectingAcc();
+      const acc2 = new CollectingAcc();
+
+      const config1 = makeConfig({ topics: ["t"], data_format: "json" });
+      const config2 = makeConfig({ topics: ["t"], data_format: "json" });
+
+      const input1 = new MqttConsumerInput(config1, client1);
+      const input2 = new MqttConsumerInput(config2, client2);
+
+      await input1.start(acc1);
+      await input2.start(acc2);
+      client1.emitConnect();
+      client2.emitConnect();
+      await Bun.sleep(10);
+
+      // Instance 1: 7 errors (5 verbose + 1 summary + 1 silent)
+      for (let i = 0; i < 7; i++) {
+        client1.emitMessage("t", `bad ${i}`);
+      }
+
+      // Instance 2: 3 errors (all within verbose limit)
+      for (let i = 0; i < 3; i++) {
+        client2.emitMessage("t", `bad ${i}`);
+      }
+
+      // Instance 1: 5 verbose + 1 summary = 6 (7th is silent)
+      expect(acc1.errors.length).toBe(6);
+      // Instance 2: only 3 verbose (independent counter, still within limit)
+      expect(acc2.errors.length).toBe(3);
+
+      await input1.stop();
+      await input2.stop();
+    });
+  });
+
+  // =========================================================================
+  // Phase 10: Binary payload handling (task 10.3)
+  // =========================================================================
+
+  describe("binary payload handling", () => {
+    it("binary in json mode → parse error (binary detected before JSON.parse)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "json" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      // Buffer with null byte → detected as binary
+      const binaryBuf = Buffer.from([0x7B, 0x00, 0x80, 0x7D]);
+      mockClient.emitMessage("t", binaryBuf);
+
+      expect(acc.metrics.length).toBe(0);
+      expect(acc.errors.length).toBe(1);
+      expect(acc.errors[0]!.message).toContain("Binary payload");
+
+      await input.stop();
+    });
+
+    it("binary in auto mode → falls back to string value (no error)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "auto" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      const binaryBuf = Buffer.from([0x48, 0x65, 0x6C, 0x80, 0xFF]);
+      mockClient.emitMessage("t", binaryBuf);
+
+      expect(acc.metrics.length).toBe(1);
+      expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("binary in string mode → string value with \\uFFFD replacement chars", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "string" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      const binaryBuf = Buffer.from([0x48, 0x80, 0xFF]);
+      mockClient.emitMessage("t", binaryBuf);
+
+      expect(acc.metrics.length).toBe(1);
+      const val = acc.metrics[0]!.fields.value as string;
+      expect(typeof val).toBe("string");
+      expect(val).toContain("\uFFFD");
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+
+    it("binary in value mode → string value (Number() returns NaN)", async () => {
+      const config = makeConfig({ topics: ["t"], data_format: "value" });
+      const input = new MqttConsumerInput(config, mockClient);
+      await input.start(acc);
+      mockClient.emitConnect();
+      await Bun.sleep(10);
+
+      const binaryBuf = Buffer.from([0x80, 0xFF, 0x00]);
+      mockClient.emitMessage("t", binaryBuf);
+
+      expect(acc.metrics.length).toBe(1);
+      // Number() of string with replacement chars → NaN → falls back to string
+      expect(typeof acc.metrics[0]!.fields.value).toBe("string");
+      expect(acc.errors.length).toBe(0);
+
+      await input.stop();
+    });
+  });
+
+  // =========================================================================
+  // Phase 10: Config validation for new formats (task 10.3)
+  // =========================================================================
+
+  it("config validation: data_format accepts all valid options", () => {
+    for (const fmt of ["json", "value", "string", "auto"]) {
+      const config = MqttConsumerConfigSchema.parse({
+        servers: ["tcp://localhost:1883"],
+        topics: ["t"],
+        data_format: fmt,
+      });
+      expect(config.data_format).toBe(fmt);
+    }
+
+    // Invalid format rejected
+    expect(() => MqttConsumerConfigSchema.parse({
+      servers: ["tcp://localhost:1883"],
+      topics: ["t"],
+      data_format: "csv",
+    })).toThrow();
   });
 });
 

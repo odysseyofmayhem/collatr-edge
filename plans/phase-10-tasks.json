@@ -35,7 +35,7 @@
       "prd_refs": ["§6", "§14"],
       "files": ["test/unit/plugins/inputs/mqtt-consumer.test.ts"],
       "depends_on": ["10.2"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "10.4",

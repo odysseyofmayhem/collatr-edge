@@ -9,7 +9,7 @@
 | 10.0 | PRD Updates | ✅ |
 | 10.1 | Add data_format auto and string modes | ✅ |
 | 10.2 | Parse error throttling | ✅ |
-| 10.3 | Tests for new data formats and throttling | ⬜ |
+| 10.3 | Tests for new data formats and throttling | ✅ |
 | 10.4 | Smoke test config update | ⬜ |
 
 ## Decisions & Notes
@@ -36,3 +36,12 @@
 - Only applies to `data_format="json"` errors. Auto mode has inner try/catch so JSON failures never reach the outer throttled catch.
 - Omitted plan's `since_last_summary` field from summary log — the calculation in the plan was incorrect (always subtracted 5, not count at last summary). `total_errors` is sufficient.
 - All 984 existing tests pass.
+
+### Task 10.3 — Tests for new data formats and throttling
+- Added 19 new tests across 5 describe groups: auto mode (6), string mode (3), parse error throttling (5), binary payload handling (4), config validation (1).
+- Updated existing "invalid JSON payload" test name to document Phase 10 warn-level change (test itself unchanged — first error still within verbose limit, acc.addError() still called).
+- Auto mode tests: valid JSON object, JSON primitive, NMEA sentence fallback, numeric fallback ("+42"), binary payload fallback, silent fallback verification (no acc.addError on parse failure).
+- String mode tests: text, numeric text with no coercion, empty string.
+- Throttling tests: first 5 verbose errors, 6th triggers summary (lastParseErrorLogTime starts at 0), 7th-10th silent, 60s interval summary with total count (Date.now mock), valid messages after errors, per-instance counter isolation (two independent instances).
+- Binary tests: all 4 data_format modes — json (error), auto (silent fallback), string (replacement chars), value (NaN → string).
+- Total test count: 1003 (984 → 1003). 0 failures.
