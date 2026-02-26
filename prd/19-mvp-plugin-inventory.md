@@ -6,7 +6,7 @@
 |--------|----------|----------|-------|
 | `modbus` | Modbus TCP (RTU post-MVP) | P0 | Core IIoT protocol. Registers, coils, discrete inputs. **Read-only** (FC01-04 only; write FCs not implemented). Configurable byte order (ABCD/CDAB/BADC/DCBA), scaling/offset, bit extraction, batch reads. |
 | `opcua` | OPC-UA | P0 | Core IIoT protocol. Subscription-based (`ServiceInput`). Full spec in Appendix D: security (auto-negotiate policy/mode), certificate trust (TOFU + explicit pin), browse + explicit NodeIDs, subscriptions with deadband, data type mapping (22+ types → Metric), reconnection with subscription transfer. Library: `node-opcua`. |
-| `mqtt_consumer` | MQTT | P0 | Subscribe to MQTT topics. Plain and Sparkplug B payloads. |
+| `mqtt_consumer` | MQTT | P0 | Subscribe to MQTT topics. Supports JSON, plain value, string, and auto-detect payload formats. Auto mode tries JSON first, falls back to value parsing. Non-parseable payloads are silently treated as string values. Parse error logging is throttled to prevent log flooding from noisy wildcard subscriptions. Plain and Sparkplug B payloads. |
 | `http_listener` | HTTP/REST | P1 | Push endpoint for webhook-style data sources. |
 | `exec` | Shell command | P1 | Run a command, parse stdout as metrics. |
 | `internal` | Agent self-metrics | P0 | Built-in. Emits `agent.*` metrics. |

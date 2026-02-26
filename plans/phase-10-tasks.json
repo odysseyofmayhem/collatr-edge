@@ -8,7 +8,7 @@
       "description": "Update PRD §19 and Appendix A to document data_format options (json, value, string, auto) and parse error throttling behaviour",
       "prd_refs": ["§19", "Appendix A"],
       "files": ["prd/19-mvp-plugin-inventory.md", "prd/appendix-a-full-config-example.md"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "10.1",

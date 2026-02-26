@@ -133,7 +133,7 @@
   alias = "env_sensors"
   servers = ["tcp://192.168.10.50:1883"]
   topics = ["sensors/env/#"]
-  data_format = "json"
+  data_format = "json"  # Options: "json" (default), "value" (numeric or string), "string" (always string), "auto" (try json, fall back to value)
   tags = { sensor_type = "environmental" }
 
 [[inputs.internal]]
