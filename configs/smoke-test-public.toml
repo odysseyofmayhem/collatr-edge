@@ -1,0 +1,127 @@
+# CollatrEdge Smoke Test — Public Data Sources
+# Zero-config: connects to free public servers over the internet
+# No authentication required, no local infrastructure needed
+#
+# Sources:
+#   OPC-UA  → Eclipse Milo demo server (dynamic values, multiple types)
+#   MQTT    → broker.emqx.io (public broker, JSON sensor topics)
+#   MQTT    → test.mosquitto.org (general traffic)
+#
+# NOTE: No HTTP input plugin in MVP. Sparkplug B parsing not yet implemented.
+# NOTE: Network policy defaults to "connected" (unrestricted egress).
+
+[agent]
+  hostname = "smoke-test"
+  interval = "10s"
+  round_interval = true
+  flush_interval = "10s"
+  precision = "1ms"
+  log_level = "info"
+
+[global_tags]
+  environment = "smoke-test"
+  source = "public"
+
+# ─── OPC-UA: Eclipse Milo Demo Server ────────────────────────────────
+# Dynamic values that change on their own. Multiple data types.
+# Server info: https://github.com/digitalpetri/opc-ua-demo-server
+[[inputs.opcua]]
+  alias = "milo_demo"
+  endpoint = "opc.tcp://milo.digitalpetri.com:62541/milo"
+  security_policy = "None"
+  security_mode = "None"
+  auth_method = "anonymous"
+  connect_timeout = "15s"
+  request_timeout = "10s"
+  timestamp = "source"
+
+  [inputs.opcua.subscription]
+    publishing_interval = "2s"
+    queue_size = 10
+
+  # Dynamic nodes — these change value automatically
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=Dynamic/RandomInt32"
+    name = "random_int32"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=Dynamic/RandomInt64"
+    name = "random_int64"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=Dynamic/RandomFloat"
+    name = "random_float"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=Dynamic/RandomDouble"
+    name = "random_double"
+
+  # Use browse to discover what else is available
+  [inputs.opcua.browse]
+    enabled = false
+    root_node_id = "ns=2;s=Dynamic"
+    max_depth = 3
+    output_file = "milo-browse-output.toml"
+
+# ─── MQTT: EMQX Public Broker ────────────────────────────────────────
+# More stable than mosquitto. People publish all sorts here.
+# We subscribe to a few common patterns where IoT devices post data.
+[[inputs.mqtt_consumer]]
+  alias = "emqx_public"
+  servers = ["tcp://broker.emqx.io:1883"]
+  topics = [
+    "sensor/#",
+    "device/#",
+    "iot/#",
+    "temperature/#",
+    "collatr/smoke-test/#",
+  ]
+  qos = 0
+  data_format = "json"
+  topic_tag = "topic"
+  tags = { broker = "emqx" }
+
+  [inputs.mqtt_consumer.reconnect]
+    initial_delay = "2s"
+    max_delay = "30s"
+
+# ─── MQTT: Mosquitto Test Broker ─────────────────────────────────────
+# The canonical public MQTT broker. Noisy but real traffic.
+# Subscribe to specific prefixes to avoid overwhelming volume.
+[[inputs.mqtt_consumer]]
+  alias = "mosquitto_public"
+  servers = ["tcp://test.mosquitto.org:1883"]
+  topics = [
+    "collatr/smoke-test/#",
+    "test/sensor/#",
+  ]
+  qos = 0
+  data_format = "json"
+  topic_tag = "topic"
+  tags = { broker = "mosquitto" }
+
+  [inputs.mqtt_consumer.reconnect]
+    initial_delay = "2s"
+    max_delay = "30s"
+
+# ─── Internal Metrics ────────────────────────────────────────────────
+[[inputs.internal]]
+  interval = "30s"
+
+# ─── Outputs ─────────────────────────────────────────────────────────
+
+# Local store — write everything to disk for inspection
+[outputs.local_store]
+  enabled = true
+  path = "./data/smoke-test"
+  retention_days = 7
+  rotation = "daily"
+
+# Also write to a JSONL file for easy inspection
+[[outputs.file]]
+  alias = "debug_log"
+  path = "./data/smoke-test/metrics.jsonl"
+  data_format = "json"
+
+# ─── Web UI ──────────────────────────────────────────────────────────
+[webui]
+  enabled = true
+  port = 8080
+  bind = "127.0.0.1"
