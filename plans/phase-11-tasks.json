@@ -1,0 +1,59 @@
+{
+  "phase": 11,
+  "name": "Real OPC-UA Client Adapter",
+  "tasks": [
+    {
+      "id": "11.0",
+      "name": "PRD & Backlog Updates",
+      "description": "Update Appendix D with adapter architecture note. Update post-mvp-backlog.md item #12 to reflect that RealOpcuaClient is the functional adapter (not just testability), mark as done by Phase 11.",
+      "prd_refs": ["Appendix D"],
+      "files": ["prd/appendix-d-opc-ua-input-plugin-specification.md", "plans/post-mvp-backlog.md"],
+      "passes": false
+    },
+    {
+      "id": "11.1",
+      "name": "RealOpcuaClient adapter",
+      "description": "Implement OpcuaClient interface wrapping node-opcua: connect, createSession, createSubscription, addMonitoredItem, onDataChange, onClose, transferSubscriptions, browse, resolveNamespaceUri, closeSession, disconnect, isConnected, sessionActive. Include TOFU fingerprint extraction, security policy enum mapping, StatusCode error mapping, DataValue→DataChangeEvent conversion.",
+      "prd_refs": ["Appendix D §D.1-D.7"],
+      "files": ["src/core/opcua-client.ts"],
+      "depends_on": ["11.0"],
+      "passes": false
+    },
+    {
+      "id": "11.2",
+      "name": "Wire into plugin factory",
+      "description": "Update INPUT_FACTORIES opcua entry to instantiate RealOpcuaClient via lazy require(). Remove stale TODO/throw from OpcuaInput.start(), replace with safety assertion.",
+      "prd_refs": ["§6"],
+      "files": ["src/pipeline/plugin-factory.ts", "src/plugins/inputs/opcua.ts"],
+      "depends_on": ["11.1"],
+      "passes": false
+    },
+    {
+      "id": "11.3",
+      "name": "Unit tests for RealOpcuaClient",
+      "description": "Test adapter against in-process node-opcua OPCUAServer: connect, session, subscription, monitored items, data changes, browse, namespace resolution, disconnect, error handling, security policy mapping, server certificate fingerprint.",
+      "prd_refs": ["Appendix D"],
+      "files": ["test/unit/core/opcua-client.test.ts"],
+      "depends_on": ["11.1"],
+      "passes": false
+    },
+    {
+      "id": "11.4",
+      "name": "Integration test: full pipeline with real OPC-UA",
+      "description": "End-to-end: config → plugin factory → OpcuaInput + RealOpcuaClient → data to accumulator. Test data flow, browse mode output, security auto-negotiation. Uses in-process OPCUAServer.",
+      "prd_refs": ["Appendix D", "§8"],
+      "files": ["test/integration/opcua-real-client.test.ts"],
+      "depends_on": ["11.2"],
+      "passes": false
+    },
+    {
+      "id": "11.5",
+      "name": "Cleanup stale TODOs",
+      "description": "Remove Phase 7 TODO from opcua.ts, update module header comment, verify all existing OPC-UA tests still pass with factory changes.",
+      "prd_refs": [],
+      "files": ["src/plugins/inputs/opcua.ts"],
+      "depends_on": ["11.4"],
+      "passes": false
+    }
+  ]
+}

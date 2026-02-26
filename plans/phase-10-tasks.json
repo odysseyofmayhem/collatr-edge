@@ -1,0 +1,50 @@
+{
+  "phase": 10,
+  "name": "MQTT Data Format Hardening",
+  "tasks": [
+    {
+      "id": "10.0",
+      "name": "PRD Updates",
+      "description": "Update PRD §19 and Appendix A to document data_format options (json, value, string, auto) and parse error throttling behaviour",
+      "prd_refs": ["§19", "Appendix A"],
+      "files": ["prd/19-mvp-plugin-inventory.md", "prd/appendix-a-full-config-example.md"],
+      "passes": false
+    },
+    {
+      "id": "10.1",
+      "name": "Add data_format auto and string modes",
+      "description": "Extend MqttConsumerConfigSchema to support 'auto' and 'string' data formats. Implement auto (try JSON, silent fallback to value) and string (always string, no numeric coercion) in handleMessage(). Handle binary/non-UTF8 payloads gracefully.",
+      "prd_refs": ["§6", "§19"],
+      "files": ["src/plugins/inputs/mqtt-consumer.ts"],
+      "depends_on": ["10.0"],
+      "passes": false
+    },
+    {
+      "id": "10.2",
+      "name": "Parse error throttling",
+      "description": "Throttle parse errors in MQTT consumer: first 5 at warn level with full context, then periodic summary every 60s. Downgrade from error to warn. Per-instance counters. Only applies to data_format=json errors (auto mode falls through silently).",
+      "prd_refs": ["§14"],
+      "files": ["src/plugins/inputs/mqtt-consumer.ts"],
+      "depends_on": ["10.1"],
+      "passes": false
+    },
+    {
+      "id": "10.3",
+      "name": "Tests for new data formats and throttling",
+      "description": "Add tests for: auto mode (JSON success, JSON fallback to value, binary fallback, no error on fallback), string mode (no coercion), parse error throttling (5 verbose, then silent, then 60s summary), binary payload handling in all modes, per-instance counter isolation. Update existing invalid-JSON test to expect warn not error.",
+      "prd_refs": ["§6", "§14"],
+      "files": ["test/unit/plugins/inputs/mqtt-consumer.test.ts"],
+      "depends_on": ["10.2"],
+      "passes": false
+    },
+    {
+      "id": "10.4",
+      "name": "Smoke test config update",
+      "description": "Change EMQX broker input to data_format=auto. Add explanatory comments about public broker payload heterogeneity and parse error throttling.",
+      "prd_refs": [],
+      "files": ["configs/smoke-test-public.toml"],
+      "depends_on": ["10.1"],
+      "passes": false
+    }
+  ]
+}
