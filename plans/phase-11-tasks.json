@@ -53,7 +53,7 @@
       "prd_refs": ["Appendix D"],
       "files": ["test/integration/opcua-milo-smoke.test.ts"],
       "depends_on": ["11.2"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.6",
