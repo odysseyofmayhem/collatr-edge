@@ -35,7 +35,7 @@
       "prd_refs": ["Appendix D"],
       "files": ["test/unit/core/opcua-client.test.ts"],
       "depends_on": ["11.1"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.4",
