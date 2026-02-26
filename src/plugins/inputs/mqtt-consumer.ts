@@ -2,7 +2,7 @@
 // PRD refs: §6 Plugin System, §19 MVP Plugin Inventory
 // ──────────────────────────────────────────────────────────────────────
 // Subscribe to MQTT topics and parse incoming messages as metrics.
-// Supports JSON (flat + nested) and plain string payloads.
+// Supports JSON, value, string, and auto-detect payload formats.
 // ──────────────────────────────────────────────────────────────────────
 
 import { z } from "zod/v4";
@@ -36,8 +36,8 @@ export const MqttConsumerConfigSchema = z.object({
     .describe("MQTT QoS level (0, 1, or 2)"),
 
   // Payload parsing
-  data_format: z.enum(["json", "value"]).default("json")
-    .describe("Payload format: 'json' parses JSON objects, 'value' treats entire payload as single value"),
+  data_format: z.enum(["json", "value", "string", "auto"]).default("json")
+    .describe("Payload format: 'json' (default), 'value' (numeric or string), 'string' (always string), 'auto' (try json, fall back to value)"),
 
   // Measurement naming
   measurement: z.string().optional()
@@ -312,24 +312,59 @@ export class MqttConsumerInput implements ServiceInput {
       const topicTags = extractTopicTags(event.topic, this.config.topic_tags);
       Object.assign(tags, topicTags);
 
-      // Parse payload
+      // Parse payload based on data_format
       let fields: Record<string, FieldValue>;
+      const isBinary = payloadStr.includes("\uFFFD") || payloadStr.includes("\0");
 
-      if (this.config.data_format === "json") {
-        const parsed = JSON.parse(payloadStr);
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-          fields = flattenJson(parsed);
-        } else {
-          // Non-object JSON (number, string, boolean, array)
-          fields = { value: this.toFieldValue(parsed) };
+      switch (this.config.data_format) {
+        case "json": {
+          if (isBinary) {
+            throw new Error("Binary payload is not valid JSON");
+          }
+          const parsed = JSON.parse(payloadStr);
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            fields = flattenJson(parsed);
+          } else {
+            // Non-object JSON (number, string, boolean, array)
+            fields = { value: this.toFieldValue(parsed) };
+          }
+          break;
         }
-      } else {
-        // data_format === "value" — entire payload is a single value
-        const num = Number(payloadStr);
-        if (!isNaN(num) && payloadStr.trim() !== "") {
-          fields = { value: num };
-        } else {
+        case "auto": {
+          if (isBinary) {
+            // Binary data — skip JSON attempt, fall back to string value
+            fields = { value: payloadStr };
+          } else {
+            try {
+              const parsed = JSON.parse(payloadStr);
+              if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+                fields = flattenJson(parsed);
+              } else {
+                fields = { value: this.toFieldValue(parsed) };
+              }
+            } catch {
+              // Auto mode: silent fallback to value — not an error
+              const num = Number(payloadStr);
+              fields = (isNaN(num) || payloadStr.trim() === "")
+                ? { value: payloadStr }
+                : { value: num };
+            }
+          }
+          break;
+        }
+        case "string": {
           fields = { value: payloadStr };
+          break;
+        }
+        case "value": {
+          // Entire payload is a single value — try numeric, fall back to string
+          const num = Number(payloadStr);
+          if (!isNaN(num) && payloadStr.trim() !== "") {
+            fields = { value: num };
+          } else {
+            fields = { value: payloadStr };
+          }
+          break;
         }
       }
 
