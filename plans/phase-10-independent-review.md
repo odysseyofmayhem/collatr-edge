@@ -3,7 +3,7 @@
 **Reviewer:** Dex (with sub-agent analysis)
 **Date:** 2026-02-26
 **Scope:** All Phase 10 commits (4dfc699..f59719e), 5 implementation tasks
-**Verdict:** GO — no blockers, 2 should-fix, 4 nice-to-have
+**Verdict:** GO — no blockers, 2 should-fix (both resolved), 4 nice-to-have
 
 ---
 
@@ -50,6 +50,8 @@ This blocks `Infinity`, `-Infinity`, and `NaN`. The hex/octal/binary literal iss
 
 **Severity:** 🟡 Should Fix. The `Infinity` case is the real concern. Hex/octal is cosmetic.
 
+**Resolution:** FIXED in `1a36109`. Added `isFinite()` guard to both locations (auto fallback line 354, value mode line 368). `"Infinity"` and `"-Infinity"` payloads now stored as strings. 2 new tests added.
+
 ---
 
 ### 🟡 Y-2: Parse error counter never resets on reconnect (agrees with internal review SF-1)
@@ -62,6 +64,8 @@ The internal review correctly identified this: after reconnection (potentially t
 **Recommendation:** Reset `parseErrorCount` and `lastParseErrorLogTime` to 0 in the `onConnect` handler (line 250, where `reconnectAttempts` is already reset). This gives operators fresh verbose errors after each reconnection.
 
 **Severity:** 🟡 Should Fix. Low effort (2 lines), meaningful operational improvement.
+
+**Resolution:** FIXED in `1a36109`. Added `this.parseErrorCount = 0` and `this.lastParseErrorLogTime = 0` in `onConnect` handler (after `reconnectAttempts` reset). 1 new test added.
 
 ---
 
@@ -198,7 +202,7 @@ Strong, thorough review. The `Number()` / `Infinity` edge case is the kind of th
 
 **Status: GO**
 
-Phase 10 is clean, self-contained, and well-tested. No interface changes affect other modules. No new dependencies. The two should-fix items (Y-1 `isFinite` guard, Y-2 counter reset) are minor and can be addressed at the start of Phase 11 or as a quick fix pass before it.
+Phase 10 is clean, self-contained, and well-tested. No interface changes affect other modules. No new dependencies. Both should-fix items (Y-1 `isFinite` guard, Y-2 counter reset) have been resolved.
 
 Phase 11 (RealOpcuaClient adapter) is completely independent — it works on OPC-UA, not MQTT. No blockers.
 
@@ -209,4 +213,20 @@ Phase 11 (RealOpcuaClient adapter) is completely independent — it works on OPC
 ```
 MQTT consumer tests: 52 pass, 0 fail
 Full test suite:     1003 pass, 0 fail (per internal review — sub-agent timed out on full run)
+```
+
+---
+
+## Fix Pass (post-review)
+
+**Commit:** `1a36109` — `phase-10: address independent review findings (Y-1, Y-2)`
+
+| Finding | Fix | Tests Added |
+|---------|-----|-------------|
+| Y-1: `Number()` accepts `Infinity` | Added `isFinite()` guard in auto fallback and value mode | 2 (auto + value mode Infinity tests) |
+| Y-2: Counter never resets on reconnect | Reset `parseErrorCount` and `lastParseErrorLogTime` in `onConnect` | 1 (reconnect resets verbose errors) |
+
+```
+MQTT consumer tests: 55 pass, 0 fail, 192 expect() calls
+Full test suite:     1006 pass, 0 fail, 3466 expect() calls (63 files)
 ```
