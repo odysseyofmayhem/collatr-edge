@@ -44,7 +44,7 @@
       "prd_refs": ["Appendix D", "§8"],
       "files": ["test/integration/opcua-real-client.test.ts"],
       "depends_on": ["11.2"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.5",

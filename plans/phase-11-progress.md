@@ -10,7 +10,7 @@
 | 11.1 | RealOpcuaClient adapter | ✅ |
 | 11.2 | Wire into plugin factory | ✅ |
 | 11.3 | Unit tests for RealOpcuaClient | ✅ |
-| 11.4 | Integration test: full pipeline with in-process OPC-UA server | ⬜ |
+| 11.4 | Integration test: full pipeline with in-process OPC-UA server | ✅ |
 | 11.5 | Smoke test: live connection to Eclipse Milo demo server | ⬜ |
 | 11.6 | Cleanup stale TODOs | ⬜ |
 
@@ -57,3 +57,15 @@
 - **Transfer subscriptions**: returns `false` when no session/subscription exists
 - **Security mapping**: `mapSecurityPolicy` and `mapSecurityMode` map all supported values correctly, throw on unknown values
 - All 1039 tests pass (33 new + 1006 existing)
+
+### Task 11.4 (2026-02-26)
+- Created `test/integration/opcua-real-client.test.ts` — 7 integration tests for OpcuaInput + RealOpcuaClient against in-process OPCUAServer
+- **Test server setup**: Shared `OPCUAServer` on port 0 (OS-assigned), custom namespace `http://collatr-edge.test/UA/Integration`, 4 variable nodes (Int32, Float, Double, Boolean) under a `Dynamic` folder
+- **Full pipeline data flow**: OpcuaInput with RealOpcuaClient → PipelineRuntime → MockOutput. Verifies metrics arrive with correct measurement names, numeric field values, quality tags, and timestamps
+- **All four data types**: Int32, Float, Double, Boolean all flow correctly through the pipeline with correct JS types
+- **Value mutations**: Server-side value changes (intVar.touchValue) produce updated metrics in the output
+- **Global tags**: Pipeline globalTags (site, line) applied alongside OPC-UA quality tag
+- **Clean shutdown**: Pipeline stop completes without errors, output closed, client disconnected
+- **Browse mode**: Discovers 114 nodes from in-process server, writes TOML-comment output file with correct format. Verified `randomint32`, `randomfloat` names present (lowercased by `formatBrowseOutput`)
+- **Security auto-negotiation**: Config with `security_policy: "auto"` falls back through higher policies to `None` and succeeds against the unsecured in-process server
+- All 1046 tests pass (7 new + 1039 existing)
