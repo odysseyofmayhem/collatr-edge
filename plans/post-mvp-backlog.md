@@ -181,16 +181,13 @@ Items deferred during Phases 1–8.5 that must be addressed after MVP launch. Or
 
 ---
 
-### 12. OPC-UA Client Wrapper
+### ~~12. OPC-UA Client Wrapper~~ — DONE (Phase 11)
 
-**What:** OPC-UA plugin uses node-opcua directly. A dedicated wrapper (like `RealMqttClient` for MQTT) would improve testability and allow mocking without the full node-opcua mock.
+**What:** `RealOpcuaClient` adapter implements the `OpcuaClient` interface wrapping `node-opcua`. This is not just a testability improvement — it is the functional adapter that makes OPC-UA work at all. Without it, the `OpcuaInput` plugin has no bridge to the `node-opcua` library and cannot connect to real OPC-UA servers.
 
-**Why deferred:** Current test approach works. Wrapper is a testability improvement, not a functional gap.
+**Resolved by:** Phase 11 (`src/core/opcua-client.ts`). The adapter implements the full `OpcuaClient` interface and is wired into the plugin factory via lazy `require()`.
 
-**Effort:** 4–6 hours.
-
-**Files:** `src/plugins/inputs/opcua.ts:531`
-**TODO:** `opcua.ts:531` ("Phase 7+ — create real OpcuaClient wrapper from node-opcua")
+**Files:** `src/core/opcua-client.ts`, `src/pipeline/plugin-factory.ts`
 
 ---
 
@@ -288,7 +285,7 @@ Items deferred during Phases 1–8.5 that must be addressed after MVP launch. Or
 | 9 (integrity_check) | Phase 8.5 | Lee decision 2026-02-24: config refactor, not blocking |
 | 10 (local_subnet) | Phase 8 | By design: enforcement deferred |
 | 11 (CSV chunking) | Phase 3 | Performance optimization |
-| 12 (OPC-UA wrapper) | Phase 2 | Testability improvement |
+| 12 (OPC-UA wrapper) | Phase 2 | ~~Testability improvement~~ DONE Phase 11 |
 | 13 (device properties) | Phase 7 | Independent review F-10 |
 | 14 (child loggers) | Phase 8.5 | Lee decision 2026-02-24: architecture decision needed |
 | 15 (delivery tracking) | Phase 2 | Part of S&F integration |

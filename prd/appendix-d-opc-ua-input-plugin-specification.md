@@ -6,6 +6,14 @@
 
 ### D.1 Config Schema
 
+> **Adapter Architecture (Phase 11):** The OPC-UA input uses a client adapter pattern.
+> The `OpcuaClient` interface (defined in `src/plugins/inputs/opcua.ts`) abstracts all
+> OPC-UA operations. `RealOpcuaClient` (`src/core/opcua-client.ts`) implements this
+> interface by wrapping the `node-opcua` library. Tests use mock `OpcuaClient`
+> implementations; production uses `RealOpcuaClient`, instantiated by the plugin factory
+> via lazy `require()` to avoid loading `node-opcua` (~50MB) unless an OPC-UA input is
+> configured.
+
 ```typescript
 const OpcuaConfigSchema = z.object({
   // ── Connection ──────────────────────────────────────────────────────

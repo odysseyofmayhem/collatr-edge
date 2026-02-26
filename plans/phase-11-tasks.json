@@ -8,7 +8,7 @@
       "description": "Update Appendix D with adapter architecture note. Update post-mvp-backlog.md item #12 to reflect that RealOpcuaClient is the functional adapter (not just testability), mark as done by Phase 11.",
       "prd_refs": ["Appendix D"],
       "files": ["prd/appendix-d-opc-ua-input-plugin-specification.md", "plans/post-mvp-backlog.md"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "11.1",
