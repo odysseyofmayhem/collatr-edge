@@ -69,24 +69,24 @@
 # binary data, etc. Use data_format = "auto" for best results.
 # Parse errors from non-JSON payloads are throttled (first 5 verbose,
 # then periodic summaries every 60s).
-[[inputs.mqtt_consumer]]
-  alias = "emqx_public"
-  servers = ["tcp://broker.emqx.io:1883"]
-  topics = [
-    "sensor/#",
-#    "device/#",
-#    "iot/#",
-    "temperature/#",
-#    "collatr/smoke-test/#",
-  ]
-  qos = 0
-  data_format = "auto"  # Public brokers carry mixed payloads (JSON, NMEA, binary)
-  topic_tag = "topic"
-  tags = { broker = "emqx" }
-
-  [inputs.mqtt_consumer.reconnect]
-    initial_delay = "2s"
-    max_delay = "30s"
+#[[inputs.mqtt_consumer]]
+#  alias = "emqx_public"
+#  servers = ["tcp://broker.emqx.io:1883"]
+#  topics = [
+#    "sensor/#",
+##    "device/#",
+##    "iot/#",
+#    "temperature/#",
+##    "collatr/smoke-test/#",
+#  ]
+#  qos = 0
+#  data_format = "auto"  # Public brokers carry mixed payloads (JSON, NMEA, binary)
+#  topic_tag = "topic"
+#  tags = { broker = "emqx" }
+#
+#  [inputs.mqtt_consumer.reconnect]
+#    initial_delay = "2s"
+#    max_delay = "30s"
 
 # ─── MQTT: Mosquitto Test Broker ─────────────────────────────────────
 # The canonical public MQTT broker. Noisy but real traffic.

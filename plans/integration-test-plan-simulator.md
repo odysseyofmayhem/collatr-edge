@@ -194,6 +194,62 @@ After run:
 
 > CollatrEdge PRD: "RSS stays ≤200MB, there are zero data gaps in the local store, and no restarts or interventions are required."
 
+#### Method:
+##### Start Collatr-Factory-Simulator docker (in collatr-factory-simulator repo):
+```shell
+docker compose up -d
+```
+
+##### Start Collatr-Edge (in collatr-edge repo):
+```shell
+bun run src/index.ts run --config configs/factory-sim-packaging.toml
+```
+
+##### Run test:
+```shell
+bun run test/integration/check-sustained.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --data-dir ./data/factory-sim-packaging
+```
+
+###### Example output:
+```
+=== T4: Sustained Operation Check ===
+Duration: 7200s (2.0h)
+
+Loading Edge JSONL: ./data/factory-sim-packaging/metrics.jsonl
+  Loaded 677057 metrics
+  Internal metrics: 1967
+
+--- T4.1: Memory Stability ---
+  ✅ Memory data available — 281 samples
+  ✅ RSS growth bounded — first=139.1MB, last=149.3MB, max=187.9MB, ratio=1.07x
+  ✅ RSS under 200MB — max=187.9MB
+  ✅ No monotonic RSS growth — Q1 mean=153.7MB, Q4 mean=160.5MB, growth=4.5%
+
+--- T4.2: Connection Stability ---
+  ✅ Zero gather errors — 0 gather errors
+  ✅ Zero write errors — 0 write errors
+  ✅ Zero dropped metrics — 0 metrics dropped
+
+--- T4.3: Data Rate Stability ---
+  ✅ Modbus rate stable (first 5min vs last 5min) — first=2709/min, last=2709/min, diff=0.0%
+  ✅ MQTT rate stable (first 5min vs last 5min) — first=266/min, last=259/min, diff=2.5%
+
+--- T4.4: Local Store Integrity ---
+  ✅ SQLite files found — 1 file(s)
+  ✅ data_2026_03_08.db integrity — ok, size=179252KB
+
+=== Summary ===
+Total checks: 11
+Passed: 11 ✅
+Failed: 0 ❌
+
+RESULT: PASS
+```
+
+Testing
+
 #### T4.1 — Memory stability
 
 - RSS at t=5min, t=30min, t=60min, t=120min
