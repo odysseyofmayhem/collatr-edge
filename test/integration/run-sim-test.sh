@@ -77,8 +77,8 @@ log "Duration: ${DURATION_MINUTES} minutes, Seed: ${SEED}"
 echo ""
 
 # Check we're in the Edge repo root
-if [[ ! -f "src/cli.ts" ]]; then
-  err "Must run from the collatr-edge repo root (src/cli.ts not found)"
+if [[ ! -f "src/index.ts" ]]; then
+  err "Must run from the collatr-edge repo root (src/index.ts not found)"
   exit 1
 fi
 
@@ -186,7 +186,7 @@ log "  Health: $HEALTH_JSON"
 
 log "Starting CollatrEdge..."
 
-bun run src/cli.ts run --config "$EDGE_CONFIG" &
+bun run src/index.ts run --config "$EDGE_CONFIG" &
 EDGE_PID=$!
 
 # Give Edge a few seconds to connect

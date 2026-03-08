@@ -6,7 +6,7 @@
 # Prerequisites:
 #   1. Factory simulator running: cd ../collatr-factory-simulator && docker compose up -d
 #   2. Mosquitto broker healthy: docker compose ps (mqtt-broker should be healthy)
-#   3. Bun available: bun run src/cli.ts run --config configs/factory-sim-packaging.toml
+#   3. Bun available: bun run src/index.ts run --config configs/factory-sim-packaging.toml
 #
 # Ports:
 #   Modbus TCP:  localhost:502
