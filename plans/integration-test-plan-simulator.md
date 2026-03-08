@@ -335,9 +335,9 @@ The simulator runs from a simulated epoch (e.g. `2026-01-01T00:00:00Z`) while Ed
 Python script (runs on Lee's dev machine alongside Docker):
 
 **Inputs:**
-1. Batch mode CSV: `output/signals.csv` (run separately with same seed)
-2. Ground truth JSONL: `output/ground_truth.jsonl` (from same batch run)
-3. Edge JSONL: `data/factory-sim-packaging/metrics.jsonl` (from live Edge run)
+1. Batch mode CSV: `../collatr-factory-simulator/output/signals.csv` (run separately with same seed)
+2. Ground truth JSONL: `../collatr-factory-simulator/output/ground_truth.jsonl` (from live or batch run, via volume mount)
+3. Edge JSONL: `./data/factory-sim-packaging/metrics.jsonl` (from live Edge run)
 
 **Checks performed:**
 
@@ -388,17 +388,74 @@ The verification script needs a mapping table from batch CSV signal_ids to Edge 
 ## Decisions (2026-03-07, Lee)
 
 1. **Edge deployment:** Bare process on dev machine host. Simulator in Docker on same host.
-2. **Automation:** T1-T3 fully scripted (verify-edge-data.py). T4-T6 semi-automated (scripted checks after manual runs).
+2. **Automation:** T1-T3 fully scripted (verify-edge-data.py). T4-T6 semi-automated (scripted checks after manual runs). Automated parts can optionally be driven via Claude Code using `/plans` directory format.
 3. **CI:** Not yet. Manual integration test before releases. Revisit after test suite proven reliable.
 4. **F&B profile:** Packaging first. F&B as a second pass (adds CDAB, multi-slave, OPC-UA-only signals).
 5. **Network topology:** Collapsed mode first (default `docker compose up`). Realistic mode as a second pass.
+
+## Directory Layout
+
+Tests run from the `collatr-edge` repo directory. The simulator repo is adjacent:
+
+```
+~/Projects/DoublyGood/
+├── collatr-edge/                    # CWD for test execution
+│   ├── plans/                       # This plan + Claude Code task files
+│   ├── test/integration/            # Verification scripts
+│   ├── configs/                     # Edge TOML configs (smoke-test-public.toml)
+│   └── data/factory-sim-packaging/  # Edge output (created at runtime)
+│       ├── data_YYYY_MM_DD.db       # Local store SQLite
+│       └── metrics.jsonl            # File output for verification
+│
+└── collatr-factory-simulator/       # Relative: ../collatr-factory-simulator/
+    ├── docker-compose.yml
+    ├── config/                      # Simulator YAML configs (mounted read-only)
+    ├── configs/                     # CollatrEdge TOML configs for simulator
+    │   └── collatr-edge-packaging.toml
+    └── output/                      # Simulator output (needs volume mount)
+        ├── ground_truth.jsonl       # Events log
+        └── signals.csv              # Batch mode signal dump
+```
 
 ---
 
 ## Prerequisites
 
 1. Docker + Docker Compose on Lee's dev machine
-2. Factory simulator image built (`docker compose build` in collatr-factory-simulator repo)
+2. Factory simulator image built (`docker compose build` in `../collatr-factory-simulator/`)
 3. CollatrEdge compiled and runnable (`bun run src/cli.ts` or compiled binary)
 4. Python 3.11+ for verify-edge-data.py (already available — simulator uses Python)
 5. Network: localhost — Edge on host reaches simulator Docker ports (502, 4840, 1883)
+
+## Required: Simulator docker-compose.yml Change
+
+**Problem:** The simulator's `docker-compose.yml` has no volume mount for the output directory. The ground truth JSONL is written to `/app/ground_truth.jsonl` (live mode) or `/app/output/` (batch mode) inside the container — inaccessible to host-side verification scripts.
+
+**Fix:** Add an output volume mount to the `factory-simulator` service in `docker-compose.yml`:
+
+```yaml
+  factory-simulator:
+    # ... existing config ...
+    volumes:
+      - ./config:/app/config:ro
+      - ./output:/app/output           # ADD THIS — ground truth + batch output
+    environment:
+      # ... existing env ...
+      # Override ground truth path to use the mounted output dir:
+      # (or pass --ground-truth-path /app/output/ground_truth.jsonl via command)
+```
+
+Also need to ensure the live-mode ground truth writes to `/app/output/` not `/app/` (CWD). Options:
+1. Pass `--ground-truth-path /app/output/ground_truth.jsonl` via Docker command override
+2. Change the CLI default from `./ground_truth.jsonl` to `./output/ground_truth.jsonl`
+3. Add a `SIM_GROUND_TRUTH_PATH` environment variable
+
+Option 1 is simplest and doesn't require code changes. Add to docker-compose.yml:
+
+```yaml
+  factory-simulator:
+    # ...
+    command: ["--ground-truth-path", "/app/output/ground_truth.jsonl"]
+```
+
+This appends to the ENTRYPOINT. The output directory `/app/output` already exists in the image and is writable by the `simulator` user.
