@@ -1,0 +1,467 @@
+# CollatrEdge Configuration — Factory Simulator Integration Test (Packaging)
+#
+# Based on: ../collatr-factory-simulator/configs/collatr-edge-packaging.toml
+# Adjusted: output paths relative to Edge repo CWD, health port conflict avoided.
+#
+# Prerequisites:
+#   1. Factory simulator running: cd ../collatr-factory-simulator && docker compose up -d
+#   2. Mosquitto broker healthy: docker compose ps (mqtt-broker should be healthy)
+#   3. Bun available: bun run src/cli.ts run --config configs/factory-sim-packaging.toml
+#
+# Ports:
+#   Modbus TCP:  localhost:502
+#   OPC-UA:      opc.tcp://localhost:4840
+#   MQTT:        tcp://localhost:1883
+#   Edge WebUI:  http://localhost:8080
+#   Sim health:  http://localhost:8081
+
+[agent]
+  hostname = "factory-sim-test"
+  interval = "1s"
+  round_interval = true
+  flush_interval = "5s"
+  precision = "1ms"
+  log_level = "info"
+
+[global_tags]
+  environment = "simulator"
+  profile = "packaging"
+  source = "factory-simulator"
+
+# ==========================================================================
+# MODBUS TCP — 48 registers (press, laminator, slitter, energy)
+# ==========================================================================
+
+[[inputs.modbus]]
+  alias = "packaging_press"
+  controller = "tcp://localhost:502"
+  slave_id = 1
+  byte_order = "ABCD"
+  timeout = "5s"
+
+  # --- Press process values (HR 100-125) ---
+  [[inputs.modbus.registers]]
+    address = 100
+    name = "press.line_speed"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 102
+    name = "press.web_tension"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 110
+    name = "press.ink_viscosity"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 112
+    name = "press.ink_temperature"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 120
+    name = "press.dryer_temp_zone_1"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 122
+    name = "press.dryer_temp_zone_2"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 124
+    name = "press.dryer_temp_zone_3"
+    type = "holding"
+    data_type = "float32"
+
+  # --- Press setpoints (HR 140-145) ---
+  [[inputs.modbus.registers]]
+    address = 140
+    name = "press.dryer_setpoint_zone_1"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 142
+    name = "press.dryer_setpoint_zone_2"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 144
+    name = "press.dryer_setpoint_zone_3"
+    type = "holding"
+    data_type = "float32"
+
+  # --- Press counters and state (HR 200-211) ---
+  [[inputs.modbus.registers]]
+    address = 200
+    name = "press.impression_count"
+    type = "holding"
+    data_type = "uint32"
+  [[inputs.modbus.registers]]
+    address = 202
+    name = "press.good_count"
+    type = "holding"
+    data_type = "uint32"
+  [[inputs.modbus.registers]]
+    address = 204
+    name = "press.waste_count"
+    type = "holding"
+    data_type = "uint32"
+  [[inputs.modbus.registers]]
+    address = 210
+    name = "press.machine_state"
+    type = "holding"
+    data_type = "uint16"
+  [[inputs.modbus.registers]]
+    address = 211
+    name = "press.fault_code"
+    type = "holding"
+    data_type = "uint16"
+
+  # --- Press drive and mechanical (HR 300-323) ---
+  [[inputs.modbus.registers]]
+    address = 300
+    name = "press.main_drive_current"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 302
+    name = "press.main_drive_speed"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 310
+    name = "press.nip_pressure"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 320
+    name = "press.unwind_diameter"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 322
+    name = "press.rewind_diameter"
+    type = "holding"
+    data_type = "float32"
+
+  # --- Laminator (HR 400-409) ---
+  [[inputs.modbus.registers]]
+    address = 400
+    name = "laminator.nip_temp"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 402
+    name = "laminator.nip_pressure"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 404
+    name = "laminator.tunnel_temp"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 406
+    name = "laminator.web_speed"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 408
+    name = "laminator.adhesive_weight"
+    type = "holding"
+    data_type = "float32"
+
+  # --- Slitter (HR 500-511) ---
+  [[inputs.modbus.registers]]
+    address = 500
+    name = "slitter.speed"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 502
+    name = "slitter.web_tension"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 510
+    name = "slitter.reel_count"
+    type = "holding"
+    data_type = "uint32"
+
+  # --- Energy (HR 600-603) ---
+  [[inputs.modbus.registers]]
+    address = 600
+    name = "energy.line_power"
+    type = "holding"
+    data_type = "float32"
+  [[inputs.modbus.registers]]
+    address = 602
+    name = "energy.cumulative_kwh"
+    type = "holding"
+    data_type = "float32"
+
+  # --- Input registers: Eurotherm-style int16 x10 temperatures ---
+  [[inputs.modbus.registers]]
+    address = 0
+    name = "press.dryer_temp_zone_1_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+  [[inputs.modbus.registers]]
+    address = 1
+    name = "press.dryer_temp_zone_2_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+  [[inputs.modbus.registers]]
+    address = 2
+    name = "press.dryer_temp_zone_3_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+  [[inputs.modbus.registers]]
+    address = 3
+    name = "press.ink_temperature_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+  [[inputs.modbus.registers]]
+    address = 4
+    name = "laminator.nip_temp_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+  [[inputs.modbus.registers]]
+    address = 5
+    name = "laminator.tunnel_temp_ir"
+    type = "input"
+    data_type = "int16"
+    scale = 0.1
+
+  # --- Coils (FC01) ---
+  [[inputs.modbus.registers]]
+    address = 0
+    name = "press.running"
+    type = "coil"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 1
+    name = "press.fault_active"
+    type = "coil"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 2
+    name = "press.emergency_stop"
+    type = "coil"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 3
+    name = "press.web_break"
+    type = "coil"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 4
+    name = "laminator.running"
+    type = "coil"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 5
+    name = "slitter.running"
+    type = "coil"
+    data_type = "bool"
+
+  # --- Discrete inputs (FC02) ---
+  [[inputs.modbus.registers]]
+    address = 0
+    name = "press.guard_door_open"
+    type = "discrete"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 1
+    name = "press.material_present"
+    type = "discrete"
+    data_type = "bool"
+  [[inputs.modbus.registers]]
+    address = 2
+    name = "press.cycle_complete"
+    type = "discrete"
+    data_type = "bool"
+
+# ==========================================================================
+# OPC-UA — 32 nodes (full PackagingLine node tree)
+# ==========================================================================
+
+[[inputs.opcua]]
+  alias = "packaging_opcua"
+  endpoint = "opc.tcp://localhost:4840"
+  security_policy = "None"
+  security_mode = "None"
+  auth_method = "anonymous"
+  connect_timeout = "15s"
+  request_timeout = "10s"
+  timestamp = "source"
+
+  [inputs.opcua.subscription]
+    publishing_interval = "1s"
+    queue_size = 10
+
+  # --- Press ---
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.LineSpeed"
+    name = "press.line_speed"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.WebTension"
+    name = "press.web_tension"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.State"
+    name = "press.machine_state"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.FaultCode"
+    name = "press.fault_code"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.ImpressionCount"
+    name = "press.impression_count"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.GoodCount"
+    name = "press.good_count"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.WasteCount"
+    name = "press.waste_count"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Registration.ErrorX"
+    name = "press.registration_error_x"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Registration.ErrorY"
+    name = "press.registration_error_y"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Ink.Viscosity"
+    name = "press.ink_viscosity"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Ink.Temperature"
+    name = "press.ink_temperature"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone1.Temperature"
+    name = "press.dryer_temp_zone_1"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone1.Setpoint"
+    name = "press.dryer_setpoint_zone_1"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone2.Temperature"
+    name = "press.dryer_temp_zone_2"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone2.Setpoint"
+    name = "press.dryer_setpoint_zone_2"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone3.Temperature"
+    name = "press.dryer_temp_zone_3"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Dryer.Zone3.Setpoint"
+    name = "press.dryer_setpoint_zone_3"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.MainDrive.Current"
+    name = "press.main_drive_current"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.MainDrive.Speed"
+    name = "press.main_drive_speed"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.NipPressure"
+    name = "press.nip_pressure"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Unwind.Diameter"
+    name = "press.unwind_diameter"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Press1.Rewind.Diameter"
+    name = "press.rewind_diameter"
+
+  # --- Laminator ---
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Laminator1.NipTemperature"
+    name = "laminator.nip_temp"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Laminator1.NipPressure"
+    name = "laminator.nip_pressure"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Laminator1.TunnelTemperature"
+    name = "laminator.tunnel_temp"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Laminator1.WebSpeed"
+    name = "laminator.web_speed"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Laminator1.AdhesiveWeight"
+    name = "laminator.adhesive_weight"
+
+  # --- Slitter ---
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Slitter1.Speed"
+    name = "slitter.speed"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Slitter1.WebTension"
+    name = "slitter.web_tension"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Slitter1.ReelCount"
+    name = "slitter.reel_count"
+
+  # --- Energy ---
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Energy.LinePower"
+    name = "energy.line_power"
+  [[inputs.opcua.nodes]]
+    node_id = "ns=2;s=PackagingLine.Energy.CumulativeKwh"
+    name = "energy.cumulative_kwh"
+
+# ==========================================================================
+# MQTT — 16 topics (coder, environment, vibration)
+# ==========================================================================
+
+[[inputs.mqtt_consumer]]
+  alias = "packaging_mqtt"
+  servers = ["tcp://localhost:1883"]
+  topics = [
+    "collatr/factory/demo/packaging1/coder/#",
+    "collatr/factory/demo/packaging1/env/#",
+    "collatr/factory/demo/packaging1/vibration/#",
+  ]
+  qos = 1
+  data_format = "json"
+  topic_tag = "topic"
+  tags = { protocol = "mqtt" }
+
+  [inputs.mqtt_consumer.reconnect]
+    initial_delay = "2s"
+    max_delay = "30s"
+
+# ==========================================================================
+# Internal metrics
+# ==========================================================================
+
+[[inputs.internal]]
+  interval = "30s"
+
+# ==========================================================================
+# Outputs
+# ==========================================================================
+
+# Local store (SQLite) for inspection
+[outputs.local_store]
+  enabled = true
+  path = "./data/factory-sim-packaging"
+  retention_days = 7
+  rotation = "daily"
+
+# JSONL file for the verification script
+[[outputs.file]]
+  alias = "verification_log"
+  path = "./data/factory-sim-packaging/metrics.jsonl"
+  data_format = "json"
+
+# ==========================================================================
+# Web UI
+# ==========================================================================
+
+[webui]
+  enabled = true
+  port = 8080
+  bind = "127.0.0.1"
