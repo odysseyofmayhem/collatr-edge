@@ -94,7 +94,7 @@ function checkConnectionContinuity(
   byDevice: Map<string, EdgeMetric[]>,
   config: Config,
 ): void {
-  section("T5: Connection Continuity at ${config.timeScale}x");
+  section(`T5: Connection Continuity at ${config.timeScale}x`);
 
   const durationMs = config.durationSeconds * 1000;
   const pollIntervalMs = 1000; // Edge always polls at real-time 1s
@@ -203,7 +203,7 @@ function checkDataPlausibility(
   byDevice: Map<string, EdgeMetric[]>,
   config: Config,
 ): void {
-  section("T5: Data Plausibility at ${config.timeScale}x");
+  section(`T5: Data Plausibility at ${config.timeScale}x`);
 
   // At higher speeds, signal values should still be within documented ranges
   const modbusMetrics = byDevice.get(DEVICE_ID.MODBUS) ?? [];
