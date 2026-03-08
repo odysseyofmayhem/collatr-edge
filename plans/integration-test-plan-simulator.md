@@ -330,9 +330,11 @@ The simulator runs from a simulated epoch (e.g. `2026-01-01T00:00:00Z`) while Ed
 
 ## Verification Tooling
 
-### verify-edge-data.py
+### verify-edge-data.ts
 
-Python script (runs on Lee's dev machine alongside Docker):
+Bun/TypeScript script in `test/integration/` (runs on Lee's dev machine alongside Docker). Same language as Edge — no Python dependency in the Edge repo.
+
+**Run:** `bun run test/integration/verify-edge-data.ts`
 
 **Inputs:**
 1. Batch mode CSV: `../collatr-factory-simulator/output/signals.csv` (run separately with same seed)
@@ -424,7 +426,7 @@ Tests run from the `collatr-edge` repo directory. The simulator repo is adjacent
 1. Docker + Docker Compose on Lee's dev machine
 2. Factory simulator image built (`docker compose build` in `../collatr-factory-simulator/`)
 3. CollatrEdge compiled and runnable (`bun run src/cli.ts` or compiled binary)
-4. Python 3.11+ for verify-edge-data.py (already available — simulator uses Python)
+4. Bun runtime for verification scripts (already available — Edge uses Bun)
 5. Network: localhost — Edge on host reaches simulator Docker ports (502, 4840, 1883)
 
 ## Required: Simulator docker-compose.yml Change
