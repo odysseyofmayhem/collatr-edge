@@ -368,11 +368,93 @@ bun run test/integration/check-time-compression.ts \
 
 #### T5.4 — Batch mode offline comparison (PRD 12.5 Run C)
 
-1. Run simulator batch mode: `--batch-output ./output --batch-duration 1h --batch-format csv --seed 42`
-2. Run simulator live at 1x with seed 42 for 10 minutes
-3. Run Edge against live for those 10 minutes
-4. Compare Edge values against batch CSV for the overlapping window
-5. Values match within float32 precision at nearest tick boundary
+Validates that Edge-collected live data matches the simulator's deterministic batch output for the same seed. The batch CSV is the reference; the live run is what Edge actually captured.
+
+##### Step 1: Generate batch CSV reference (in collatr-factory-simulator repo)
+
+```shell
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+
+docker compose run --rm \
+  -e SIM_RANDOM_SEED=42 \
+  factory-simulator \
+  --batch-output /app/output \
+  --batch-duration 1h \
+  --batch-format csv \
+  --seed 42
+```
+
+This runs the simulator headless (no protocol servers) at maximum speed, writing every signal value per tick to `output/signals.csv` and events to `output/ground_truth.jsonl`. Takes seconds, not an hour.
+
+Verify output:
+```shell
+wc -l output/signals.csv
+# Should be ~2.1M lines (1h at 100ms ticks × 47 signals)
+head -5 output/signals.csv
+```
+
+##### Step 2: Clean Edge data and start simulator live (same seed)
+
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+rm -f data/factory-sim-packaging/metrics.jsonl
+rm -f data/factory-sim-packaging/data_*.db
+
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+SIM_RANDOM_SEED=42 docker compose up -d
+
+# Wait for health:
+curl -s http://localhost:8081/health | jq .
+```
+
+##### Step 3: Run Edge for 10 minutes
+
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+bun run src/index.ts run --config configs/factory-sim-packaging.toml
+# Let it run for 10 minutes, then Ctrl+C
+```
+
+##### Step 4: Stop simulator
+
+```shell
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+docker compose down
+```
+
+##### Step 5: Run the verification script
+
+The existing `verify-edge-data.ts` handles batch CSV comparison as part of its T2 accuracy checks. Point it at the batch CSV from Step 1:
+
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+
+bun run test/integration/verify-edge-data.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --batch-csv ../collatr-factory-simulator/output/signals.csv \
+  --ground-truth ../collatr-factory-simulator/output/ground_truth.jsonl \
+  --duration 600
+```
+
+##### What it checks
+
+The script compares Edge-collected values against batch CSV for each signal:
+- **Distribution comparison:** mean, stdev, min, max of Edge values vs batch CSV values for the overlapping time window
+- **Cross-protocol consistency:** Modbus, OPC-UA, and MQTT readings for the same physical signal match within encoding precision (float32 vs float64, int16×10 quantisation)
+- **Completeness:** Edge captured ≥90% of expected samples per signal
+
+The batch CSV covers the full 1h from sim t=0. Edge only captures a 10-minute live window. The script accounts for this mismatch by comparing value distributions rather than point-to-point, and uses a range-overlap fallback for signals affected by startup transients.
+
+##### Note on `run-sim-test.sh`
+
+The automated runner script (`test/integration/run-sim-test.sh`) performs Steps 1-5 end-to-end:
+
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+./test/integration/run-sim-test.sh 10 42
+```
+
+It generates batch CSV, starts the simulator live, runs Edge, waits, stops everything, and runs verification — all in one command. T5.4 can be run manually (as above) or via this script.
 
 ---
 
