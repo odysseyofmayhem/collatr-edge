@@ -64,7 +64,7 @@ The simulator's signal store is single-writer (engine writes all signals per tic
 ### T1: Protocol Connectivity (PRD 11.1)
 
 **Maps to:** Simulator PRD 11.1, Appendix F Phase 1-2 exit criteria, CollatrEdge PRD Scenario 1
-**Duration:** 5 minutes at 1x
+**Duration:** 10 minutes at 1x
 **Seed:** Fixed (42)
 
 > "CollatrEdge connects to the simulator via all three protocols and collects data continuously... with zero configuration changes to CollatrEdge beyond specifying the endpoint addresses."
@@ -378,7 +378,7 @@ The verification script needs a mapping table from batch CSV signal_ids to Edge 
 
 | Priority | Suite | Wall Clock | Blocking? |
 |----------|-------|-----------|-----------|
-| 1 | T1 (connectivity) | 5 min | Yes — nothing works if protocols don't connect |
+| 1 | T1 (connectivity) | 10 min | Yes — nothing works if protocols don't connect |
 | 2 | T2 (accuracy) | 10 min | Yes — core correctness |
 | 3 | T3 (completeness) | 30 min | Yes — data quality |
 | 4 | T6 (scenarios) | ~30 min | No — validates capture fidelity |
