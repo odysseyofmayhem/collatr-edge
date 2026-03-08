@@ -279,6 +279,74 @@ Testing
 
 > Note: Edge polls at its own real-time interval. At Nx speed, the simulator produces data N times faster. Edge's 1s poll samples every N simulated seconds. We are testing that Edge keeps up and maintains stable connections, not that it captures every simulated tick.
 
+#### Method:
+
+Run each speed tier separately, cleaning data between runs.
+
+##### Clean previous data:
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+rm -f data/factory-sim-packaging/metrics.jsonl
+rm -f data/factory-sim-packaging/data_*.db
+```
+
+##### Start Collatr-Factory-Simulator docker at Nx speed (in collatr-factory-simulator repo):
+```shell
+# 2x speed (T5.1):
+SIM_TIME_SCALE=2.0 SIM_RANDOM_SEED=42 docker compose up -d
+
+# 5x speed (T5.2):
+SIM_TIME_SCALE=5.0 SIM_RANDOM_SEED=42 docker compose up -d
+
+# 10x speed (T5.3):
+SIM_TIME_SCALE=10.0 SIM_RANDOM_SEED=42 docker compose up -d
+```
+
+Wait for health check:
+```shell
+curl -s http://localhost:8081/health | jq .
+```
+
+##### Start Collatr-Edge (in collatr-edge repo):
+```shell
+bun run src/index.ts run --config configs/factory-sim-packaging.toml
+```
+
+##### Let it run:
+
+| Speed | Real-time duration | Sim-time covered |
+|-------|-------------------|-----------------|
+| 2x    | 15 minutes        | 30 minutes      |
+| 5x    | 10 minutes        | 50 minutes      |
+| 10x   | 10 minutes        | 100 minutes     |
+
+##### Stop Edge (Ctrl+C) and simulator:
+```shell
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+docker compose down
+```
+
+##### Run the check script (in collatr-edge repo):
+```shell
+# For 2x:
+bun run test/integration/check-time-compression.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --duration 900 \
+  --time-scale 2.0
+
+# For 5x:
+bun run test/integration/check-time-compression.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --duration 600 \
+  --time-scale 5.0
+
+# For 10x:
+bun run test/integration/check-time-compression.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --duration 600 \
+  --time-scale 10.0
+```
+
 #### T5.1 — 2x speed
 
 `SIM_TIME_SCALE=2.0`, Edge 1s poll, 15 real minutes.
