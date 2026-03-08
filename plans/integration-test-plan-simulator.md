@@ -376,13 +376,14 @@ Validates that Edge-collected live data matches the simulator's deterministic ba
 cd ~/Projects/DoublyGood/collatr-factory-simulator
 
 docker compose run --rm \
-  -e SIM_RANDOM_SEED=42 \
   factory-simulator \
   --batch-output /app/output \
   --batch-duration 1h \
   --batch-format csv \
   --seed 42
 ```
+
+The `--seed`, `--batch-output`, `--batch-duration`, and `--batch-format` flags are appended after the container's `ENTRYPOINT` (`python -m factory_simulator run`), so they go straight to the CLI parser.
 
 This runs the simulator headless (no protocol servers) at maximum speed, writing every signal value per tick to `output/signals.csv` and events to `output/ground_truth.jsonl`. Takes seconds, not an hour.
 
