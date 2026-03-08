@@ -60,8 +60,9 @@ export function readEdgeMetrics(path: string): EdgeMetric[] {
   const metrics: EdgeMetric[] = [];
 
   for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     try {
-      const raw = JSON.parse(lines[i]);
+      const raw = JSON.parse(line);
       metrics.push({
         name: raw.name ?? "",
         tags: raw.tags ?? {},
@@ -132,7 +133,7 @@ export function readBatchCSV(path: string): SimSignalRow[] {
 
   // Skip header line
   for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = lines[i]!.trim();
     if (line.length === 0) continue;
 
     // Simple CSV parse (no quoted fields expected in this format)
@@ -142,14 +143,14 @@ export function readBatchCSV(path: string): SimSignalRow[] {
       continue;
     }
 
-    const timestamp = parseFloat(parts[0]);
-    const signalId = parts[1];
-    const rawValue = parts[2];
-    const quality = parts[3];
+    const timestamp = parseFloat(parts[0]!);
+    const signalId = parts[1]!;
+    const rawValue = parts[2]!;
+    const quality = parts[3]!;
 
     // Try to parse value as number, fall back to string
     const numValue = Number(rawValue);
-    const value = Number.isNaN(numValue) ? rawValue : numValue;
+    const value: number | string = Number.isNaN(numValue) ? rawValue : numValue;
 
     rows.push({ timestamp, signalId, value, quality });
   }
@@ -194,8 +195,9 @@ export function readGroundTruth(path: string): GroundTruthEvent[] {
   const events: GroundTruthEvent[] = [];
 
   for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     try {
-      const raw = JSON.parse(lines[i]);
+      const raw = JSON.parse(line);
       // Skip config header (first line, has "config" or no "event" field)
       if (!raw.event || raw.event === "config") continue;
 

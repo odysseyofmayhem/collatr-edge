@@ -69,8 +69,8 @@ function parseArgs(): Config {
   };
 
   for (let i = 0; i < args.length; i += 2) {
-    const flag = args[i];
-    const val = args[i + 1];
+    const flag = args[i]!;
+    const val = args[i + 1] ?? "";
     switch (flag) {
       case "--edge-jsonl": config.edgeJsonlPath = val; break;
       case "--batch-csv": config.batchCsvPath = val; break;
@@ -292,7 +292,7 @@ function checkValueAccuracy(
 
     let violations = 0;
     for (let i = 1; i < vals.length; i++) {
-      if (vals[i] < vals[i - 1]) violations++;
+      if (vals[i]! < vals[i - 1]!) violations++;
     }
 
     check(
@@ -314,9 +314,9 @@ function checkValueAccuracy(
     .filter((v) => !Number.isNaN(v));
 
   if (impressions.length > 0 && goods.length > 0 && wastes.length > 0) {
-    const lastImpressions = impressions[impressions.length - 1];
-    const lastGoods = goods[goods.length - 1];
-    const lastWastes = wastes[wastes.length - 1];
+    const lastImpressions = impressions[impressions.length - 1]!;
+    const lastGoods = goods[goods.length - 1]!;
+    const lastWastes = wastes[wastes.length - 1]!;
     const sum = lastGoods + lastWastes;
     const diff = Math.abs(sum - lastImpressions);
     check(
@@ -353,7 +353,7 @@ function checkValueAccuracy(
     // and the subscription only delivered the initial value. Compare that
     // value against the Modbus mean instead of comparing distributions.
     if (opcuaVals.length < 10) {
-      const opcuaVal = opcuaVals[0];
+      const opcuaVal = opcuaVals[0]!;
       const modbusStats = computeStats(modbusVals);
       const diff = Math.abs(opcuaVal - modbusStats.mean);
       const scale = Math.max(Math.abs(modbusStats.mean), 1.0);
@@ -630,7 +630,7 @@ function findGaps(
   const maxGapNs = BigInt(maxGapMs) * 1_000_000n;
 
   for (let i = 1; i < metrics.length; i++) {
-    const gap = metrics[i].timestamp - metrics[i - 1].timestamp;
+    const gap = metrics[i]!.timestamp - metrics[i - 1]!.timestamp;
     if (gap > maxGapNs) {
       gaps.push({ index: i, gapMs: Number(gap / 1_000_000n) });
     }
