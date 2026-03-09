@@ -1,0 +1,68 @@
+{
+  "phase": 12,
+  "name": "WebUI Redesign — Config-Driven Dashboard & Trend Charts",
+  "tasks": [
+    {
+      "id": "12.0",
+      "name": "Signal descriptor system",
+      "description": "Create signal-descriptors.ts with SignalDescriptor/EquipmentGroup types, static unit/type lookup table from simulator PRD signal tables, defaultTrendSignals per equipment, and buildSignalDescriptors() function. Must handle unknown signals gracefully.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/signal-descriptors.ts", "test/unit/web/signal-descriptors.test.ts"],
+      "passes": false
+    },
+    {
+      "id": "12.1",
+      "name": "Dashboard page rewrite — equipment cards",
+      "description": "Rewrite dashboard.tsx with config-driven equipment cards. One card per equipment group showing all signals: numeric values with units, boolean indicators, counter formatting, enum state badges. Dryer temp/setpoint pairing. Dynamic Datastar signals initialisation. Navigation links. Remove hardcoded 4-chart layout.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/views/dashboard.tsx", "src/web/views/fragments/equipment-card.tsx", "src/web/views/fragments/signal-value.tsx", "test/unit/web/views/dashboard.test.ts"],
+      "depends_on": ["12.0"],
+      "passes": false
+    },
+    {
+      "id": "12.2",
+      "name": "SSE stream update — dynamic signal names",
+      "description": "Verify and update flattenMetrics() so SSE signal names match the Datastar signal names used in the new dashboard. Update stream tests to use representative packaging profile metrics instead of old temperature/pressure/lineSpeed/humidity names.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/routes/stream.ts", "test/unit/web/routes/stream.test.ts"],
+      "depends_on": ["12.1"],
+      "passes": false
+    },
+    {
+      "id": "12.3",
+      "name": "Trends page — hybrid curated + metric picker",
+      "description": "Build /trends page with curated default charts per equipment group and 'Add metric' dropdown for remaining numeric signals. Time range selector (1h/8h/24h/1w). Reuse collatr-line-chart web component. Client-side metric picker with add/remove. Register route in server.ts.",
+      "prd_refs": ["§17", "§11"],
+      "files": ["src/web/views/trends.tsx", "src/web/public/components/metric-picker.js", "src/web/server.ts", "test/unit/web/views/trends.test.ts"],
+      "depends_on": ["12.0"],
+      "passes": false
+    },
+    {
+      "id": "12.4",
+      "name": "Staleness detection and visual indicators",
+      "description": "Add per-signal staleness tracking: fresh (<30s), stale (30-60s), dead (>60s). Client-side JS module that observes signal changes and applies CSS classes. Amber/red visual feedback for stale/dead signals.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/public/components/staleness.js", "src/web/views/fragments/signal-value.tsx", "test/unit/web/staleness.test.ts"],
+      "depends_on": ["12.1"],
+      "passes": false
+    },
+    {
+      "id": "12.5",
+      "name": "CSS refinements and responsive layout",
+      "description": "Update CSS for equipment cards (full-width, signal grid), boolean indicators, counter formatting, enum badges, navigation bar, trends page layout, print-friendly styles.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/views/layout.tsx"],
+      "depends_on": ["12.1"],
+      "passes": false
+    },
+    {
+      "id": "12.6",
+      "name": "Integration tests with factory simulator data",
+      "description": "Update web-ui integration tests: verify dashboard HTML includes equipment cards with press/laminator/slitter signals, SSE stream sends signals matching config, /trends route works, /api/chart/metrics returns config metrics, backward compatibility for export/certificates/health.",
+      "prd_refs": ["§17"],
+      "files": ["test/integration/web-ui.test.ts", "test/integration/web-ui-trends.test.ts"],
+      "depends_on": ["12.1", "12.3"],
+      "passes": false
+    }
+  ]
+}
