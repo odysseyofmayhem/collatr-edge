@@ -6,6 +6,7 @@ import { Elysia } from "elysia";
 import { html } from "@elysiajs/html";
 import type { WebUIAdapter } from "./adapter.ts";
 import { DashboardPage } from "./views/dashboard.tsx";
+import { TrendsPage } from "./views/trends.tsx";
 import { createDashboardStream } from "./routes/stream.ts";
 import { handleChartHistory, handleChartMetrics } from "./routes/chart-data.ts";
 import { handleExport } from "./routes/export.ts";
@@ -28,11 +29,13 @@ import {
 import datastarPath from "./public/datastar.js" with { type: "file" };
 import echartsPath from "./public/echarts.min.js" with { type: "file" };
 import lineChartPath from "./public/components/line-chart.js" with { type: "file" };
+import metricPickerPath from "./public/components/metric-picker.js" with { type: "file" };
 
 const ASSET_MAP: Record<string, string> = {
   "datastar.js": datastarPath as string,
   "echarts.min.js": echartsPath as string,
   "components/line-chart.js": lineChartPath as string,
+  "components/metric-picker.js": metricPickerPath as string,
 };
 
 // ---------------------------------------------------------------------------
@@ -104,6 +107,14 @@ export function createWebServer(
     // ── Dashboard route ─────────────────────────────────────────────────
     .get("/", () => {
       const page = DashboardPage({ adapter });
+      return new Response(page, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    })
+
+    // ── Trends page route ──────────────────────────────────────────────
+    .get("/trends", () => {
+      const page = TrendsPage({ adapter });
       return new Response(page, {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });

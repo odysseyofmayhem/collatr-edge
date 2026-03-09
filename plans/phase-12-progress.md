@@ -9,12 +9,29 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.0 — Signal descriptor system
 - [x] 12.1 — Dashboard page rewrite — equipment cards
 - [x] 12.2 — SSE stream update — dynamic signal names
-- [ ] 12.3 — Trends page — hybrid curated + metric picker
+- [x] 12.3 — Trends page — hybrid curated + metric picker
 - [ ] 12.4 — Staleness detection and visual indicators
 - [ ] 12.5 — CSS refinements and responsive layout
 - [ ] 12.6 — Integration tests with factory simulator data
 
 ## Log
+
+### Task 12.3 — Trends page — hybrid curated + metric picker (complete)
+- Created `src/web/views/trends.tsx` — config-driven trends page with hybrid approach (AD-4)
+- Equipment sections grouped by prefix with curated default charts rendered server-side
+- Each chart uses existing `<collatr-line-chart>` web component with metric, colour, unit, height attributes
+- Time range selector: Last Hour (default), Last Shift (8h), Last 24h, Last Week
+- Created `src/web/public/components/metric-picker.js` — vanilla JS module for client-side metric add/remove:
+  - "Add metric" dropdown per equipment section lists remaining numeric signals
+  - Selecting appends new chart card with remove button; metric removed from dropdown
+  - Remove button deletes chart and re-adds metric to dropdown
+  - Time range buttons re-fetch all chart history with updated from/to parameters
+- Boolean, counter, and enum signals excluded from both default charts and picker
+- Unknown equipment groups show all numeric signals as defaults (no picker if all are defaults)
+- Registered `/trends` route in server.ts with text/html response
+- Added metric-picker.js to static asset map in server.ts
+- 32 tests (29 JSX rendering + 3 HTTP route), all passing
+- All 1121 non-smoke tests passing
 
 ### Task 12.2 — SSE stream update — dynamic signal names (complete)
 - Fixed `flattenMetrics()` signal name mismatch: for single-field metrics where field is `"value"` (the common packaging profile case), signal key is now just the sanitised metric name (e.g. `press_line_speed`) instead of `press_line_speed_value`

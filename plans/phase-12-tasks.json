@@ -35,7 +35,7 @@
       "prd_refs": ["§17", "§11"],
       "files": ["src/web/views/trends.tsx", "src/web/public/components/metric-picker.js", "src/web/server.ts", "test/unit/web/views/trends.test.ts"],
       "depends_on": ["12.0"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.4",
