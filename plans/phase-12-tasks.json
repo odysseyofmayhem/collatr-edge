@@ -8,7 +8,7 @@
       "description": "Create signal-descriptors.ts with SignalDescriptor/EquipmentGroup types, static unit/type lookup table from simulator PRD signal tables, defaultTrendSignals per equipment, and buildSignalDescriptors() function. Must handle unknown signals gracefully.",
       "prd_refs": ["§17"],
       "files": ["src/web/signal-descriptors.ts", "test/unit/web/signal-descriptors.test.ts"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.1",
