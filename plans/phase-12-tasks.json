@@ -17,7 +17,7 @@
       "prd_refs": ["§17"],
       "files": ["src/web/views/dashboard.tsx", "src/web/views/fragments/equipment-card.tsx", "src/web/views/fragments/signal-value.tsx", "test/unit/web/views/dashboard.test.ts"],
       "depends_on": ["12.0"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.2",

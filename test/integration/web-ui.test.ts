@@ -152,18 +152,18 @@ describe("Integration: Web UI dashboard and API endpoints", () => {
   const config: WebUIConfig = { enabled: true, port, bind: "127.0.0.1" };
   let baseUrl: string;
 
-  // Live metrics for SSE streaming
+  // Live metrics for SSE streaming — use dotted equipment.signal naming
   const metricsMap = new Map<string, LiveMetricValue>();
-  metricsMap.set("temperature", {
-    name: "temperature",
-    fields: { value: 21.5 },
+  metricsMap.set("press.line_speed", {
+    name: "press.line_speed",
+    fields: { value: 198.4 },
     tags: { host: "plc-01" },
     timestamp: BigInt(Date.now()) * 1_000_000n,
     quality: 1.0,
   });
-  metricsMap.set("pressure", {
-    name: "pressure",
-    fields: { value: 1013.2 },
+  metricsMap.set("env.ambient_temp", {
+    name: "env.ambient_temp",
+    fields: { value: 21.5 },
     tags: { host: "plc-01" },
     timestamp: BigInt(Date.now()) * 1_000_000n,
     quality: 1.0,
@@ -202,13 +202,14 @@ describe("Integration: Web UI dashboard and API endpoints", () => {
     // Datastar SSE init
     expect(html).toContain("data-init");
     expect(html).toContain("/api/dashboard/stream");
-    // Datastar signal bindings
+    // Config-driven equipment cards with Datastar signal bindings
     expect(html).toContain("data-text");
     expect(html).toContain("data-signals");
-    // Chart web components
-    expect(html).toContain("collatr-line-chart");
-    // data-effect for chart bridge
-    expect(html).toContain("data-effect");
+    // Equipment cards from live metrics
+    expect(html).toContain("Flexographic Press");
+    expect(html).toContain("Environment");
+    expect(html).toContain('data-equipment="press"');
+    expect(html).toContain('data-equipment="env"');
     // Export form
     expect(html).toContain("/api/export");
   });
@@ -246,9 +247,9 @@ describe("Integration: Web UI dashboard and API endpoints", () => {
     );
     expect(signalEvents.length).toBeGreaterThanOrEqual(1);
 
-    // Signal event should contain metric values
+    // Signal event should contain metric values from config-driven names
     const hasMetricData = signalEvents.some(
-      (e) => e.data.includes("temperature") || e.data.includes("21.5"),
+      (e) => e.data.includes("press_line_speed") || e.data.includes("198.4"),
     );
     expect(hasMetricData).toBe(true);
   });

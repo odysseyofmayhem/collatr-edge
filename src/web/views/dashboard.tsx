@@ -1,19 +1,21 @@
-// CollatrEdge — Dashboard page component
+// CollatrEdge — Dashboard page component (config-driven)
 // PRD refs: §17 Local Web UI (MVP Features, Design principle), §10 Network Policy
-// Phase 9 Task 9.2: server-rendered JSX shell with Datastar attributes
+// Phase 12 Task 12.1: config-driven equipment cards replacing hardcoded 4-signal layout
 //
-// Spike findings applied:
-// - RC.7 colon syntax: data-on:click, data-signals:name, data-init (NOT hyphen)
-// - data-init for SSE entry point
-// - data-effect for ECharts bridge (recommended pattern, Spike 4)
-// - Kita JSX produces plain strings — no renderToString needed
-// - Guard initial signal values in data-effect (timestamp < 1e12)
+// Architecture decisions applied:
+// - AD-1: Equipment grouping by metric name prefix
+// - AD-3: Landing page is live values, not charts
+// - AD-6: Datastar signals are dynamic (derived from signal descriptors)
+// - AD-7: Boolean signals rendered as indicators, not values
 
 import type { WebUIAdapter, PluginHealth } from "../adapter";
+import { buildSignalDescriptors, type EquipmentGroup } from "../signal-descriptors";
 import { Layout } from "./layout";
+import { EquipmentCard } from "./fragments/equipment-card";
+import { toDatastarName } from "./fragments/signal-value";
 
 // ---------------------------------------------------------------------------
-// Types for initial render
+// Types
 // ---------------------------------------------------------------------------
 
 interface DashboardProps {
@@ -23,7 +25,6 @@ interface DashboardProps {
 // ---------------------------------------------------------------------------
 // Network policy banner
 // PRD §10: "persistent, prominent indicator on every page"
-// Colour-coded: red standalone, amber local_network, green connected
 // ---------------------------------------------------------------------------
 
 function NetworkPolicyBanner({
@@ -63,7 +64,7 @@ function NetworkPolicyBanner({
 }
 
 // ---------------------------------------------------------------------------
-// Status badge for pipeline state
+// Status badge
 // ---------------------------------------------------------------------------
 
 function StatusBadge({ state }: { state: string }): string {
@@ -82,7 +83,7 @@ function StatusBadge({ state }: { state: string }): string {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin health table — initial server-rendered, then patched via SSE
+// Plugin health table
 // ---------------------------------------------------------------------------
 
 function PluginHealthTable({
@@ -124,6 +125,47 @@ function PluginHealthTable({
 }
 
 // ---------------------------------------------------------------------------
+// Build Datastar signals initialisation object
+// ---------------------------------------------------------------------------
+
+function buildDatastarSignals(groups: EquipmentGroup[]): string {
+  const signals: Record<string, string | number> = {};
+
+  for (const group of groups) {
+    for (const sig of group.signals) {
+      const dsName = toDatastarName(sig.name);
+      signals[dsName] = "\u2014"; // em-dash as initial value
+    }
+  }
+
+  signals.chartTs = 0;
+  return JSON.stringify(signals);
+}
+
+// ---------------------------------------------------------------------------
+// Collect metric names from all available sources
+// ---------------------------------------------------------------------------
+
+function collectMetricNames(adapter: WebUIAdapter): string[] {
+  const names = new Set<string>();
+
+  // Live metrics (currently flowing through the pipeline)
+  for (const key of adapter.getLiveMetrics().keys()) {
+    names.add(key);
+  }
+
+  // Historical metric names from the local store
+  const store = adapter.getLocalStore();
+  if (store) {
+    for (const name of store.listMetricNames()) {
+      names.add(name);
+    }
+  }
+
+  return Array.from(names);
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard page
 // ---------------------------------------------------------------------------
 
@@ -134,15 +176,22 @@ export function DashboardPage({ adapter }: DashboardProps): string {
   const mem = adapter.getMemoryUsage();
   const uptime = adapter.getUptime();
 
+  // Build config-driven equipment groups from available metric names
+  const metricNames = collectMetricNames(adapter);
+  const groups = buildSignalDescriptors(metricNames);
+  const dataSignals = buildDatastarSignals(groups);
+
   return Layout({
     title: "CollatrEdge \u2014 Dashboard",
     children: (
       <>
-        {/* 1. Header bar */}
+        {/* 1. Header bar with navigation */}
         <div class="header">
           <h1>CollatrEdge</h1>
           <div style="display:flex;align-items:center;">
             <nav>
+              <a href="/" class="nav-active">Dashboard</a>
+              <a href="/trends">Trends</a>
               <a href="/certificates">Certificates</a>
             </nav>
             {StatusBadge({ state: status.state }) as "safe"}
@@ -155,126 +204,43 @@ export function DashboardPage({ adapter }: DashboardProps): string {
         <div class="container">
           {/* SSE data-init opens one stream for signals + element patches */}
           <div
-            data-signals="{temperature: '0', pressure: '0', lineSpeed: '0', humidity: '0', chartTs: 0}"
+            data-signals={dataSignals}
             data-init="@get('/api/dashboard/stream')"
           >
-            <div class="grid">
-              {/* 3. Live metrics card */}
-              <div class="card">
-                <h2>Live Metrics</h2>
-                <div class="metric-grid">
-                  <div class="metric">
-                    <span class="metric-label">Temperature</span>
-                    <span class="metric-value">
-                      <span data-text="$temperature">--</span>
-                      <span class="metric-unit"> &deg;C</span>
-                    </span>
+            {/* 3. Equipment cards — config-driven */}
+            {groups.length > 0
+              ? groups.map((g) => EquipmentCard({ group: g })).join("") as "safe"
+              : (<div class="card card-full"><p style="color:#94a3b8;text-align:center;">No signals yet &mdash; waiting for data&hellip;</p></div>) as "safe"}
+
+            {/* 4. Pipeline status — patched via SSE */}
+            <div class="card card-full">
+              <h2>Pipeline Status</h2>
+              <div id="status-panel">
+                <div style="display:flex;gap:24px;margin-bottom:12px;">
+                  <div>
+                    <span style="color:#888;font-size:0.85rem;">Uptime</span>
+                    <br />
+                    <strong>{formatDuration(uptime)}</strong>
                   </div>
-                  <div class="metric">
-                    <span class="metric-label">Pressure</span>
-                    <span class="metric-value">
-                      <span data-text="$pressure">--</span>
-                      <span class="metric-unit"> hPa</span>
-                    </span>
+                  <div>
+                    <span style="color:#888;font-size:0.85rem;">Heap</span>
+                    <br />
+                    <strong>
+                      {Math.round(mem.heapUsed / 1024 / 1024)} MB
+                    </strong>
                   </div>
-                  <div class="metric">
-                    <span class="metric-label">Line Speed</span>
-                    <span class="metric-value">
-                      <span data-text="$lineSpeed">--</span>
-                      <span class="metric-unit"> m/min</span>
-                    </span>
-                  </div>
-                  <div class="metric">
-                    <span class="metric-label">Humidity</span>
-                    <span class="metric-value">
-                      <span data-text="$humidity">--</span>
-                      <span class="metric-unit"> %</span>
-                    </span>
+                  <div>
+                    <span style="color:#888;font-size:0.85rem;">RSS</span>
+                    <br />
+                    <strong>{Math.round(mem.rss / 1024 / 1024)} MB</strong>
                   </div>
                 </div>
-              </div>
-
-              {/* 4. Plugin health table + status panel — patched via SSE */}
-              <div class="card">
-                <h2>Pipeline Status</h2>
-                <div id="status-panel">
-                  <div style="display:flex;gap:24px;margin-bottom:12px;">
-                    <div>
-                      <span style="color:#888;font-size:0.85rem;">Uptime</span>
-                      <br />
-                      <strong>{formatDuration(uptime)}</strong>
-                    </div>
-                    <div>
-                      <span style="color:#888;font-size:0.85rem;">Heap</span>
-                      <br />
-                      <strong>
-                        {Math.round(mem.heapUsed / 1024 / 1024)} MB
-                      </strong>
-                    </div>
-                    <div>
-                      <span style="color:#888;font-size:0.85rem;">RSS</span>
-                      <br />
-                      <strong>{Math.round(mem.rss / 1024 / 1024)} MB</strong>
-                    </div>
-                  </div>
-                  {PluginHealthTable({ plugins }) as "safe"}
-                </div>
-              </div>
-            </div>
-
-            {/* 5. Trend charts — ECharts web components + data-effect bridge */}
-            {/* metric attribute enables connectedCallback history fetch from /api/chart/history */}
-            <div class="grid">
-              <div class="card">
-                <h2>Temperature Trend</h2>
-                <collatr-line-chart
-                  id="chart-temp"
-                  metric="temperature"
-                  color="#3b82f6"
-                  unit="&deg;C"
-                  height="220px"
-                ></collatr-line-chart>
-                <div data-effect="document.getElementById('chart-temp')?.addPoint($chartTs, parseFloat($temperature))"></div>
-              </div>
-              <div class="card">
-                <h2>Pressure Trend</h2>
-                <collatr-line-chart
-                  id="chart-pressure"
-                  metric="pressure"
-                  color="#ef4444"
-                  unit="hPa"
-                  height="220px"
-                ></collatr-line-chart>
-                <div data-effect="document.getElementById('chart-pressure')?.addPoint($chartTs, parseFloat($pressure))"></div>
-              </div>
-            </div>
-            <div class="grid">
-              <div class="card">
-                <h2>Line Speed Trend</h2>
-                <collatr-line-chart
-                  id="chart-speed"
-                  metric="lineSpeed"
-                  color="#22c55e"
-                  unit="m/min"
-                  height="220px"
-                ></collatr-line-chart>
-                <div data-effect="document.getElementById('chart-speed')?.addPoint($chartTs, parseFloat($lineSpeed))"></div>
-              </div>
-              <div class="card">
-                <h2>Humidity Trend</h2>
-                <collatr-line-chart
-                  id="chart-humidity"
-                  metric="humidity"
-                  color="#8b5cf6"
-                  unit="%"
-                  height="220px"
-                ></collatr-line-chart>
-                <div data-effect="document.getElementById('chart-humidity')?.addPoint($chartTs, parseFloat($humidity))"></div>
+                {PluginHealthTable({ plugins }) as "safe"}
               </div>
             </div>
           </div>
 
-          {/* 6. CSV export form */}
+          {/* 5. CSV export form */}
           <div class="card card-full" style="margin-bottom:16px;">
             <h2>Data Export</h2>
             <form class="export-bar" action="/api/export" method="get">
@@ -288,7 +254,7 @@ export function DashboardPage({ adapter }: DashboardProps): string {
             <script>{"document.getElementById('export-tz').value=Intl.DateTimeFormat().resolvedOptions().timeZone;"}</script>
           </div>
 
-          {/* 7. Footer */}
+          {/* 6. Footer */}
           <div class="footer">CollatrEdge v0.1.0 &mdash; {status.state}</div>
         </div>
       </>
