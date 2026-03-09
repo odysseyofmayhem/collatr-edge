@@ -8,13 +8,22 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 ## Tasks
 - [x] 12.0 — Signal descriptor system
 - [x] 12.1 — Dashboard page rewrite — equipment cards
-- [ ] 12.2 — SSE stream update — dynamic signal names
+- [x] 12.2 — SSE stream update — dynamic signal names
 - [ ] 12.3 — Trends page — hybrid curated + metric picker
 - [ ] 12.4 — Staleness detection and visual indicators
 - [ ] 12.5 — CSS refinements and responsive layout
 - [ ] 12.6 — Integration tests with factory simulator data
 
 ## Log
+
+### Task 12.2 — SSE stream update — dynamic signal names (complete)
+- Fixed `flattenMetrics()` signal name mismatch: for single-field metrics where field is `"value"` (the common packaging profile case), signal key is now just the sanitised metric name (e.g. `press_line_speed`) instead of `press_line_speed_value`
+- Multi-field metrics or fields not named `"value"` retain the `name_field` format for disambiguation
+- This aligns SSE signal names with dashboard `toDatastarName()` — Datastar bindings now receive updates correctly
+- Updated all stream tests to use representative packaging profile metrics (`press.line_speed`, `laminator.nip_temp`, `env.ambient_temp`, etc.) instead of old `temperature`/`pressure` names
+- Added new test: "SSE signal names match dashboard Datastar signal names" — explicitly verifies no `_value` suffix on single-value metrics
+- Added tests for multi-field metric disambiguation and non-"value" field name handling
+- 18 stream tests passing, all 1087 non-smoke tests passing
 
 ### Task 12.1 — Dashboard page rewrite — equipment cards (complete)
 - Rewrote `src/web/views/dashboard.tsx` to be fully config-driven using `buildSignalDescriptors()`

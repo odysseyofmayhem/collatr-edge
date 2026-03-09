@@ -26,7 +26,7 @@
       "prd_refs": ["§17"],
       "files": ["src/web/routes/stream.ts", "test/unit/web/routes/stream.test.ts"],
       "depends_on": ["12.1"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.3",

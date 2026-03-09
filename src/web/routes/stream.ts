@@ -21,10 +21,15 @@ import type { FieldValue } from "../../core/metric";
 
 /**
  * Flatten adapter metrics into a signal object for Datastar patchSignals.
- * Format: { metricName_fieldName: value, ... , chartTs: epochMs }
+ * Format: { metricName: value, ... , chartTs: epochMs }
  *
  * Signal names are sanitised to valid JS identifiers (alphanumeric + underscore).
  * Field values are converted to display-friendly strings/numbers.
+ *
+ * When a metric has a single field named "value" (the common case for the
+ * packaging profile), the signal key is just the sanitised metric name — matching
+ * the Datastar signal names initialised by the dashboard (toDatastarName).
+ * Multi-field metrics or fields not named "value" use the `name_field` format.
  */
 export function flattenMetrics(
   metrics: Map<string, LiveMetricValue>,
@@ -33,8 +38,16 @@ export function flattenMetrics(
   let latestTs = 0;
 
   for (const [name, metric] of metrics) {
-    for (const [field, value] of Object.entries(metric.fields)) {
-      const key = sanitiseSignalName(`${name}_${field}`);
+    const fieldEntries = Object.entries(metric.fields);
+    const isSingleValue =
+      fieldEntries.length === 1 && fieldEntries[0][0] === "value";
+
+    for (const [field, value] of fieldEntries) {
+      // Single "value" field: use metric name only (matches dashboard signals)
+      // Multi-field or non-"value" field: append field name for disambiguation
+      const key = isSingleValue
+        ? sanitiseSignalName(name)
+        : sanitiseSignalName(`${name}_${field}`);
       signals[key] = formatFieldValue(value);
     }
     // Track latest timestamp for chart bridge (nanoseconds → milliseconds)
