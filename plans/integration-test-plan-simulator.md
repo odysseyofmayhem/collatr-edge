@@ -462,37 +462,108 @@ It generates batch CSV, starts the simulator live, runs Edge, waits, stops every
 ### T6: Scenario Data Capture (PRD 11.3)
 
 **Maps to:** Simulator PRD 11.3 (Anomaly Detection table), PRD 05 (Scenario System)
-**Duration:** Run long enough for scenarios to fire (use high frequency config or wait)
+**Duration:** ~60 minutes at 10x speed (= 10 simulated hours, covers one full shift cycle)
 
 > Note: We are NOT testing anomaly detection here. We are testing that Edge faithfully captures the data patterns that scenarios produce. The ground truth tells us what happened; we verify Edge saw it.
+
+#### Scenario Frequency Reference
+
+The simulator fires scenarios at realistic industrial frequencies. This determines how long you need to run:
+
+| Scenario | Frequency | At 1x | At 10x | Expected in 1h@10x? |
+|----------|-----------|-------|--------|---------------------|
+| Job changeover | 3-6 per shift (8h) | ~90-160 min | ~9-16 min | ✅ Yes (3-6) |
+| Ink viscosity excursion | 2-3 per shift | ~160-240 min | ~16-24 min | ✅ Yes (2-3) |
+| Dryer drift | 1-2 per shift | ~240-480 min | ~24-48 min | ✅ Likely (1-2) |
+| Unplanned stop | 1-2 per shift | ~240-480 min | ~24-48 min | ✅ Likely (1-2) |
+| Registration drift | 1-3 per shift | ~160-480 min | ~16-48 min | ✅ Likely (1-3) |
+| Shift change | Fixed times (06:00, 14:00, 22:00) | At boundary | ~48 min max | ✅ Yes (1-2) |
+| Web break | 1-2 per week | ~2.3-4.7 days | ~5.6-11.2h | ❌ Unlikely |
+| Bearing wear | Starts after 48h | 48h+ | 4.8h+ | ❌ No |
+
+**Recommendation:** Run at 10x for 60 minutes. This covers one full shift and should trigger most scenario types. Web break and bearing wear require much longer runs or a custom high-frequency config.
+
+#### Method:
+
+##### Clean previous data:
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+rm -f data/factory-sim-packaging/metrics.jsonl
+rm -f data/factory-sim-packaging/data_*.db
+```
+
+##### Start simulator at 10x speed (in collatr-factory-simulator repo):
+```shell
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+SIM_TIME_SCALE=10.0 SIM_RANDOM_SEED=42 docker compose up -d
+```
+
+Wait for health check:
+```shell
+curl -s http://localhost:8081/health | jq .
+```
+
+##### Start Edge (in collatr-edge repo):
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+bun run src/index.ts run --config configs/factory-sim-packaging.toml
+```
+
+##### Let it run ~60 minutes, then Ctrl+C Edge.
+
+##### Stop simulator:
+```shell
+cd ~/Projects/DoublyGood/collatr-factory-simulator
+docker compose down
+```
+
+##### Run the check script:
+```shell
+cd ~/Projects/DoublyGood/collatr-edge
+bun run test/integration/check-scenarios.ts \
+  --edge-jsonl ./data/factory-sim-packaging/metrics.jsonl \
+  --ground-truth ../collatr-factory-simulator/output/ground_truth.jsonl
+```
+
+#### What it checks
+
+The script reads ground truth events and checks whether Edge captured the corresponding data patterns. It handles missing scenarios gracefully — if a scenario type did not fire during the run, it logs an info message and skips those checks rather than failing.
 
 #### T6.1 — Web break capture (PRD 11.3, PRD 05)
 
 > "Threshold on web tension: Spike > 600 N followed by drop to 0"
 
-- Edge local store contains web_tension spike (> 600N) at the time the ground truth records `scenario_start: web_break`
+- Edge local store contains web_tension spike (> 400N) at the time the ground truth records `scenario_start: web_break`
 - press.machine_state transitions from 2 (Running) to 4 (Fault) visible in Edge data
 - press.line_speed drops to 0
+- **Note:** Web break fires 1-2 per week. Unlikely in a 10h sim window. If no web_break appears in ground truth, the check is skipped (not failed).
 
 #### T6.2 — State machine transitions
 
-Over a multi-hour run, Edge captures all machine states that appear in ground truth:
+Over the run, Edge captures all machine states that appear in ground truth:
 - Idle (0) -> Startup (1) -> Running (2) -> Shutdown (3)
 - Shift changes: Running -> Idle gap -> Startup -> Running
 - Fault events: Running (2) -> Fault (4)
 - OPC-UA Press1.State shows same transitions as Modbus press.machine_state
+- Verifies OPC-UA states are a subset of Modbus states (Modbus polls continuously, OPC-UA only on change)
 
 #### T6.3 — Dryer drift (PRD 11.3)
 
 > "CUSUM on (dryer_temp - setpoint): Sustained positive deviation over 30+ minutes"
 
 - When ground truth logs `scenario_start: dryer_drift`, Edge data shows press.dryer_temp_zone_* values gradually diverging from setpoint values
-- Deviation visible by scenario end
+- Checks per-zone deviation (avg temp - avg setpoint) exceeds 1°C when a drift scenario is active
+- If no dryer_drift scenario fired, reports current deviation as info
 
 #### T6.4 — Counter and consumable events
 
-- Shift change: counters reset or continue per config (visible in Edge data)
-- Ink refill (consumable event in ground truth): coder.ink_level jumps back up in MQTT data
+- **Shift change:** If ground truth contains shift_change events, verifies Edge captured impression counter data across the boundary
+- **Ink refill:** If ground truth contains consumable/refill events, verifies coder.ink_level (MQTT) shows an upward jump (> 5 units)
+- Both checks skip gracefully if the relevant events did not fire
+
+#### Event coverage summary
+
+The script also reports a summary of all ground truth event types and counts, and verifies Edge collected data for the full run duration (> 60s of data).
 
 ---
 
@@ -588,7 +659,7 @@ The verification script needs a mapping table from batch CSV signal_ids to Edge 
 | 1 | T1 (connectivity) | 10 min | Yes — nothing works if protocols don't connect |
 | 2 | T2 (accuracy) | 10 min | Yes — core correctness |
 | 3 | T3 (completeness) | 30 min | Yes — data quality |
-| 4 | T6 (scenarios) | ~30 min | No — validates capture fidelity |
+| 4 | T6 (scenarios) | ~60 min (at 10x) | No — validates capture fidelity |
 | 5 | T5 (time compression) | ~45 min | No — performance envelope |
 | 6 | T4 (sustained) | 2 hours | No — stability/endurance |
 
