@@ -66,10 +66,14 @@ function sanitiseSignalName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-/** Convert a FieldValue to a display-friendly string or number. */
+/** Convert a FieldValue to a display-friendly string or number.
+ *  Floating-point numbers are rounded to 2 decimal places for readability. */
 function formatFieldValue(value: FieldValue): string | number {
   if (typeof value === "bigint") return Number(value);
   if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && !Number.isInteger(value)) {
+    return Math.round(value * 100) / 100;
+  }
   return value;
 }
 

@@ -73,6 +73,13 @@ const CSS = `
   .metric-unit { font-size: 0.9rem; font-weight: 400; color: #94a3b8; }
   .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 
+  .signal-value { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
+  .signal-label { color: #64748b; font-size: 0.85rem; white-space: nowrap; }
+  .signal-reading { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .signal-unit { font-weight: 400; color: #94a3b8; font-size: 0.85rem; }
+  .signal-reading-counter { font-family: 'SF Mono', 'Menlo', monospace; }
+  .signal-paired .signal-reading { font-size: 0.95rem; }
+
   .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
   .dot-ok { background: #22c55e; }
   .dot-error { background: #ef4444; }

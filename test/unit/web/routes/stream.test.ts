@@ -284,6 +284,28 @@ describe("flattenMetrics", () => {
     expect(signals.press_running).toBe("true");
   });
 
+  it("rounds floating-point values to 2 decimal places", () => {
+    const metrics = new Map<string, LiveMetricValue>();
+    metrics.set("press.line_speed", liveMetric("press.line_speed", 199.8390655517578));
+    metrics.set("press.web_tension", liveMetric("press.web_tension", 97.17400360107422));
+    metrics.set("press.registration_error_x", liveMetric("press.registration_error_x", -0.00876115346751007));
+
+    const signals = flattenMetrics(metrics);
+
+    expect(signals.press_line_speed).toBe(199.84);
+    expect(signals.press_web_tension).toBe(97.17);
+    expect(signals.press_registration_error_x).toBe(-0.01);
+  });
+
+  it("does not round integer values", () => {
+    const metrics = new Map<string, LiveMetricValue>();
+    metrics.set("press.impression_count", liveMetric("press.impression_count", 124502));
+
+    const signals = flattenMetrics(metrics);
+
+    expect(signals.press_impression_count).toBe(124502);
+  });
+
   it("tracks latest timestamp across multiple metrics", () => {
     const metrics = new Map<string, LiveMetricValue>();
     metrics.set("press.line_speed", {
