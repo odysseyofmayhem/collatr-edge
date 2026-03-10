@@ -12,9 +12,17 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.3 — Trends page — hybrid curated + metric picker
 - [x] 12.4 — Staleness detection and visual indicators
 - [x] 12.5 — CSS refinements and responsive layout
-- [ ] 12.6 — Integration tests with factory simulator data
+- [x] 12.6 — Integration tests with factory simulator data
 
 ## Log
+
+### Task 12.6 — Integration tests with factory simulator data (complete)
+- Created `test/integration/web-ui-trends.test.ts` with 22 integration tests across 4 describe blocks
+- **Dashboard with factory sim data** (5 tests): verifies all 7 equipment group cards present, display names from signal descriptors, Datastar signal bindings with sanitised names, navigation links
+- **Trends page** (7 tests): GET /trends returns 200 HTML, equipment section headers, curated default chart elements (press.line_speed, env.ambient_temp etc.), time range buttons, metric picker dropdown, metric-picker.js script inclusion, active nav state
+- **Chart metrics API with factory sim data** (2 tests): /api/chart/metrics returns factory sim metric names from local store, /api/chart/history returns data points for press.line_speed
+- **Backward compatibility** (8 tests): export endpoint responds correctly (503 without store), certificates page works, chart metrics API returns JSON array, network policy banner visible, pipeline status section present, data export form present, static assets served, SSE stream returns event-stream content type
+- All 1155 non-smoke tests passing
 
 ### Task 12.5 — CSS refinements and responsive layout (complete)
 - Comprehensive CSS overhaul in `layout.tsx` for all Phase 12 components

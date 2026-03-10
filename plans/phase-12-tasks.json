@@ -62,7 +62,7 @@
       "prd_refs": ["§17"],
       "files": ["test/integration/web-ui.test.ts", "test/integration/web-ui-trends.test.ts"],
       "depends_on": ["12.1", "12.3"],
-      "passes": false
+      "passes": true
     }
   ]
 }
