@@ -8,6 +8,7 @@ import type {
   Aggregator,
   Output,
 } from "@core/plugin-types";
+import { SimpleStatsCollector } from "@core/stats";
 
 // ---------------------------------------------------------------------------
 // Mock plugins
@@ -513,6 +514,143 @@ describe("PipelineRuntime", () => {
 
     // Pipeline didn't crash — multiple write attempts happened
     expect(writeCallCount).toBeGreaterThanOrEqual(2);
+  });
+
+  // -------------------------------------------------------------------------
+  // Stats collector wiring
+  // -------------------------------------------------------------------------
+
+  it("stats.metricsGathered increments as inputs produce metrics", async () => {
+    const stats = new SimpleStatsCollector();
+    const input = new MockInput([
+      { name: "temp", fields: { c: 25 } },
+      { name: "pressure", fields: { bar: 1.0 } },
+    ]);
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      stats,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Each gather emits 2 metrics; multiple gathers happen in 300ms
+    expect(stats.metricsGathered).toBeGreaterThanOrEqual(2);
+  });
+
+  it("stats.metricsWritten increments as outputs write metrics", async () => {
+    const stats = new SimpleStatsCollector();
+    const input = new MockInput([{ name: "data", fields: { v: 1 } }]);
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      stats,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Output wrote metrics — stats should reflect count
+    expect(stats.metricsWritten).toBeGreaterThanOrEqual(1);
+    expect(stats.metricsWritten).toBe(output.written.length);
+  });
+
+  it("stats.gatherErrors increments on gather failure", async () => {
+    const stats = new SimpleStatsCollector();
+    const failInput: Input = {
+      async gather(_acc: Accumulator): Promise<void> {
+        throw new Error("sensor offline");
+      },
+      async close(): Promise<void> {},
+    };
+    const output = new MockOutput();
+
+    // Suppress error logs during this test
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: failInput }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      stats,
+    });
+
+    await runFor(pipeline, 300);
+    process.stderr.write = originalWrite;
+
+    expect(stats.gatherErrors).toBeGreaterThanOrEqual(1);
+    expect(stats.metricsGathered).toBe(0); // no successful gathers
+  });
+
+  it("stats.writeErrors increments on output write failure", async () => {
+    const stats = new SimpleStatsCollector();
+    const input = new MockInput([{ name: "data", fields: { v: 1 } }]);
+    const failOutput: Output = {
+      async connect(): Promise<void> {},
+      async write(_batch: Metric[]): Promise<void> {
+        throw new Error("disk full");
+      },
+      async close(): Promise<void> {},
+    };
+
+    // Suppress error logs during this test
+    const originalWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: failOutput }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      stats,
+    });
+
+    await runFor(pipeline, 300);
+    process.stderr.write = originalWrite;
+
+    expect(stats.writeErrors).toBeGreaterThanOrEqual(1);
+    expect(stats.metricsWritten).toBe(0); // no successful writes
+  });
+
+  it("stats.metricsGathered and metricsWritten track correctly with 2 inputs", async () => {
+    const stats = new SimpleStatsCollector();
+    const input1 = new MockInput([{ name: "sensor_a", fields: { v: 1 } }]);
+    const input2 = new MockInput([{ name: "sensor_b", fields: { v: 2 } }]);
+    const output = new MockOutput();
+
+    const pipeline = new PipelineRuntime({
+      inputs: [{ plugin: input1 }, { plugin: input2 }],
+      processors: [],
+      aggregators: [],
+      outputs: [{ plugin: output }],
+      gatherIntervalMs: 50,
+      flushIntervalMs: 50,
+      stats,
+    });
+
+    await runFor(pipeline, 300);
+
+    // Both inputs contribute to gathered count
+    expect(stats.metricsGathered).toBeGreaterThanOrEqual(2);
+    // Written should match what the output received
+    expect(stats.metricsWritten).toBe(output.written.length);
   });
 
   it("aggregator summary metrics include global tags", async () => {

@@ -219,7 +219,7 @@ const OUTPUT_FACTORIES: Record<string, OutputFactory> = {
  */
 export function buildPipeline(
   config: AgentConfig,
-  stats?: StatsCollector,
+  stats?: SimpleStatsCollector,
 ): PipelineOptions {
   const statsCollector = stats ?? new SimpleStatsCollector();
 
@@ -397,5 +397,6 @@ export function buildPipeline(
       : undefined,
     hubLink,
     networkPolicy: config.networkPolicy,
+    stats: statsCollector,
   };
 }

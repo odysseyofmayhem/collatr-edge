@@ -11,6 +11,7 @@ import { getLogger } from "../core/logger";
 import { MetricFilter } from "../core/metric-filter";
 import type { HubLink } from "../hub/hub-link";
 import type { NetworkPolicy } from "../core/network-policy";
+import type { SimpleStatsCollector } from "../core/stats";
 
 // ---------------------------------------------------------------------------
 // Pipeline state (used by WebUIAdapter)
@@ -37,6 +38,8 @@ export interface PipelineOptions {
   hubLink?: HubLink;
   /** Resolved network policy. Used for startup logging. */
   networkPolicy?: NetworkPolicy;
+  /** Stats collector for pipeline counters (gathered, written, dropped, errors). */
+  stats?: SimpleStatsCollector;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +164,7 @@ async function runGatherLoop(
   signal: AbortSignal,
   alias?: string,
   pluginType?: string,
+  stats?: SimpleStatsCollector,
 ): Promise<void> {
   const ticker = new Ticker();
   const logCtx = { component: "pipeline", plugin: alias ?? "input", plugin_type: pluginType };
@@ -186,6 +190,7 @@ async function runGatherLoop(
       const elapsed = Math.round(performance.now() - start);
       getLogger().debug("gather complete", { ...logCtx, duration_ms: elapsed });
     } catch (err) {
+      if (stats) stats.gatherErrors++;
       getLogger().error("gather error", { ...logCtx, error: (err as Error).message });
     }
   }
@@ -313,6 +318,7 @@ async function runOutputFlushLoop(
   metricBatchSize?: number,
   filter?: MetricFilter,
   alias?: string,
+  stats?: SimpleStatsCollector,
 ): Promise<void> {
   const batch: Metric[] = [];
   let done = false;
@@ -344,7 +350,9 @@ async function runOutputFlushLoop(
         const chunk = metrics.slice(i, i + metricBatchSize);
         try {
           await output.write(chunk);
+          if (stats) stats.metricsWritten += chunk.length;
         } catch (err) {
+          if (stats) stats.writeErrors++;
           getLogger().error("output write error", { ...logCtx, error: (err as Error).message });
           // Re-add remaining (unwritten) metrics to batch for retry
           const remaining = metrics.slice(i);
@@ -356,8 +364,10 @@ async function runOutputFlushLoop(
     } else {
       try {
         await output.write(metrics);
+        if (stats) stats.metricsWritten += metrics.length;
         return true;
       } catch (err) {
+        if (stats) stats.writeErrors++;
         getLogger().error("output write error", { ...logCtx, error: (err as Error).message });
         batch.unshift(...metrics);
         return false;
@@ -380,12 +390,16 @@ async function runOutputFlushLoop(
       try {
         if (metricBatchSize && metricBatchSize > 0) {
           for (let i = 0; i < chunk.length; i += metricBatchSize) {
-            await output.write(chunk.slice(i, i + metricBatchSize));
+            const slice = chunk.slice(i, i + metricBatchSize);
+            await output.write(slice);
+            if (stats) stats.metricsWritten += slice.length;
           }
         } else {
           await output.write(chunk);
+          if (stats) stats.metricsWritten += chunk.length;
         }
       } catch (err) {
+        if (stats) stats.writeErrors++;
         // TODO: Phase 7 — when S&F buffer is integrated, failed final-flush
         // metrics should be persisted to the buffer for recovery on next startup.
         // Currently these metrics are lost if the output is still failing at shutdown.
@@ -551,6 +565,7 @@ export class PipelineRuntime {
         this.inputChannel,
         globalTags,
         input.alias, // If set, injects _device_id tag on all metrics from this input
+        this.options.stats,
       );
 
       // Per-input MetricFilter: wrap the accumulator so only matching metrics
@@ -573,7 +588,7 @@ export class PipelineRuntime {
         const interval = input.interval ?? this.options.gatherIntervalMs;
         const timeout = input.timeout ?? this.options.gatherTimeoutMs ?? 0;
         this.loops.push(
-          runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal, input.alias, input.pluginType),
+          runGatherLoop(input.plugin, inputAcc, interval, timeout, aligned, signal, input.alias, input.pluginType, this.options.stats),
         );
       }
     }
@@ -584,7 +599,7 @@ export class PipelineRuntime {
       const ch = outputChannels[i]!;
       getLogger().debug("plugin registered", { component: "pipeline", plugin: outputOpts.alias ?? "output", plugin_type: "output" });
       this.loops.push(
-        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter, outputOpts.alias),
+        runOutputFlushLoop(ch, outputOpts.plugin, this.options.flushIntervalMs, signal, outputOpts.metricBatchSize, outputOpts.filter, outputOpts.alias, this.options.stats),
       );
     }
 

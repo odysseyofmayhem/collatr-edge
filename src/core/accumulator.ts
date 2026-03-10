@@ -4,6 +4,7 @@
 import { Channel } from "./channel";
 import { createMetric, type FieldValue, type Metric } from "./metric";
 import { getLogger } from "./logger";
+import type { SimpleStatsCollector } from "./stats";
 
 export interface Accumulator {
   /** Create a new metric from scratch. Timestamp assigned automatically if not provided. */
@@ -40,11 +41,13 @@ export class ChannelAccumulator implements Accumulator {
   private _errorCount = 0;
   private _droppedCount = 0;
   private _deviceId: string | undefined;
+  private _stats: SimpleStatsCollector | undefined;
 
-  constructor(channel: Channel<Metric>, globalTags?: Record<string, string>, deviceId?: string) {
+  constructor(channel: Channel<Metric>, globalTags?: Record<string, string>, deviceId?: string, stats?: SimpleStatsCollector) {
     this.channel = channel;
     this.globalTags = globalTags ?? {};
     this._deviceId = deviceId;
+    this._stats = stats;
   }
 
   addFields(
@@ -71,7 +74,12 @@ export class ChannelAccumulator implements Accumulator {
     // With drop-oldest overflow, send() completes synchronously. If the channel
     // is closed (during shutdown), send() returns false — track as dropped.
     void this.channel.send(metric).then((ok) => {
-      if (!ok) this._droppedCount++;
+      if (ok) {
+        if (this._stats) this._stats.metricsGathered++;
+      } else {
+        this._droppedCount++;
+        if (this._stats) this._stats.metricsDropped++;
+      }
     });
   }
 
@@ -85,7 +93,12 @@ export class ChannelAccumulator implements Accumulator {
       m.addTag("_device_id", this._deviceId);
     }
     void this.channel.send(m).then((ok) => {
-      if (!ok) this._droppedCount++;
+      if (ok) {
+        if (this._stats) this._stats.metricsGathered++;
+      } else {
+        this._droppedCount++;
+        if (this._stats) this._stats.metricsDropped++;
+      }
     });
   }
 
