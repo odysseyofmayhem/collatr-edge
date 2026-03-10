@@ -14,10 +14,17 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.5 — CSS refinements and responsive layout
 - [x] 12.6 — Integration tests with factory simulator data
 - [x] 12.7 — Review fix: extract duplicate collectMetricNames (F-02)
-- [ ] 12.8 — Review fix: staleness test imports actual module (F-04)
+- [x] 12.8 — Review fix: staleness test imports actual module (F-04)
 - [ ] 12.9 — Pipeline stats in status panel (agent.* metrics)
 
 ## Log
+
+### Task 12.8 — Review fix: staleness test imports actual module (complete)
+- Replaced re-implemented `classifyStaleness` in test with import from actual `staleness.js` module
+- Used source evaluation approach (`Bun.file()` + `new Function`) because server.ts imports `staleness.js` with `{ type: "file" }` for static serving, which corrupts Bun's ESM module cache and prevents normal `import`/`require` of the same module in tests
+- Test now uses the real function: if thresholds or classification logic change in staleness.js, tests will catch the divergence
+- Threshold constants (`STALE_MS`, `DEAD_MS`) also extracted from the real module
+- All 1155 tests passing (2 skips, 0 failures)
 
 ### Task 12.7 — Review fix: extract duplicate collectMetricNames (complete)
 - Created `src/web/adapter-helpers.ts` with shared `collectMetricNames()` function

@@ -155,7 +155,9 @@ if (typeof document !== 'undefined') {
   }
 }
 
-// Export for testing
+// Export for testing (CJS fallback — used by require() in tests since
+// server.ts imports this file with { type: "file" } which conflicts
+// with ESM module resolution in Bun's test runner)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { classifyStaleness, STALE_MS, DEAD_MS }
 }

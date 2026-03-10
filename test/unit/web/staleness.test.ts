@@ -2,25 +2,31 @@ import { describe, it, expect } from "bun:test";
 
 // ---------------------------------------------------------------------------
 // Staleness classification logic — pure function tests
-// The classifyStaleness function is exported from staleness.js for testing.
-// We re-implement the logic here to test thresholds since the JS module
-// is a browser module with DOM dependencies.
+// Import the actual classifyStaleness function from the browser module.
+// staleness.js exports via module.exports for Node/Bun compatibility.
 // ---------------------------------------------------------------------------
 
-// Thresholds matching staleness.js
-const STALE_MS = 30_000;
-const DEAD_MS = 60_000;
+// Import the actual classifyStaleness from staleness.js so tests catch
+// divergence if thresholds or logic change. We evaluate the source directly
+// because server.ts imports staleness.js with { type: "file" } for static
+// serving, which corrupts Bun's module cache and prevents normal import/require.
+const stalenessSource = await Bun.file(
+  new URL("../../../src/web/public/components/staleness.js", import.meta.url),
+).text();
 
-/** Classify staleness state given elapsed time. Mirrors staleness.js logic. */
-function classifyStaleness(
-  lastUpdate: number,
-  now: number,
-): "fresh" | "stale" | "dead" {
-  const elapsed = now - lastUpdate;
-  if (elapsed >= DEAD_MS) return "dead";
-  if (elapsed >= STALE_MS) return "stale";
-  return "fresh";
-}
+const extractExports = new Function(
+  stalenessSource.replace(/^export /gm, "") +
+    "\nreturn { classifyStaleness, STALE_MS, DEAD_MS };",
+);
+const {
+  classifyStaleness,
+  STALE_MS,
+  DEAD_MS,
+} = extractExports() as {
+  classifyStaleness: (lastUpdate: number, now: number) => "fresh" | "stale" | "dead";
+  STALE_MS: number;
+  DEAD_MS: number;
+};
 
 // ---------------------------------------------------------------------------
 // Tests
