@@ -30,12 +30,14 @@ import datastarPath from "./public/datastar.js" with { type: "file" };
 import echartsPath from "./public/echarts.min.js" with { type: "file" };
 import lineChartPath from "./public/components/line-chart.js" with { type: "file" };
 import metricPickerPath from "./public/components/metric-picker.js" with { type: "file" };
+import stalenessPath from "./public/components/staleness.js" with { type: "file" };
 
 const ASSET_MAP: Record<string, string> = {
   "datastar.js": datastarPath as string,
   "echarts.min.js": echartsPath as string,
   "components/line-chart.js": lineChartPath as string,
   "components/metric-picker.js": metricPickerPath as string,
+  "components/staleness.js": stalenessPath as string,
 };
 
 // ---------------------------------------------------------------------------
