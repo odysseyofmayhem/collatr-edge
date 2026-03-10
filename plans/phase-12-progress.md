@@ -13,11 +13,18 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.4 — Staleness detection and visual indicators
 - [x] 12.5 — CSS refinements and responsive layout
 - [x] 12.6 — Integration tests with factory simulator data
-- [ ] 12.7 — Review fix: extract duplicate collectMetricNames (F-02)
+- [x] 12.7 — Review fix: extract duplicate collectMetricNames (F-02)
 - [ ] 12.8 — Review fix: staleness test imports actual module (F-04)
 - [ ] 12.9 — Pipeline stats in status panel (agent.* metrics)
 
 ## Log
+
+### Task 12.7 — Review fix: extract duplicate collectMetricNames (complete)
+- Created `src/web/adapter-helpers.ts` with shared `collectMetricNames()` function
+- Removed duplicate implementations from `dashboard.tsx` and `trends.tsx`
+- Both files now import from `adapter-helpers.ts`
+- No test changes needed — function is used internally by view components and covered by existing dashboard/trends tests
+- All 1155 tests passing (2 skips, 0 failures)
 
 ### Task 12.6 — Integration tests with factory simulator data (complete)
 - Created `test/integration/web-ui-trends.test.ts` with 22 integration tests across 4 describe blocks

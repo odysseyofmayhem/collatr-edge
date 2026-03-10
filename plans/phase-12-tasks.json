@@ -71,7 +71,7 @@
       "prd_refs": ["§17"],
       "files": ["src/web/views/dashboard.tsx", "src/web/views/trends.tsx"],
       "depends_on": ["12.6"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.8",

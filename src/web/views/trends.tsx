@@ -7,6 +7,7 @@
 // - AD-1: Equipment grouping by metric name prefix
 
 import type { WebUIAdapter } from "../adapter";
+import { collectMetricNames } from "../adapter-helpers";
 import { buildSignalDescriptors, type EquipmentGroup, type SignalDescriptor } from "../signal-descriptors";
 import { Layout } from "./layout";
 
@@ -52,27 +53,6 @@ const TIME_RANGES: TimeRange[] = [
   { label: "Last 24h", hours: 24 },
   { label: "Last Week", hours: 168 },
 ];
-
-// ---------------------------------------------------------------------------
-// Collect metric names from adapter (same logic as dashboard)
-// ---------------------------------------------------------------------------
-
-function collectMetricNames(adapter: WebUIAdapter): string[] {
-  const names = new Set<string>();
-
-  for (const key of adapter.getLiveMetrics().keys()) {
-    names.add(key);
-  }
-
-  const store = adapter.getLocalStore();
-  if (store) {
-    for (const name of store.listMetricNames()) {
-      names.add(name);
-    }
-  }
-
-  return Array.from(names);
-}
 
 // ---------------------------------------------------------------------------
 // Chart card for a single signal

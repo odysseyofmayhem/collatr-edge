@@ -9,6 +9,7 @@
 // - AD-7: Boolean signals rendered as indicators, not values
 
 import type { WebUIAdapter, PluginHealth } from "../adapter";
+import { collectMetricNames } from "../adapter-helpers";
 import { buildSignalDescriptors, type EquipmentGroup } from "../signal-descriptors";
 import { Layout } from "./layout";
 import { EquipmentCard } from "./fragments/equipment-card";
@@ -140,29 +141,6 @@ function buildDatastarSignals(groups: EquipmentGroup[]): string {
 
   signals.chartTs = 0;
   return JSON.stringify(signals);
-}
-
-// ---------------------------------------------------------------------------
-// Collect metric names from all available sources
-// ---------------------------------------------------------------------------
-
-function collectMetricNames(adapter: WebUIAdapter): string[] {
-  const names = new Set<string>();
-
-  // Live metrics (currently flowing through the pipeline)
-  for (const key of adapter.getLiveMetrics().keys()) {
-    names.add(key);
-  }
-
-  // Historical metric names from the local store
-  const store = adapter.getLocalStore();
-  if (store) {
-    for (const name of store.listMetricNames()) {
-      names.add(name);
-    }
-  }
-
-  return Array.from(names);
 }
 
 // ---------------------------------------------------------------------------
