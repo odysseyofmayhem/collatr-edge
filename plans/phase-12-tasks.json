@@ -53,7 +53,7 @@
       "prd_refs": ["§17"],
       "files": ["src/web/views/layout.tsx"],
       "depends_on": ["12.1"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.6",

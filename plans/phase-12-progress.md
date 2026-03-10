@@ -11,10 +11,23 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.2 — SSE stream update — dynamic signal names
 - [x] 12.3 — Trends page — hybrid curated + metric picker
 - [x] 12.4 — Staleness detection and visual indicators
-- [ ] 12.5 — CSS refinements and responsive layout
+- [x] 12.5 — CSS refinements and responsive layout
 - [ ] 12.6 — Integration tests with factory simulator data
 
 ## Log
+
+### Task 12.5 — CSS refinements and responsive layout (complete)
+- Comprehensive CSS overhaul in `layout.tsx` for all Phase 12 components
+- **Equipment cards**: full-width with structured header (name + status badge), separator border, 20px padding
+- **Signal grid**: 4-column responsive grid (→3 at 1024px, →2 at 768px, →1 at 480px), each signal in a subtle background tile
+- **Boolean indicators**: 10px coloured dots (green=ok/on, grey=off, red=alarm) in a flex-wrap row with top border separator
+- **Counter formatting**: monospace font stack (SF Mono, Menlo, Consolas)
+- **Enum badges**: coloured pill badges — grey (off), amber (setup/standby/maintenance), green (running/printing), blue (ready/idle), red (fault)
+- **Equipment status**: inline dot next to header (green=running, red=fault, grey=stopped) via Datastar data-class bindings
+- **Navigation**: subtle tab-style links with active state highlight (`.nav-active`), hover background
+- **Trends page**: time range button bar, section titles with bottom border, full-width chart cards, dashed-border metric picker dropdown, chart remove button with red hover
+- **Print styles**: hides nav, export form, time range bar, metric picker, remove buttons; forces `break-inside: avoid` on cards; 3-column signal grid; preserves banner colours
+- All 1133 non-smoke tests passing
 
 ### Task 12.4 — Staleness detection and visual indicators (complete)
 - Created `src/web/public/components/staleness.js` — client-side module that tracks per-signal last-update times
