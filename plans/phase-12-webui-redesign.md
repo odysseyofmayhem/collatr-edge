@@ -536,6 +536,42 @@ Tasks 12.1 and 12.3 can proceed in parallel after 12.0. Task 12.5 can be done al
 
 3. **ECharts bundle size** — Already loaded (598KB gzipped). No additional concern for the trends page since it uses the same `<collatr-line-chart>` component.
 
+### Task 12.7: Review fix — extract duplicate collectMetricNames (F-02)
+
+**Files:** `src/web/views/dashboard.tsx`, `src/web/views/trends.tsx`
+
+Extract the duplicate `collectMetricNames()` function into a shared module. Both `dashboard.tsx` and `trends.tsx` contain identical implementations. Move to `src/web/signal-descriptors.ts` (alongside `buildSignalDescriptors` which it naturally feeds into) or a new `src/web/adapter-helpers.ts`. Both consumer files must import from the shared location.
+
+**Tests:** Verify existing tests still pass — no new tests needed since the function behaviour is unchanged.
+
+### Task 12.8: Review fix — staleness test imports actual module (F-04)
+
+**Files:** `test/unit/web/staleness.test.ts`, `src/web/public/components/staleness.js`
+
+The staleness test re-implements `classifyStaleness()` in TypeScript instead of importing it from the actual `staleness.js` module. The JS file already exports via `module.exports` (line 159-161) for exactly this purpose. Update the test to `require()` the real function. If Bun's test runner has issues with the `document` guard in the module, mock `document` as undefined.
+
+**Tests:** The existing staleness classification tests must pass using the imported function rather than the re-implementation.
+
+### Task 12.9: Pipeline stats in status panel (agent.* metrics)
+
+**Files:** `src/web/adapter.ts`, `src/web/views/dashboard.tsx`, `src/web/views/fragments/status-panel.tsx`, `src/web/views/fragments/equipment-card.tsx`
+
+The dashboard currently shows Uptime, Heap, and RSS in the Pipeline Status panel — but the operational counters (Metrics Gathered, Metrics Written, Metrics Dropped, Gather Errors, Write Errors) are missing. The `StatsCollector` interface in `src/core/stats.ts` already tracks these values, and the `InternalInput` plugin emits them as `agent.*` metrics.
+
+The problem is two-fold:
+1. The WebUIAdapter doesn't expose `StatsCollector` — it only has `getMemoryUsage()` and `getUptime()`
+2. The `agent.*` metrics appear as an "Agent" equipment group in the equipment cards, where they don't belong — they're internal observability, not production data
+
+Fix:
+1. Add `getStats(): StatsCollector | null` to the `WebUIAdapter` interface
+2. Wire it from `PipelineWebUIAdapter` constructor (accept `StatsCollector` parameter)
+3. Render the counters in the Pipeline Status panel: Metrics Gathered, Metrics Written, Metrics Dropped, Gather Errors, Write Errors — formatted as simple value cards alongside the existing Uptime/Heap/RSS
+4. Update `StatusPanelFragment` (SSE) to include the counters so they update live
+5. Filter `agent.*` metrics out of `collectMetricNames()` so they don't appear as equipment cards
+6. Add `agent.*` signal descriptors to the lookup table with appropriate metadata (for the internal metrics that still flow through the store for export/history)
+
+**Tests:** Unit tests for the status panel rendering with stats. Verify `agent.*` metrics are excluded from equipment cards. Integration test that stats appear in the pipeline status section.
+
 ## Non-Goals (deferred)
 
 - Multi-series overlay charts (e.g. 3 dryer zones on one chart)

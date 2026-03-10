@@ -13,6 +13,9 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.4 — Staleness detection and visual indicators
 - [x] 12.5 — CSS refinements and responsive layout
 - [x] 12.6 — Integration tests with factory simulator data
+- [ ] 12.7 — Review fix: extract duplicate collectMetricNames (F-02)
+- [ ] 12.8 — Review fix: staleness test imports actual module (F-04)
+- [ ] 12.9 — Pipeline stats in status panel (agent.* metrics)
 
 ## Log
 

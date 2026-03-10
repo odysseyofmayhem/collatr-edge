@@ -8,7 +8,10 @@ Phases 0–11 are complete. ~1048 tests, 0 failures (2 skips). All phase plans, 
 
 Phase 12 replaces the hardcoded 4-signal dashboard with a config-driven live overview that reflects the actual configured inputs, and adds a dedicated trend charts page with curated defaults and a metric picker.
 
-The current dashboard (`src/web/views/dashboard.tsx`) hardcodes 4 signals: Temperature, Pressure, Line Speed, Humidity. None of these correspond to signals in any real config. The backend (SSE stream, chart data API, adapter) is already config-driven — the fix is purely frontend.
+Tasks 12.0–12.6 are complete. Tasks 12.7–12.9 are review follow-up items that must be completed before Phase 12 is done:
+- **12.7**: Extract duplicate `collectMetricNames()` to shared module (review finding F-02)
+- **12.8**: Staleness test imports actual JS module instead of re-implementing (review finding F-04)
+- **12.9**: Wire pipeline operational stats (gathered/written/dropped/errors) into the Pipeline Status panel, and filter `agent.*` metrics out of equipment cards
 
 Key reference: the factory simulator packaging profile defines 47 signals across 7 equipment groups (press, laminator, slitter, coder, energy, environment, vibration). The Edge config (`configs/factory-sim-packaging.toml`) maps 78 signal registrations (with Modbus/OPC-UA cross-protocol duplicates). Signal units and types are defined in the Phase 12 plan's signal metadata reference tables.
 

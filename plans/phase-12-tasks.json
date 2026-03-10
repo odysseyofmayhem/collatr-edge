@@ -63,6 +63,33 @@
       "files": ["test/integration/web-ui.test.ts", "test/integration/web-ui-trends.test.ts"],
       "depends_on": ["12.1", "12.3"],
       "passes": true
+    },
+    {
+      "id": "12.7",
+      "name": "Review fix: extract duplicate collectMetricNames (F-02)",
+      "description": "Extract the duplicate collectMetricNames() function from dashboard.tsx and trends.tsx into a shared module (e.g. src/web/adapter-helpers.ts or export from signal-descriptors.ts). Both files must import from the shared location. Update tests if needed.",
+      "prd_refs": ["§17"],
+      "files": ["src/web/views/dashboard.tsx", "src/web/views/trends.tsx"],
+      "depends_on": ["12.6"],
+      "passes": false
+    },
+    {
+      "id": "12.8",
+      "name": "Review fix: staleness test imports actual module (F-04)",
+      "description": "Update test/unit/web/staleness.test.ts to import classifyStaleness from the actual staleness.js module (which exports via module.exports) instead of re-implementing the logic. The test must use the real function to catch divergence if thresholds change.",
+      "prd_refs": ["§17"],
+      "files": ["test/unit/web/staleness.test.ts", "src/web/public/components/staleness.js"],
+      "depends_on": ["12.6"],
+      "passes": false
+    },
+    {
+      "id": "12.9",
+      "name": "Pipeline stats in status panel (agent.* metrics)",
+      "description": "Wire pipeline operational counters (metricsGathered, metricsWritten, metricsDropped, gatherErrors, writeErrors) into the Pipeline Status panel on the dashboard. These come from the StatsCollector interface (src/core/stats.ts) which is already implemented. Add getStats() to the WebUIAdapter interface, wire it from PipelineRuntime, and render in the status panel alongside uptime/heap/RSS. Filter agent.* metrics OUT of the equipment cards — they are internal observability, not production data. Update status-panel.tsx SSE fragment to include the counters.",
+      "prd_refs": ["§15", "§17"],
+      "files": ["src/web/adapter.ts", "src/web/views/dashboard.tsx", "src/web/views/fragments/status-panel.tsx", "src/web/views/fragments/equipment-card.tsx"],
+      "depends_on": ["12.7"],
+      "passes": false
     }
   ]
 }
