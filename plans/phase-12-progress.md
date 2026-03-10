@@ -10,11 +10,23 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.1 — Dashboard page rewrite — equipment cards
 - [x] 12.2 — SSE stream update — dynamic signal names
 - [x] 12.3 — Trends page — hybrid curated + metric picker
-- [ ] 12.4 — Staleness detection and visual indicators
+- [x] 12.4 — Staleness detection and visual indicators
 - [ ] 12.5 — CSS refinements and responsive layout
 - [ ] 12.6 — Integration tests with factory simulator data
 
 ## Log
+
+### Task 12.4 — Staleness detection and visual indicators (complete)
+- Created `src/web/public/components/staleness.js` — client-side module that tracks per-signal last-update times
+- Uses MutationObserver on the `[data-signals]` container to detect Datastar signal value changes
+- Periodic check every 5s re-evaluates all tracked signals and applies CSS classes
+- Three states: `.signal-fresh` (<30s, default), `.signal-stale` (30-60s, amber border), `.signal-dead` (>60s, red border + "No data" indicator)
+- Added `data-staleness-signal` attributes to all signal value elements in `signal-value.tsx`: numeric, boolean, counter, enum, and dryer paired values
+- Added staleness CSS to `layout.tsx`: amber left border for stale, red left border + opacity reduction for dead, "No data" pseudo-element for dead signals
+- Included `staleness.js` script tag in layout HTML
+- `classifyStaleness()` pure function exported for testing
+- 13 unit tests: 6 for staleness classification logic (fresh/stale/dead boundaries), 5 for data-staleness-signal attributes on all signal types, 2 for CSS/script presence in layout
+- All 1134 non-smoke tests passing
 
 ### Task 12.3 — Trends page — hybrid curated + metric picker (complete)
 - Created `src/web/views/trends.tsx` — config-driven trends page with hybrid approach (AD-4)

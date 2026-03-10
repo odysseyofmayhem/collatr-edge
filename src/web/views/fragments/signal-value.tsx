@@ -51,7 +51,7 @@ function NumericValue({
   dsName: string;
 }): string {
   return (
-    <div class="signal-value signal-numeric">
+    <div class="signal-value signal-numeric" data-staleness-signal={dsName}>
       <span class="signal-label">{descriptor.displayName}</span>
       <span class="signal-reading">
         <span data-text={`$${dsName}`}>&mdash;</span>
@@ -94,7 +94,7 @@ export function BooleanIndicator({
   const offClass = isAlarm ? "bool-ok" : "bool-off";
 
   return (
-    <div class="signal-value signal-bool">
+    <div class="signal-value signal-bool" data-staleness-signal={dsName}>
       <span
         class="bool-dot"
         data-class={`{'${onClass}': $${dsName} === 'true', '${offClass}': $${dsName} !== 'true'}`}
@@ -117,7 +117,7 @@ function CounterValue({
 }): string {
   // Use data-text with Number formatting for comma separators
   return (
-    <div class="signal-value signal-counter">
+    <div class="signal-value signal-counter" data-staleness-signal={dsName}>
       <span class="signal-label">{descriptor.displayName}</span>
       <span class="signal-reading signal-reading-counter">
         <span data-text={`Number($${dsName}).toLocaleString() || $${dsName}`}>&mdash;</span>
@@ -147,7 +147,7 @@ function EnumBadge({
   if (!labels) {
     // Unknown enum — just show the raw value
     return (
-      <div class="signal-value signal-enum">
+      <div class="signal-value signal-enum" data-staleness-signal={dsName}>
         <span class="signal-label">{descriptor.displayName}</span>
         <span class="enum-badge" data-text={`$${dsName}`}>&mdash;</span>
       </div>
@@ -166,7 +166,7 @@ function EnumBadge({
     .join(", ");
 
   return (
-    <div class="signal-value signal-enum">
+    <div class="signal-value signal-enum" data-staleness-signal={dsName}>
       <span class="signal-label">{descriptor.displayName}</span>
       <span
         class="enum-badge"
@@ -195,7 +195,7 @@ export function DryerPairedValue({
   const setDs = toDatastarName(setpointDescriptor.name);
 
   return (
-    <div class="signal-value signal-numeric signal-paired">
+    <div class="signal-value signal-numeric signal-paired" data-staleness-signal={tempDs}>
       <span class="signal-label">{tempDescriptor.displayName}</span>
       <span class="signal-reading">
         <span data-text={`$${tempDs}`}>&mdash;</span>

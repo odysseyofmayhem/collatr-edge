@@ -44,7 +44,7 @@
       "prd_refs": ["§17"],
       "files": ["src/web/public/components/staleness.js", "src/web/views/fragments/signal-value.tsx", "test/unit/web/staleness.test.ts"],
       "depends_on": ["12.1"],
-      "passes": false
+      "passes": true
     },
     {
       "id": "12.5",

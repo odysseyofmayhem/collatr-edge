@@ -28,6 +28,7 @@ export function Layout({
         {children as "safe"}
         <script src="/static/echarts.min.js"></script>
         <script type="module" src="/static/components/line-chart.js"></script>
+        <script type="module" src="/static/components/staleness.js"></script>
         <script type="module" src="/static/datastar.js"></script>
       </body>
     </html>
@@ -97,4 +98,12 @@ const CSS = `
   .export-bar button:hover { background: #1e293b; }
 
   .footer { text-align: center; padding: 16px; font-size: 0.75rem; color: #94a3b8; }
+
+  /* Staleness detection — Phase 12 Task 12.4 */
+  .signal-fresh { transition: border-color 0.3s, opacity 0.3s; }
+  .signal-stale { border-left: 3px solid #f59e0b; padding-left: 8px; }
+  .signal-stale .signal-reading, .signal-stale .enum-badge, .signal-stale .bool-dot { opacity: 0.7; }
+  .signal-dead { border-left: 3px solid #ef4444; padding-left: 8px; }
+  .signal-dead .signal-reading, .signal-dead .enum-badge, .signal-dead .bool-dot { opacity: 0.5; }
+  .signal-dead::after { content: 'No data'; font-size: 0.7rem; color: #ef4444; margin-left: 8px; }
 `;
