@@ -9,6 +9,7 @@ import { PipelineRuntime, type PipelineOptions } from "../../pipeline/runtime";
 import { PipelineWebUIAdapter, type OpcuaInputInfo } from "../../web/adapter";
 import { createWebServer, startWebServer, stopWebServer, type WebApp } from "../../web/server";
 import { LocalStoreOutput } from "../../plugins/outputs/local-store";
+import { SimpleStatsCollector } from "../../core/stats";
 import packageJson from "../../../package.json";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ export interface PipelineLike {
  */
 export interface RunCommandDeps {
   loadConfig: (path: string) => Promise<AgentConfig>;
-  buildPipeline: (config: AgentConfig) => PipelineOptions;
+  buildPipeline: (config: AgentConfig, stats?: import("../../core/stats").StatsCollector) => PipelineOptions;
   createRuntime: (options: PipelineOptions) => PipelineLike;
   /** Returns a promise that resolves with the signal name when SIGINT/SIGTERM is received. */
   awaitSignal: () => { promise: Promise<string>; cleanup: () => void };
@@ -153,9 +154,10 @@ export async function runCommand(
   });
 
   // 4. Build pipeline — validate + instantiate plugins (PRD §6, §7)
+  const statsCollector = new SimpleStatsCollector();
   let pipelineOptions: PipelineOptions;
   try {
-    pipelineOptions = d.buildPipeline(config);
+    pipelineOptions = d.buildPipeline(config, statsCollector);
   } catch (err) {
     log.error("failed to build pipeline", { error: (err as Error).message });
     return 1;
@@ -199,6 +201,7 @@ export async function runCommand(
       stateSource,
       localStore,
       opcuaInputs,
+      statsCollector,
     );
 
     // Register metric sink so live dashboard values are populated

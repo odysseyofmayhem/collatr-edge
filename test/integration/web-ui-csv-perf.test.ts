@@ -50,6 +50,7 @@ function mockAdapter(localStore: LocalStoreOutput): WebUIAdapter {
     getLocalStore: () => localStore,
     getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
     getTrustStore: () => null,
+    getStats: () => null,
   };
 }
 

@@ -160,6 +160,17 @@ const SIGNAL_LOOKUP: Record<string, SignalMeta> = {
   "vibration.main_drive_x": { unit: "mm/s", type: "numeric", category: "process" },
   "vibration.main_drive_y": { unit: "mm/s", type: "numeric", category: "process" },
   "vibration.main_drive_z": { unit: "mm/s", type: "numeric", category: "process" },
+
+  // Agent — internal observability metrics (filtered from equipment cards by collectMetricNames)
+  "agent.uptime_seconds": { unit: "s", type: "counter", category: "status" },
+  "agent.metrics_gathered": { unit: "", type: "counter", category: "status" },
+  "agent.metrics_written": { unit: "", type: "counter", category: "status" },
+  "agent.metrics_dropped": { unit: "", type: "counter", category: "status" },
+  "agent.gather_errors": { unit: "", type: "counter", category: "status" },
+  "agent.write_errors": { unit: "", type: "counter", category: "status" },
+  "agent.memory_usage": { unit: "", type: "numeric", category: "status" },
+  "agent.input": { unit: "", type: "numeric", category: "status" },
+  "agent.output": { unit: "", type: "numeric", category: "status" },
 };
 
 // ---------------------------------------------------------------------------

@@ -8,11 +8,12 @@
 // - AD-6: Datastar signals are dynamic (derived from signal descriptors)
 // - AD-7: Boolean signals rendered as indicators, not values
 
-import type { WebUIAdapter, PluginHealth } from "../adapter";
+import type { WebUIAdapter } from "../adapter";
 import { collectMetricNames } from "../adapter-helpers";
 import { buildSignalDescriptors, type EquipmentGroup } from "../signal-descriptors";
 import { Layout } from "./layout";
 import { EquipmentCard } from "./fragments/equipment-card";
+import { StatusPanelFragment } from "./fragments/status-panel";
 import { toDatastarName } from "./fragments/signal-value";
 
 // ---------------------------------------------------------------------------
@@ -84,48 +85,6 @@ function StatusBadge({ state }: { state: string }): string {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin health table
-// ---------------------------------------------------------------------------
-
-function PluginHealthTable({
-  plugins,
-}: {
-  plugins: PluginHealth[];
-}): string {
-  return (
-    <div id="plugin-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Plugin</th>
-            <th>Type</th>
-            <th>Status</th>
-            <th style="text-align:right;">Last Activity</th>
-          </tr>
-        </thead>
-        <tbody>
-          {plugins.map((p) => (
-            <tr>
-              <td style="font-weight:500;">{p.alias}</td>
-              <td style="color:#888;">{p.type}</td>
-              <td>
-                <span class={`status-dot dot-${p.status}`}></span>
-                {p.status}
-              </td>
-              <td style="text-align:right;color:#888;">
-                {p.lastActivity
-                  ? `${Math.floor((Date.now() - p.lastActivity) / 1000)}s ago`
-                  : "--"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ) as string;
-}
-
-// ---------------------------------------------------------------------------
 // Build Datastar signals initialisation object
 // ---------------------------------------------------------------------------
 
@@ -150,9 +109,6 @@ function buildDatastarSignals(groups: EquipmentGroup[]): string {
 export function DashboardPage({ adapter }: DashboardProps): string {
   const status = adapter.getStatus();
   const policy = adapter.getNetworkPolicy();
-  const plugins = adapter.getPluginHealth();
-  const mem = adapter.getMemoryUsage();
-  const uptime = adapter.getUptime();
 
   // Build config-driven equipment groups from available metric names
   const metricNames = collectMetricNames(adapter);
@@ -193,28 +149,7 @@ export function DashboardPage({ adapter }: DashboardProps): string {
             {/* 4. Pipeline status — patched via SSE */}
             <div class="card card-full">
               <h2>Pipeline Status</h2>
-              <div id="status-panel">
-                <div style="display:flex;gap:24px;margin-bottom:12px;">
-                  <div>
-                    <span style="color:#888;font-size:0.85rem;">Uptime</span>
-                    <br />
-                    <strong>{formatDuration(uptime)}</strong>
-                  </div>
-                  <div>
-                    <span style="color:#888;font-size:0.85rem;">Heap</span>
-                    <br />
-                    <strong>
-                      {Math.round(mem.heapUsed / 1024 / 1024)} MB
-                    </strong>
-                  </div>
-                  <div>
-                    <span style="color:#888;font-size:0.85rem;">RSS</span>
-                    <br />
-                    <strong>{Math.round(mem.rss / 1024 / 1024)} MB</strong>
-                  </div>
-                </div>
-                {PluginHealthTable({ plugins }) as "safe"}
-              </div>
+              {StatusPanelFragment({ adapter }) as "safe"}
             </div>
           </div>
 
@@ -240,16 +175,3 @@ export function DashboardPage({ adapter }: DashboardProps): string {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}

@@ -89,7 +89,7 @@
       "prd_refs": ["§15", "§17"],
       "files": ["src/web/adapter.ts", "src/web/views/dashboard.tsx", "src/web/views/fragments/status-panel.tsx", "src/web/views/fragments/equipment-card.tsx"],
       "depends_on": ["12.7"],
-      "passes": false
+      "passes": true
     }
   ]
 }

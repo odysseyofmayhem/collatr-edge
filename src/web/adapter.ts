@@ -10,6 +10,7 @@ import type { FieldValue, Metric } from "../core/metric";
 import type { NetworkPolicy } from "../core/network-policy";
 import type { PipelineOptions, PipelineState } from "../pipeline/runtime";
 import type { LocalStoreOutput } from "../plugins/outputs/local-store";
+import type { StatsCollector } from "../core/stats";
 import { TrustStore } from "./trust-store";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +100,9 @@ export interface WebUIAdapter {
 
   /** SQLite trust store for TOFU server certificate trust. Null if no OPC-UA inputs configured. */
   getTrustStore(): TrustStore | null;
+
+  /** Pipeline stats collector for operational counters (gathered/written/dropped/errors). */
+  getStats(): StatsCollector | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +115,7 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
   private _networkPolicy: NetworkPolicy | null;
   private _localStore: LocalStoreOutput | null;
   private _opcuaInputs: OpcuaInputInfo[];
+  private _stats: StatsCollector | null;
   private _clientCertInfo: ClientCertInfo | null = null;
   private _trustStore: TrustStore | null = null;
   private _liveMetrics: Map<string, LiveMetricValue> = new Map();
@@ -121,12 +126,14 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
     stateSource: PipelineStateSource,
     localStore?: LocalStoreOutput | null,
     opcuaInputs?: OpcuaInputInfo[],
+    stats?: StatsCollector | null,
   ) {
     this._options = options;
     this._stateSource = stateSource;
     this._networkPolicy = options.networkPolicy ?? null;
     this._localStore = localStore ?? null;
     this._opcuaInputs = opcuaInputs ?? [];
+    this._stats = stats ?? null;
     this._loadClientCert();
   }
 
@@ -288,5 +295,9 @@ export class PipelineWebUIAdapter implements WebUIAdapter {
 
   getTrustStore(): TrustStore | null {
     return this._trustStore;
+  }
+
+  getStats(): StatsCollector | null {
+    return this._stats;
   }
 }

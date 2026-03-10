@@ -1,6 +1,6 @@
 # Phase 12 Progress — WebUI Redesign
 
-## Status: IN PROGRESS
+## Status: ALL TASKS COMPLETE — PENDING REVIEW
 
 ## Overview
 Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid trends page.
@@ -15,9 +15,22 @@ Replace hardcoded 4-signal dashboard with config-driven live overview and hybrid
 - [x] 12.6 — Integration tests with factory simulator data
 - [x] 12.7 — Review fix: extract duplicate collectMetricNames (F-02)
 - [x] 12.8 — Review fix: staleness test imports actual module (F-04)
-- [ ] 12.9 — Pipeline stats in status panel (agent.* metrics)
+- [x] 12.9 — Pipeline stats in status panel (agent.* metrics)
 
 ## Log
+
+### Task 12.9 — Pipeline stats in status panel (complete)
+- Added `getStats(): StatsCollector | null` to `WebUIAdapter` interface
+- Wired `StatsCollector` through `PipelineWebUIAdapter` constructor (new optional 5th parameter)
+- Updated `run.ts`: creates `SimpleStatsCollector` before `buildPipeline()`, passes same instance to both `buildPipeline` and `PipelineWebUIAdapter` — they share the same live stats
+- Updated `StatusPanelFragment`: renders operational counters (Gathered, Written, Dropped, Gather Errors, Write Errors) in a `status-stats` flex row below Uptime/Heap/RSS. Dropped uses `.stat-warn` (amber), errors use `.stat-error` (red) when non-zero
+- Refactored `dashboard.tsx`: replaced inline status panel rendering with shared `StatusPanelFragment` component (eliminates duplicate PluginHealthTable and formatDuration code)
+- Filtered `agent.*` metrics from `collectMetricNames()` in `adapter-helpers.ts` — they no longer appear as an "Agent" equipment card on the dashboard
+- Added `agent.*` entries to `SIGNAL_LOOKUP` table in `signal-descriptors.ts` for metadata consistency (these signals still flow through the local store for export/history)
+- Added CSS: `.status-stats`, `.stat-card`, `.stat-label`, `.stat-warn`, `.stat-error` in layout.tsx
+- Updated all 9 test files' mock adapters to include `getStats: () => null`
+- Added 5 new dashboard tests: stats rendering with values, stat-warn on drops, stat-error on errors, null stats hides counters, agent.* excluded from equipment cards
+- All 1160 tests passing (2 skips, 0 failures)
 
 ### Task 12.8 — Review fix: staleness test imports actual module (complete)
 - Replaced re-implemented `classifyStaleness` in test with import from actual `staleness.js` module

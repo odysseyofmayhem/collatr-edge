@@ -96,6 +96,7 @@ function mockAdapter(overrides?: {
     getLocalStore: () => localStore,
     getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
     getTrustStore: () => null,
+    getStats: () => null,
   };
 }
 

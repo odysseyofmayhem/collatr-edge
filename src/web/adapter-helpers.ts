@@ -23,5 +23,7 @@ export function collectMetricNames(adapter: WebUIAdapter): string[] {
     }
   }
 
-  return Array.from(names);
+  // Filter out agent.* internal metrics — they are observability data,
+  // not production signals, and belong in the Pipeline Status panel instead
+  return Array.from(names).filter((name) => !name.startsWith("agent."));
 }

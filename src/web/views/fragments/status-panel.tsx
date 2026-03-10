@@ -1,5 +1,6 @@
 // CollatrEdge — Status panel SSE fragment
 // Phase 9 Task 9.3: server-rendered JSX fragment for patchElements
+// Phase 12 Task 12.9: pipeline operational counters (gathered/written/dropped/errors)
 // Must have id="status-panel" to match the target div in dashboard.tsx
 
 import type { WebUIAdapter, PluginHealth } from "../../adapter";
@@ -54,26 +55,50 @@ export function StatusPanelFragment({
   const mem = adapter.getMemoryUsage();
   const uptime = adapter.getUptime();
   const plugins = adapter.getPluginHealth();
+  const stats = adapter.getStats();
 
   return (
     <div id="status-panel">
-      <div style="display:flex;gap:24px;margin-bottom:12px;">
-        <div>
-          <span style="color:#888;font-size:0.85rem;">Uptime</span>
-          <br />
+      <div class="status-stats">
+        <div class="stat-card">
+          <span class="stat-label">Uptime</span>
           <strong>{formatDuration(uptime)}</strong>
         </div>
-        <div>
-          <span style="color:#888;font-size:0.85rem;">Heap</span>
-          <br />
+        <div class="stat-card">
+          <span class="stat-label">Heap</span>
           <strong>{Math.round(mem.heapUsed / 1024 / 1024)} MB</strong>
         </div>
-        <div>
-          <span style="color:#888;font-size:0.85rem;">RSS</span>
-          <br />
+        <div class="stat-card">
+          <span class="stat-label">RSS</span>
           <strong>{Math.round(mem.rss / 1024 / 1024)} MB</strong>
         </div>
       </div>
+      {stats
+        ? (
+            <div class="status-stats" style="margin-top:8px;">
+              <div class="stat-card">
+                <span class="stat-label">Gathered</span>
+                <strong>{stats.metricsGathered.toLocaleString()}</strong>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Written</span>
+                <strong>{stats.metricsWritten.toLocaleString()}</strong>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Dropped</span>
+                <strong class={stats.metricsDropped > 0 ? "stat-warn" : ""}>{stats.metricsDropped.toLocaleString()}</strong>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Gather Errors</span>
+                <strong class={stats.gatherErrors > 0 ? "stat-error" : ""}>{stats.gatherErrors.toLocaleString()}</strong>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Write Errors</span>
+                <strong class={stats.writeErrors > 0 ? "stat-error" : ""}>{stats.writeErrors.toLocaleString()}</strong>
+              </div>
+            </div>
+          ) as "safe"
+        : ""}
       {PluginHealthTable({ plugins }) as "safe"}
     </div>
   ) as string;

@@ -127,6 +127,13 @@ const CSS = `
   .metric-unit { font-size: 0.9rem; font-weight: 400; color: #94a3b8; }
   .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 
+  /* Pipeline status stats */
+  .status-stats { display: flex; gap: 24px; margin-bottom: 12px; flex-wrap: wrap; }
+  .stat-card { display: flex; flex-direction: column; }
+  .stat-label { color: #888; font-size: 0.85rem; }
+  .stat-warn { color: #f59e0b; }
+  .stat-error { color: #ef4444; }
+
   /* Plugin health table */
   .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
   .dot-ok { background: #22c55e; }

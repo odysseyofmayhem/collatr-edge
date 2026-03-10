@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { DashboardPage } from "../../../../src/web/views/dashboard";
 import type { WebUIAdapter, PluginHealth, LiveMetricValue } from "../../../../src/web/adapter";
 import type { PipelineState } from "../../../../src/pipeline/runtime";
+import { SimpleStatsCollector } from "../../../../src/core/stats";
 import {
   createWebServer,
   startWebServer,
@@ -68,11 +69,28 @@ function packagingMetrics(): Map<string, LiveMetricValue> {
   return m;
 }
 
+function mockStats(overrides?: Partial<{
+  metricsGathered: number;
+  metricsWritten: number;
+  metricsDropped: number;
+  gatherErrors: number;
+  writeErrors: number;
+}>): SimpleStatsCollector {
+  const stats = new SimpleStatsCollector();
+  stats.metricsGathered = overrides?.metricsGathered ?? 5000;
+  stats.metricsWritten = overrides?.metricsWritten ?? 4980;
+  stats.metricsDropped = overrides?.metricsDropped ?? 0;
+  stats.gatherErrors = overrides?.gatherErrors ?? 0;
+  stats.writeErrors = overrides?.writeErrors ?? 0;
+  return stats;
+}
+
 function mockAdapter(overrides?: {
   state?: PipelineState;
   policy?: { mode: string; summary: string } | null;
   plugins?: PluginHealth[];
   metrics?: Map<string, LiveMetricValue>;
+  stats?: SimpleStatsCollector | null;
 }): WebUIAdapter {
   const state = overrides?.state ?? "running";
   const policy = overrides?.policy !== undefined ? overrides.policy : null;
@@ -83,6 +101,7 @@ function mockAdapter(overrides?: {
     { alias: "local_store", type: "output", status: "ok", lastActivity: Date.now() },
   ];
   const metrics = overrides?.metrics ?? packagingMetrics();
+  const stats = overrides?.stats !== undefined ? overrides.stats : mockStats();
 
   return {
     getStatus: () => ({ state, startedAt: Date.now() - 60000 }),
@@ -95,6 +114,7 @@ function mockAdapter(overrides?: {
     getLocalStore: () => null,
     getCertificateInfo: () => ({ clientCert: null, inputs: [] }),
     getTrustStore: () => null,
+    getStats: () => stats,
   };
 }
 
@@ -460,6 +480,78 @@ describe("DashboardPage JSX rendering", () => {
     expect(html).toContain("equipment-status");
     expect(html).toContain("status-running");
     expect(html).toContain("status-dot-inline");
+  });
+
+  // ── Pipeline stats in status panel ──────────────────────────────────
+
+  it("renders pipeline stats counters in the status panel", () => {
+    const adapter = mockAdapter({
+      stats: mockStats({ metricsGathered: 12345, metricsWritten: 12300 }),
+    });
+    const html = DashboardPage({ adapter });
+
+    expect(html).toContain("Gathered");
+    expect(html).toContain("Written");
+    expect(html).toContain("Dropped");
+    expect(html).toContain("Gather Errors");
+    expect(html).toContain("Write Errors");
+    expect(html).toContain("12,345");
+    expect(html).toContain("12,300");
+  });
+
+  it("renders stat-warn class when metrics are dropped", () => {
+    const adapter = mockAdapter({
+      stats: mockStats({ metricsDropped: 5 }),
+    });
+    const html = DashboardPage({ adapter });
+
+    expect(html).toContain("stat-warn");
+  });
+
+  it("renders stat-error class when errors are present", () => {
+    const adapter = mockAdapter({
+      stats: mockStats({ gatherErrors: 3, writeErrors: 1 }),
+    });
+    const html = DashboardPage({ adapter });
+
+    // Should have stat-error class on actual elements (not just in CSS)
+    // Look for class="stat-error" attributes in HTML elements
+    const errorMatches = html.match(/class="stat-error"/g) || [];
+    expect(errorMatches.length).toBe(2);
+  });
+
+  it("does not render stats counters when stats is null", () => {
+    const adapter = mockAdapter({ stats: null });
+    const html = DashboardPage({ adapter });
+
+    // Status panel body (after </style>) should not contain stats counter labels
+    const bodyContent = html.split("</style>")[1] ?? "";
+    expect(bodyContent).not.toContain("Gathered");
+    expect(bodyContent).not.toContain("Dropped");
+    expect(bodyContent).not.toContain("Gather Errors");
+    // Should still render uptime/heap/rss
+    expect(html).toContain("Uptime");
+    expect(html).toContain("Heap");
+    expect(html).toContain("RSS");
+  });
+
+  // ── agent.* metric filtering ───────────────────────────────────────
+
+  it("excludes agent.* metrics from equipment cards", () => {
+    const metrics = packagingMetrics();
+    // Add agent.* metrics that would normally appear
+    metrics.set("agent.uptime_seconds", liveMetric("agent.uptime_seconds", 120));
+    metrics.set("agent.metrics_gathered", liveMetric("agent.metrics_gathered", 5000));
+    metrics.set("agent.metrics_written", liveMetric("agent.metrics_written", 4980));
+
+    const adapter = mockAdapter({ metrics });
+    const html = DashboardPage({ adapter });
+
+    // agent.* should NOT appear as an equipment card
+    expect(html).not.toContain('data-equipment="agent"');
+    // Production equipment should still be present
+    expect(html).toContain('data-equipment="press"');
+    expect(html).toContain('data-equipment="laminator"');
   });
 });
 
