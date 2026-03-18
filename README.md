@@ -1,6 +1,6 @@
 # CollatrEdge
 
-IIoT data collection agent for UK SME manufacturers. Collects data from industrial protocols (OPC-UA, Modbus TCP, MQTT), processes it through a configurable pipeline, and stores/forwards it.
+IIoT data collection agent for SME manufacturers. Collects data from industrial protocols (OPC-UA, Modbus TCP, MQTT), processes it through a configurable pipeline, and stores/forwards it.
 
 ## System Requirements
 
